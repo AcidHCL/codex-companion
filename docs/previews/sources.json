@@ -1,0 +1,439 @@
+{
+  "size": [
+    320,
+    320
+  ],
+  "animation_background": [
+    245,
+    247,
+    251
+  ],
+  "skins": [
+    {
+      "id": "deepseek",
+      "source": "desktop-pet/assets/skins/deepseek.png",
+      "source_sha256": "c7780448c05ee210a6a94d08df297da529e6ae330f56a3ec0603298703d22d8e",
+      "preview_bytes": 113280
+    },
+    {
+      "id": "gemini",
+      "source": "desktop-pet/assets/skins/gemini.png",
+      "source_sha256": "c51a324c892bd9d3cdd0258089abde78e598753ee046d30ce25a198531dd2db0",
+      "preview_bytes": 156075
+    },
+    {
+      "id": "claude",
+      "source": "desktop-pet/assets/skins/claude.png",
+      "source_sha256": "3bb15f058e03fd9516b8651a1606a1e2b0fe42207c63b4739293f15989a3a491",
+      "preview_bytes": 133621
+    },
+    {
+      "id": "gpt",
+      "source": "desktop-pet/assets/skins/gpt.png",
+      "source_sha256": "4b39e3e9bb191746a07e9044dc7eb813a0a32f7059f153f19b86112b20bfc7ba",
+      "preview_bytes": 137427
+    },
+    {
+      "id": "grok",
+      "source": "desktop-pet/assets/skins/grok.png",
+      "source_sha256": "7e3a43f68d9bb654c1135f936554ece98954117f3afb8c040f09a1d6a54111a0",
+      "preview_bytes": 170408
+    },
+    {
+      "id": "glm",
+      "source": "desktop-pet/assets/skins/glm.png",
+      "source_sha256": "56ea65ce4743a8c1d0d082d8a844d543417782fb51ac6ab449ab672fc99a27e8",
+      "preview_bytes": 129726
+    },
+    {
+      "id": "kimi",
+      "source": "desktop-pet/assets/skins/kimi.png",
+      "source_sha256": "a421df52e045d0a3681059f4bd5d56bc2f05e17de74182e1ae6c8bb9f7a93169",
+      "preview_bytes": 154314
+    },
+    {
+      "id": "minimax",
+      "source": "desktop-pet/assets/skins/minimax.png",
+      "source_sha256": "83d17769080563357b5d7dbe3688912f4d0a892a66895b713745e505d3cf6f2c",
+      "preview_bytes": 126229
+    },
+    {
+      "id": "qwen",
+      "source": "desktop-pet/assets/skins/qwen.png",
+      "source_sha256": "82fb465096681ebf4490e134284e240879c78396904349b69a26b22179757bd8",
+      "preview_bytes": 138803
+    }
+  ],
+  "classic": [
+    {
+      "id": "idle",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        1400,
+        250,
+        160,
+        70,
+        110,
+        70,
+        160,
+        600
+      ],
+      "duration_ms": 2820,
+      "preview_bytes": 315908,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/01.png",
+          "sha256": "09d9e99e563e68751225018867f6bb36a670b04cd32056fe08d78d87fc3db506"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/02.png",
+          "sha256": "0ffe84ed248290d5004482f0e0f935f510b65dc8458362c571f18849ed88980c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/03.png",
+          "sha256": "209cc3611f09eb8480c9237bbb73bf3c1bee926923308a005865daaad81ed62b"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/04.png",
+          "sha256": "8d1a473b17fdacccec80c68aeb2d7543200b62b2853c4f58b78b563f59a2a227"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/05.png",
+          "sha256": "97020b45a1d4cc6de518157937ea68456b1935f870fc573ea0c99108b453cc40"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/06.png",
+          "sha256": "74d33db9b69590f5d0dd566698ae7ae5d0ffe84e3b4671471cfda8665d84684f"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/07.png",
+          "sha256": "2e8914faf16264cacdd4b437cf09689b2557836ad7decf32bbd876616306d780"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/idle/08.png",
+          "sha256": "2b9251d7a29594377a6642fa8f3e176548533fca97b9cd53f7c5efa8df059252"
+        }
+      ]
+    },
+    {
+      "id": "working",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        130,
+        90,
+        130,
+        90,
+        130,
+        90,
+        130,
+        90
+      ],
+      "duration_ms": 880,
+      "preview_bytes": 308302,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/01.png",
+          "sha256": "e79a39dab55f1380cf309a29d4041ec50c3dbd896ad6da8b9e2f98ac2189fa3e"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/02.png",
+          "sha256": "31aa0532fcdb51d489d06ef32cb5093c1987bd99a3588e8156a37ea9c895b363"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/03.png",
+          "sha256": "26b513d90f8f39368e429e8d5b085e918c9c96ffe8b0af4019ad0d0fb710180c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/04.png",
+          "sha256": "bb4b34fbbe77eb4620de95ff09f2f26c133b0557e285bf1d7a27cacbf75648a7"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/05.png",
+          "sha256": "2c9616709112358df93655d29edc155370bcc7f7c93e78a3d4ba05a52d328dd4"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/06.png",
+          "sha256": "3b12aa96b2d1209790114a30e34cb51e82d98da39d30da05b80c103376e9074b"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/07.png",
+          "sha256": "ee601905fd6ee42bf9eff140de23a19bc617a18a1a0bc87d409cc8175b4ebf80"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/working/08.png",
+          "sha256": "801ae27b3e015060be0fc01217621180413d640df94aa6a33edaa05e2cf46ef9"
+        }
+      ]
+    },
+    {
+      "id": "walk-right",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        120,
+        90,
+        120,
+        90,
+        120,
+        90,
+        120,
+        90
+      ],
+      "duration_ms": 840,
+      "preview_bytes": 252932,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/01.png",
+          "sha256": "f21051e415cb0f006e348ff146bc89aacbc8582bbb8ea5f6d298cdcf2bb78e0e"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/02.png",
+          "sha256": "f22f7c8ce0cfa2ac6832d6f5f181db3f83807d1ad2cc15b06b5a565b1a86330a"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/03.png",
+          "sha256": "740d789ff5c5e022e4e5365695048ec063bcfa3d4044d8e90c1718295a4146af"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/04.png",
+          "sha256": "b43c80a209d96aab172bb1d26d3d4a83c8e0f7f5dcf08a8ad2e361ff8acd8471"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/05.png",
+          "sha256": "a80e44c7f1848622ac720fc473bb280c203e1efbe75972ed9a886ccbfd4e2a0c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/06.png",
+          "sha256": "3dfbf12aa61094aa1cee68e431237fefa5db943811de28bad9843ad800aaf706"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/07.png",
+          "sha256": "0824bede911d3e5ad61f075882b2b6cd3b47b0de852c1e6b39c5e9c77d88b402"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/walk-right/08.png",
+          "sha256": "747b8f98f0430653a17bc55e3bda3e1b823b9dbf9ec9bd176692e495ffbfbf4c"
+        }
+      ]
+    },
+    {
+      "id": "drag",
+      "phases": [
+        "start",
+        "loop",
+        "loop"
+      ],
+      "frames": 20,
+      "durations_ms": [
+        100,
+        120,
+        120,
+        140,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110
+      ],
+      "duration_ms": 2240,
+      "preview_bytes": 631394,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag-start/01.png",
+          "sha256": "7cf1a1cbd183a9bec75d258f7f3a41b56d61608114bc291fea88fa787e2f5329"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag-start/02.png",
+          "sha256": "ec7075625fc253b67e19aa803987ea7ac340d03fc541e457964bb52784dff854"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag-start/03.png",
+          "sha256": "10bf89ebd6d08c7853db61b2907e8fd846cbb35843f5f9f04f95e5833c4360c5"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag-start/04.png",
+          "sha256": "e8083bdab54b9407cc2ee2ae7422bc706711720f5d9f8f17cbee64541561e97c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/01.png",
+          "sha256": "eb8dbcc2689b40dc247165cebc981a2e75cb0a40c434b1cd28b0d0d02c2f6f44"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/02.png",
+          "sha256": "bf3816cc7180e0d3dfbe2c4d375a14b5d5cfb367394dc9e3012bf36b3be3c7b4"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/03.png",
+          "sha256": "6e11d74c8187c7b510d3a217a2c3f1642103c58a5159f2019986e0c6be7a73c0"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/04.png",
+          "sha256": "28330364a57b0203b6fd6c8e8080589897c26047a53b8433195712d8324b8258"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/05.png",
+          "sha256": "f8dcf13a585c1f021040013c68e2cbeeff03fa7e29a5c5a316dbf476035fed91"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/06.png",
+          "sha256": "cd736e84ff14f393861bc2cb21e0628f13c4a639119f2362eaebb846ab12ea1a"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/07.png",
+          "sha256": "1b10320eff8a2dc773f28706366867392da0b7b4d765614cfbb9bdff77861a78"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/08.png",
+          "sha256": "539fe99488ab034c2e6ce7ba26d3a913b6d0541a1e67654a5ddeb3a128500f53"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/01.png",
+          "sha256": "eb8dbcc2689b40dc247165cebc981a2e75cb0a40c434b1cd28b0d0d02c2f6f44"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/02.png",
+          "sha256": "bf3816cc7180e0d3dfbe2c4d375a14b5d5cfb367394dc9e3012bf36b3be3c7b4"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/03.png",
+          "sha256": "6e11d74c8187c7b510d3a217a2c3f1642103c58a5159f2019986e0c6be7a73c0"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/04.png",
+          "sha256": "28330364a57b0203b6fd6c8e8080589897c26047a53b8433195712d8324b8258"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/05.png",
+          "sha256": "f8dcf13a585c1f021040013c68e2cbeeff03fa7e29a5c5a316dbf476035fed91"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/06.png",
+          "sha256": "cd736e84ff14f393861bc2cb21e0628f13c4a639119f2362eaebb846ab12ea1a"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/07.png",
+          "sha256": "1b10320eff8a2dc773f28706366867392da0b7b4d765614cfbb9bdff77861a78"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/drag/08.png",
+          "sha256": "539fe99488ab034c2e6ce7ba26d3a913b6d0541a1e67654a5ddeb3a128500f53"
+        }
+      ]
+    },
+    {
+      "id": "angry",
+      "phases": [
+        "loop"
+      ],
+      "frames": 6,
+      "durations_ms": [
+        220,
+        120,
+        180,
+        480,
+        180,
+        440
+      ],
+      "duration_ms": 1620,
+      "preview_bytes": 233058,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/01.png",
+          "sha256": "e0fee4c6026b9b30add5a204afe395a36a3aa3f0ce23baa3ac0bd304c5be12d4"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/02.png",
+          "sha256": "a82145f618ef38be7de28413ff216836f19fdb48b63699b8b6b973dae05bb7bd"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/03.png",
+          "sha256": "1b14389d6156ab5f2598089eedb45a00995b77d48cae18a5448ec8d4f41075be"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/04.png",
+          "sha256": "fd6f506e74faa65adf569ade182c7f8972d59832ca7bd1b25461693009382f88"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/05.png",
+          "sha256": "20b2b851376ab42f89705fc3972199d32ea8108a7abeb58902aa99eb9d6f9975"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/angry/06.png",
+          "sha256": "3d5971a9d91c9b7218c35dfcb439f1d307e2ea5f1fbacd3bb30da8eb54b8778b"
+        }
+      ]
+    },
+    {
+      "id": "sing",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        170,
+        140,
+        90,
+        180,
+        140,
+        180,
+        90,
+        170
+      ],
+      "duration_ms": 1160,
+      "preview_bytes": 299415,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/01.png",
+          "sha256": "6bb2ad46b3fa29e095e845a216e7266f7cbedc433de290b964f877ae6ecb7052"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/02.png",
+          "sha256": "29b7815e25bec0e98532bb891acc3acbebc1ec18b3c0c7d06c491ac78be59177"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/03.png",
+          "sha256": "fa8b524ec6b6264f6c5ce276555067a9fe3e6c224f41a708b4665da1e99930e9"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/04.png",
+          "sha256": "8002eebb49702600da2d7d91bf2f51915325ddd5a3cea6285d5fbb5d0505e0ce"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/05.png",
+          "sha256": "3fd20ef5cef0b479b3d0f398446071920b010618f6ab23dc5658fc5ba64ef26b"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/06.png",
+          "sha256": "9b52704107ea58118ab2a3b3b882f9b35e779cadbe388ec543a1f799fdd1010d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/07.png",
+          "sha256": "2e4bd06b3ce3f65937b17b645d75aaaacf4c5d4c000d04b6b6af1ab3feba54df"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/deepseek-small/frames/sing/08.png",
+          "sha256": "573a4b33d49e957a02ab449353af2a7a2adef6b86bdc1fae36a54d4d513058bf"
+        }
+      ]
+    }
+  ]
+}
