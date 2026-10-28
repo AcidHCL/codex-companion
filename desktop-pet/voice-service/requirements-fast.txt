@@ -1,0 +1,6 @@
+# Separate environment: qwen-tts-hf and qwen-tts must not coexist.
+torch==2.8.0
+torchaudio==2.8.0
+faster-qwen3-tts==0.5.4
+transformers==5.15.1
+qwen-tts-hf==0.1.1.post1

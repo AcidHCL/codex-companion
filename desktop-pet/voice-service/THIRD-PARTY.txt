@@ -1,0 +1,34 @@
+Qwen3-TTS
+Code: https://github.com/QwenLM/Qwen3-TTS
+Package: https://pypi.org/project/qwen-tts/0.1.1/
+Model: https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base
+Pinned downloaded model revision: fd4b254389122332181a7c3db7f27e918eec64e3
+Code/model license: Apache License 2.0 (per official repository/model card).
+Model weights remain outside the application in .tools/deepseek-voice-models.
+
+Faster Qwen3-TTS 0.5.4
+https://github.com/andimarafioti/faster-qwen3-tts
+https://pypi.org/project/faster-qwen3-tts/0.5.4/
+License: MIT (per maintainer repository).
+Separate environment: .tools/deepseek-voice-fast-venv.
+Uses qwen-tts-hf 0.1.1.post1 (Transformers 5 compatibility distribution,
+Apache-2.0) and Transformers 5.15.1. No model quantization is used.
+The complete tested accelerated dependency set is in requirements-fast-lock.txt.
+
+Demucs 4.1.0 / HTDemucs (one-time reference preparation)
+Maintainer repository: https://github.com/adefossez/demucs
+Original repository: https://github.com/facebookresearch/demucs
+Weights: https://huggingface.co/adefossez/HTDemucs
+License: MIT (per maintainer/original repository).
+The application does not need Demucs for regular speech generation.
+
+PyTorch / TorchAudio 2.8.0+cu128
+https://pytorch.org/get-started/previous-versions/
+https://github.com/pytorch/pytorch/blob/main/LICENSE
+https://github.com/pytorch/audio/blob/main/LICENSE
+Installed binary distributions include their own license notices.
+
+The complete Python environment uses the third-party packages listed in
+requirements-lock.txt; their distribution license notices remain in site-packages.
+The provided song/reference audio is user-supplied material, not part of these
+software/model licenses; these licenses do not grant rights to that recording.

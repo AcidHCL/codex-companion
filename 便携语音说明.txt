@@ -1,0 +1,34 @@
+AI Pet 1.21.0：可选语音环境
+
+源码包不附带 Python 虚拟环境、TTS/ASR 模型权重或个人配置。没有这些可选组件仍可使用桌宠和 Ollama 文字聊天。
+
+目录约定
+源码根目录包含 desktop-pet，独立环境与模型放在源码根目录的 .tools。
+桌宠从程序目录向上查找 .tools。默认 config.json 使用相对模型路径，支持向上查找，不包含开发者电脑地址。
+参考人声位于 desktop-pet/voice-service/reference.wav；如果未随包提供，请放入有权使用的人声文件。
+
+准备
+安装 Python 3.12。TTS 使用兼容的 NVIDIA GPU/驱动和 CUDA PyTorch，加载检查至少7GiB可用显存；实际需求与性能随硬件变化。
+ASR 使用 CPU int8，无需 GPU。两组环境独立于系统 Python 和 Ollama。
+安装会联网下载 PyPI、PyTorch 官方依赖和 Hugging Face 公开模型，需预留数GB下载和安装空间；运行时离线识别和合成。
+先退出桌宠，再在源码根目录打开 PowerShell：
+  $python = (Get-Command python -ErrorAction Stop).Source
+  .\desktop-pet\voice-service\setup-fast.ps1 -PythonExe $python -WorkspaceRoot (Get-Location).Path -DownloadModel
+  .\desktop-pet\asr-service\setup.ps1 -PythonExe $python -WorkspaceRoot (Get-Location).Path -DownloadModel
+
+只需要其中一项时运行对应脚本即可。组织执行策略限制须按组织规定处理，不要求修改永久策略或管理员运行。
+faster 创建 .tools/deepseek-voice-fast-venv，权重放入 .tools/deepseek-voice-models/Qwen3-TTS-12Hz-1.7B-Base。
+ASR 创建 .tools/deepseek-asr-venv，模型放入 .tools/deepseek-asr-models/faster-whisper-small。
+若使用已构建程序目录中的服务，去掉上述命令中的 desktop-pet 前缀，将安装根目录设为该程序目录。
+旧语音后端可用 voice-service/setup.ps1 安装，再在自己的 config.json 设置 backend=legacy；默认使用 faster。
+
+使用和搬迁
+看板语音开关控制预设提示和聊天朗读，语音预加载/卸载与聊天模型按钮互相独立。
+语音开启时打开聊天可预热并保持语音模型，离开聊天后按空闲策略释放；手动卸载优先。
+Python venv不是跨电脑独立运行时。换电脑应重新运行安装脚本，不复制别人的venv、缓存或个人数据。
+安装脚本会在使用者电脑生成本机路径。再次发布源码时使用干净相对配置，不提交安装后配置、status.json或下载记录。
+公开权重可按各自许可自行准备，并保留模型LICENSE、NOTICE和来源。
+
+许可
+软件/模型许可不授予人物、歌曲或录音的分发权利。参考来源见 reference-info.json；来源标注并非音乐分发许可证。
+发布者应自行决定是否随包提供音乐与参考人声并确认分发权限。保留各服务 THIRD-PARTY.txt 和依赖许可。

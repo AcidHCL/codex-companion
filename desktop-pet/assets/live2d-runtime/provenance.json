@@ -1,0 +1,21 @@
+{
+  "sdk": "Cubism SDK for Web 5-r.5",
+  "retrievedUtc": "2026-10-02T20:58:04.8335616Z",
+  "source": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+  "officialDownloadPage": "https://www.live2d.com/en/sdk/download/web/",
+  "sdkZipSha256": "67064A7FB1812CF502F5C4A03BFE12CC638C75A621BB4ACF06BB28763DF06BA0",
+  "coreSha256": "8741F739779B5D5210872BD3D7D99F0F1E56E6C87409E7D26D6BB4B80AA1EF47",
+  "coreModified": false,
+  "frameworkModified": false,
+  "shaderFilesModified": false,
+  "coreLicense": "Live2D Proprietary Software License",
+  "frameworkLicense": "Live2D Open Software License",
+  "implementation": "Local WebGL renderer; standard real EyeOpen/Breath parameters driven by unmodified CubismEyeBlink/CubismBreath at up to 30fps; cached pause/motion preferences and reduced-motion handling; no model motion/expression/physics/audio playback; optional pose initialized once at dt=0",
+  "sample": "Hiyori Momose; unchanged Samples/Resources/Hiyori",
+  "sampleTerms": "https://www.live2d.com/eula/live2d-sample-model-terms_en.html",
+  "buildDependencies": {
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  },
+  "maskMode": "Official useHighPrecisionMask(true); redraw per drawable so blink-induced clipping changes do not hide unrelated parts."
+}

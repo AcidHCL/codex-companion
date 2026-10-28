@@ -1,0 +1,9 @@
+{
+  "backend": "faster",
+  "model_path": "../../.tools/deepseek-voice-models/Qwen3-TTS-12Hz-1.7B-Base",
+  "reference_path": "reference.wav",
+  "idle_seconds": 60,
+  "minimum_free_gib": 7,
+  "request_timeout": 480,
+  "stream_chunk_size": 8
+}

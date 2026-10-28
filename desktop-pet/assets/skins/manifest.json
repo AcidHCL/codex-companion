@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "defaultSkin": "deepseek",
+  "skins": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "accent": "#587CAC",
+      "file": "deepseek.png"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "accent": "#A987DF",
+      "file": "gemini.png"
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "accent": "#D8894D",
+      "file": "claude.png"
+    },
+    {
+      "id": "gpt",
+      "name": "GPT",
+      "accent": "#AFA7CD",
+      "file": "gpt.png"
+    },
+    {
+      "id": "grok",
+      "name": "Grok",
+      "accent": "#BD9C60",
+      "file": "grok.png"
+    },
+    {
+      "id": "glm",
+      "name": "GLM",
+      "accent": "#696781",
+      "file": "glm.png"
+    },
+    {
+      "id": "kimi",
+      "name": "Kimi",
+      "accent": "#B3A6D0",
+      "file": "kimi.png"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "accent": "#EE9D85",
+      "file": "minimax.png"
+    },
+    {
+      "id": "qwen",
+      "name": "Qwen",
+      "accent": "#8397DC",
+      "file": "qwen.png"
+    }
+  ]
+}

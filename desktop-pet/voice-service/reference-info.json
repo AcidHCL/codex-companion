@@ -1,0 +1,13 @@
+{
+  "source_title": "Let Me Go(共创版)",
+  "source_credit": "罐装毕加索",
+  "separation": "Demucs 4.1.0 / HTDemucs",
+  "start_seconds": 80,
+  "duration_seconds": 9,
+  "sample_rate": 44100,
+  "channels": 1,
+  "selection": "automatic vocal-energy / accompaniment ratio; not manually transcribed",
+  "clone_mode": "x_vector_only_mode",
+  "pitch_shift_semitones": 0,
+  "rights_note": "Source credit is not a redistribution license for the recording. Software and model licenses do not grant rights to this audio."
+}

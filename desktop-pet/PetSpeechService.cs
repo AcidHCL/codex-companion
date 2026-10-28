@@ -1,0 +1,428 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+using System.Windows.Threading;
+
+namespace DesktopPet;
+
+internal enum PetSpeechSource { Preset, Chat, Preview }
+
+// Queue state and playback live on the WPF dispatcher; synthesis never blocks it.
+internal sealed class PetSpeechService : IDisposable
+{
+    private sealed record Utterance(string Text, PetSpeechSource Source, long Epoch, ChannelReader<string>? Incoming = null);
+    private readonly DesktopSettings _settings;
+    private readonly Dispatcher _dispatcher;
+    private readonly bool _enabledForProcess;
+    private readonly IPetSpeechSynthesizer _synthesizer;
+    private readonly IPetSpeechPlayer _player;
+    private readonly IPetPcmStreamPlayer? _streamPlayer;
+    private readonly DispatcherTimer _retentionTimer;
+    private readonly Queue<Utterance> _queue = new();
+    private readonly Dictionary<string, DateTime> _recent = new();
+    private readonly Dictionary<string, byte[]> _presetCache = new();
+    private int _cachedBytes;
+    private CancellationTokenSource? _current;
+    private string? _requestId;
+    private bool _pumping, _suspended, _disposed;
+    private bool _chatSessionActive, _manualUnload, _modelReady, _retentionBusy;
+    private CancellationTokenSource? _preloadCancellation;
+    private string? _preloadId;
+    private Task? _preloading;
+    private Channel<string>? _chatInput;
+    private long _chatInputId = -1;
+    private int _chatInputCharacters;
+    private long _epoch;
+    private Task _pendingRelease = Task.CompletedTask;
+    public event Action? Changed;
+    public string StatusText { get; private set; } = "本地参考音色待命";
+    public bool IsSpeaking { get; private set; }
+
+    public PetSpeechService(DesktopSettings settings, Dispatcher dispatcher, bool enabledForProcess = true)
+        : this(settings, dispatcher, new PetVoiceClient(), new PetSpeechPlayer(dispatcher), enabledForProcess) { }
+
+    internal PetSpeechService(DesktopSettings settings, Dispatcher dispatcher,
+        IPetSpeechSynthesizer synthesizer, IPetSpeechPlayer player, bool enabledForProcess = true,
+        IPetPcmStreamPlayer? streamPlayer = null)
+    {
+        _settings = settings; _dispatcher = dispatcher; _synthesizer = synthesizer;
+        _player = player; _enabledForProcess = enabledForProcess;
+        _streamPlayer = streamPlayer ?? (synthesizer is IPetStreamingSpeechSynthesizer ? new PetPcmStreamPlayer() : null);
+        _retentionTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromSeconds(15) };
+        _retentionTimer.Tick += RetentionTick;
+        ApplySettings();
+    }
+
+    private bool Allowed => !_disposed && _enabledForProcess && _settings.SpeechEnabled &&
+        string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase) && !_suspended;
+    private bool ModelAllowed => !_disposed && _enabledForProcess && _settings.SpeechEnabled &&
+        string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase);
+
+    private string IdleStatus => !_settings.SpeechEnabled ? "语音已关闭" :
+        !string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase) ? "当前角色未启用语音" :
+        _suspended ? "语音已暂停" : !_enabledForProcess ? "测试模式：不播放声音" :
+        _manualUnload ? "语音模型已卸载，下次朗读时加载" :
+        _modelReady && _chatSessionActive ? "参考音色已加载，待命" : "本地参考音色待命，按需加载";
+
+    private void SetStatus(string value, bool speaking = false)
+    {
+        if (_disposed || (StatusText == value && IsSpeaking == speaking)) return;
+        StatusText = value; IsSpeaking = speaking; Changed?.Invoke();
+    }
+
+    public void Speak(string text, PetSpeechSource source, string? dedupeKey = null)
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(() => Speak(text, source, dedupeKey)); return; }
+        if (!Allowed) return;
+        string normalized;
+        try { normalized = PetSpeechText.Normalize(text); }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { SetStatus("这段文本过于复杂，暂未朗读。"); return; }
+        if (normalized.Length == 0) return;
+        if (source == PetSpeechSource.Preset)
+        {
+            var now = DateTime.UtcNow;
+            string key = dedupeKey ?? normalized;
+            if (_recent.TryGetValue(key, out var last) && now - last < TimeSpan.FromSeconds(5)) return;
+            if (_recent.Count >= 64) _recent.Clear();
+            _recent[key] = now;
+            // Notifications should not become a long stale backlog.
+            if (_queue.Count >= 3) return;
+        }
+        else StopCore();
+        _manualUnload = false;
+        _queue.Enqueue(new Utterance(normalized, source, _epoch));
+        if (!_pumping) _ = PumpAsync();
+    }
+
+    public long BeginChatResponse()
+    {
+        _dispatcher.VerifyAccess();
+        if (!Allowed) return -1;
+        StopCore(); _manualUnload = false;
+        _chatInput = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        _chatInputId = _epoch; _chatInputCharacters = 0;
+        _queue.Enqueue(new Utterance("", PetSpeechSource.Chat, _epoch, _chatInput.Reader));
+        if (!_pumping) _ = PumpAsync();
+        return _chatInputId;
+    }
+
+    public void AppendChatResponse(long id, string finalizedProse)
+    {
+        _dispatcher.VerifyAccess();
+        if (!Allowed || id < 0 || id != _epoch || id != _chatInputId || _chatInput == null) return;
+        // The chat sanitizer already finalized this plain-text segment. The
+        // second normalizer is defense in depth for other future callers.
+        string text = PetSpeechText.Normalize(finalizedProse);
+        if (text.Length == 0) return;
+        if (finalizedProse.TrimEnd().EndsWith('。') && !text.EndsWith('。')) text += "。";
+        if ((_chatInputCharacters += text.Length) > 16000)
+        { _chatInput.Writer.TryComplete(new InvalidOperationException("这条语音回复过长，已保留文字。")); return; }
+        _chatInput.Writer.TryWrite(text);
+    }
+
+    public void CompleteChatResponse(long id)
+    {
+        _dispatcher.VerifyAccess();
+        if (id < 0 || id != _chatInputId) return;
+        _chatInput?.Writer.TryComplete(); _chatInput = null; _chatInputId = -1;
+    }
+
+    private async Task PumpAsync()
+    {
+        _pumping = true;
+        try
+        {
+            while (Allowed && _queue.TryDequeue(out var item))
+            {
+                using var cancellation = new CancellationTokenSource();
+                _current = cancellation;
+                try
+                {
+                    // A late unload from a previous toggle must finish before a new request.
+                    await _pendingRelease;
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (_synthesizer is IPetStreamingSpeechSynthesizer { SupportsStreaming: true } streaming && _streamPlayer != null)
+                    {
+                        SetStatus("正在准备连续语音…");
+                        await _streamPlayer.PlayAsync(StreamUtteranceAsync(item, streaming, cancellation.Token), _settings.SpeechVolume,
+                            speaking => _dispatcher.BeginInvoke(() =>
+                            {
+                                if (Allowed && item.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                                    SetStatus(speaking ? "正在说话…" : "正在缓冲连续语音…", speaking);
+                            }), cancellation.Token);
+                        if (item.Epoch == _epoch) SetStatus(IdleStatus);
+                        continue;
+                    }
+                    var text = new StringBuilder(item.Text);
+                    if (item.Incoming != null)
+                        await foreach (var part in item.Incoming.ReadAllAsync(cancellation.Token)) text.Append(part);
+                    if (text.Length == 0) { SetStatus(IdleStatus); continue; }
+                    var parts = PetSpeechText.Split(text.ToString(), 100);
+                    byte[] completeWave;
+                    // This local voice generates slower than real-time. Buffer
+                    // the complete utterance before playback so there is never
+                    // a sentence gap while waiting for the next inference.
+                    using (var buffered = new PetSpeechWave.Builder())
+                    {
+                        for (int index = 0; index < parts.Count; index++)
+                        {
+                            if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
+                            cancellation.Token.ThrowIfCancellationRequested();
+                            SetStatus($"正在准备连续语音（{index}/{parts.Count}）…");
+                            byte[] wave = await GenerateChunkAsync(parts[index], item.Source, cancellation.Token);
+                            cancellation.Token.ThrowIfCancellationRequested();
+                            if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
+                            buffered.Append(wave);
+                        }
+                        completeWave = buffered.Complete();
+                    }
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
+                    SetStatus("正在说话…", true);
+                    await _player.PlayAsync(completeWave, _settings.SpeechVolume, cancellation.Token);
+                    if (item.Epoch == _epoch) SetStatus(IdleStatus);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    if (Allowed && item.Epoch == _epoch)
+                        SetStatus(ex is InvalidOperationException ? ex.Message : "语音暂不可用，请稍后点击试听重试。");
+                }
+                finally
+                {
+                    cancellation.Cancel();
+                    if (ReferenceEquals(_current, cancellation))
+                    {
+                        string? pendingId = _requestId;
+                        if (pendingId != null) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(pendingId));
+                        _current = null; _requestId = null;
+                    }
+                }
+            }
+        }
+        finally { _pumping = false; }
+    }
+
+    private async IAsyncEnumerable<PetPcmChunk> StreamUtteranceAsync(Utterance item, IPetStreamingSpeechSynthesizer streaming,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        async IAsyncEnumerable<string> Texts([EnumeratorCancellation] CancellationToken ct)
+        {
+            if (item.Text.Length > 0) yield return item.Text;
+            if (item.Incoming != null)
+                await foreach (var text in item.Incoming.ReadAllAsync(ct).ConfigureAwait(false)) yield return text;
+        }
+        await foreach (string text in Texts(token).ConfigureAwait(false))
+        {
+            foreach (string part in PetSpeechText.Split(text, 100))
+            {
+                token.ThrowIfCancellationRequested();
+                string id = Guid.NewGuid().ToString("N");
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (item.Epoch != _epoch) throw new OperationCanceledException();
+                    _requestId = id;
+                });
+                try
+                {
+                    await foreach (var chunk in streaming.StreamAsync(part, id, token).ConfigureAwait(false))
+                    { token.ThrowIfCancellationRequested(); yield return chunk; }
+                    await _dispatcher.InvokeAsync(() => { if (item.Epoch == _epoch) _modelReady = true; });
+                }
+                finally
+                {
+                    if (token.IsCancellationRequested) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(id));
+                    await _dispatcher.InvokeAsync(() => { if (_requestId == id) _requestId = null; });
+                }
+            }
+        }
+    }
+
+    private async Task<byte[]> GenerateChunkAsync(string part, PetSpeechSource source, CancellationToken token)
+    {
+        if (source == PetSpeechSource.Preset && _presetCache.TryGetValue(part, out var cached)) return cached;
+        string id = Guid.NewGuid().ToString("N");
+        _requestId = id;
+        try
+        {
+            var wave = await _synthesizer.SynthesizeAsync(part, id, token);
+            token.ThrowIfCancellationRequested();
+            // Preset cache stays in memory; private chat speech is never archived.
+            if (source == PetSpeechSource.Preset && wave.Length <= 4 * 1024 * 1024)
+            {
+                if (_cachedBytes + wave.Length > 32 * 1024 * 1024) { _presetCache.Clear(); _cachedBytes = 0; }
+                _presetCache[part] = wave; _cachedBytes += wave.Length;
+            }
+            return wave;
+        }
+        finally { if (_requestId == id) _requestId = null; }
+    }
+
+    private void StopCore()
+    {
+        _epoch++; _queue.Clear();
+        _chatInput?.Writer.TryComplete(); _chatInput = null; _chatInputId = -1;
+        _current?.Cancel(); _player.Stop(); _streamPlayer?.Stop();
+        string? requestId = _requestId;
+        if (requestId != null) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(requestId));
+        SetStatus(IdleStatus);
+    }
+
+    public void Stop()
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(Stop); return; }
+        if (!_disposed) StopCore();
+    }
+
+    public void ApplySettings()
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(ApplySettings); return; }
+        if (_disposed) return;
+        _player.SetVolume(_settings.SpeechVolume);
+        _streamPlayer?.SetVolume(_settings.SpeechVolume);
+        if (!Allowed)
+        {
+            StopCore();
+            if (_enabledForProcess && !(ModelAllowed && _chatSessionActive && !_manualUnload))
+            {
+                CancelPreload(); _modelReady = false;
+                _pendingRelease = ReleaseAfterAsync(_pendingRelease);
+            }
+        }
+        else if (!IsSpeaking && !_pumping) SetStatus(IdleStatus);
+    }
+
+    public void SetChatSessionActive(bool active)
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(() => SetChatSessionActive(active)); return; }
+        if (_disposed || active == _chatSessionActive) return;
+        _chatSessionActive = active;
+        if (active)
+        {
+            _retentionTimer.Start();
+            if (ModelAllowed && !_manualUnload) _ = IgnoreFailureAsync(PreloadAsync);
+        }
+        else
+        {
+            _retentionTimer.Stop();
+            _ = UpdateRetentionAsync();
+            if (!_pumping && _preloading is not { IsCompleted: false }) SetStatus(IdleStatus);
+        }
+    }
+
+    public Task PreloadAsync()
+    {
+        _dispatcher.VerifyAccess();
+        if (!ModelAllowed || _synthesizer is not IPetVoiceLifecycle) return Task.CompletedTask;
+        if (_preloading is { IsCompleted: false }) return _preloading;
+        _manualUnload = false;
+        return _preloading = PreloadCoreAsync();
+    }
+
+    private async Task PreloadCoreAsync()
+    {
+        using var cancellation = new CancellationTokenSource();
+        _preloadCancellation = cancellation;
+        string id = Guid.NewGuid().ToString("N"); _preloadId = id;
+        try
+        {
+            await _pendingRelease;
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!_pumping && !IsSpeaking) SetStatus("正在预加载语音模型…");
+            await ((IPetVoiceLifecycle)_synthesizer).PreloadAsync(id, cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            _modelReady = true;
+            await UpdateRetentionAsync();
+            if (!_pumping) SetStatus(IdleStatus);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        { if (!_disposed && !_pumping && !IsSpeaking) SetStatus(ex is InvalidOperationException ? ex.Message : "语音模型预加载失败，请重试。"); throw; }
+        finally
+        {
+            if (ReferenceEquals(_preloadCancellation, cancellation)) { _preloadCancellation = null; _preloadId = null; }
+        }
+    }
+
+    public async Task UnloadAsync()
+    {
+        _dispatcher.VerifyAccess();
+        if (_disposed) return;
+        _manualUnload = true; StopCore(); CancelPreload();
+        if (!_enabledForProcess) return;
+        SetStatus("正在卸载语音模型…");
+        try
+        {
+            Task previous = _pendingRelease;
+            _pendingRelease = UnloadCoreAsync(previous);
+            await _pendingRelease;
+            _modelReady = false;
+            if (!_disposed) SetStatus(IdleStatus);
+        }
+        catch (Exception ex)
+        { if (!_disposed) SetStatus(ex is InvalidOperationException ? ex.Message : "语音模型卸载未完成，请重试。"); throw; }
+        finally { if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) _pendingRelease = Task.CompletedTask; }
+    }
+
+    private async Task UnloadCoreAsync(Task previous)
+    {
+        await previous;
+        await UpdateRetentionAsync();
+        if (_synthesizer is IPetVoiceLifecycle lifecycle) await lifecycle.UnloadAsync(CancellationToken.None);
+        else await _synthesizer.ReleaseAsync();
+    }
+
+    private void CancelPreload()
+    {
+        _preloadCancellation?.Cancel();
+        if (_preloadId is { } id) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(id));
+    }
+
+    private async void RetentionTick(object? sender, EventArgs args)
+    {
+        if (_retentionBusy) return;
+        _retentionBusy = true;
+        try { await UpdateRetentionAsync(); }
+        finally { _retentionBusy = false; }
+    }
+
+    private async Task UpdateRetentionAsync()
+    {
+        if (_disposed || !_enabledForProcess || _synthesizer is not IPetVoiceLifecycle lifecycle) return;
+        bool active = ModelAllowed && _chatSessionActive && !_manualUnload;
+        await IgnoreFailureAsync(() => lifecycle.SetRetentionAsync(active, CancellationToken.None));
+    }
+
+    public void SetSuspended(bool suspended)
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(() => SetSuspended(suspended)); return; }
+        if (_disposed || suspended == _suspended) return;
+        _suspended = suspended;
+        ApplySettings();
+    }
+
+    private static async Task IgnoreFailureAsync(Func<Task> action)
+    {
+        try { await action(); } catch (Exception) { /* Best effort cancellation/unload, never a UI crash. */ }
+    }
+
+    private async Task ReleaseAfterAsync(Task previous)
+    {
+        await previous;
+        if (!_disposed) await IgnoreFailureAsync(_synthesizer.ReleaseAsync);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        StopCore(); CancelPreload(); _disposed = true;
+        _retentionTimer.Stop(); _retentionTimer.Tick -= RetentionTick;
+        _player.Dispose(); _streamPlayer?.Dispose(); _synthesizer.Dispose();
+        _presetCache.Clear(); _recent.Clear(); Changed = null;
+    }
+}

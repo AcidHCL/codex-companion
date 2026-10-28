@@ -1,0 +1,21 @@
+本地语音输入第三方来源
+
+faster-whisper：SYSTRAN，MIT
+https://github.com/SYSTRAN/faster-whisper
+https://pypi.org/project/faster-whisper/1.2.1/
+
+faster-whisper-small 模型：Systran，MIT
+https://huggingface.co/Systran/faster-whisper-small
+这是 OpenAI Whisper small 的 CTranslate2 格式转换；模型文件以 FP16 保存，运行时使用 CPU int8。
+原模型：https://huggingface.co/openai/whisper-small
+https://github.com/openai/whisper
+具体下载修订号保存在 .tools/deepseek-asr-models/model-download.json。
+
+CTranslate2：OpenNMT，MIT
+https://github.com/OpenNMT/CTranslate2
+
+Silero VAD：snakers4，MIT；由 faster-whisper 自带 ONNX 资源在本机运行。
+https://github.com/snakers4/silero-vad
+
+其它依赖版本见 requirements-lock.txt，各软件许可随对应 Python 分发包保留。
+此目录不包含用户录音，也不在运行时向以上站点传输音频。

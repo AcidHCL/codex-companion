@@ -1,0 +1,102 @@
+[
+  {
+    "path": "index.html",
+    "sha256": "8B446E731B236FFA89CA3456E5F1814940435394F2EC7AFE8A4A78AEF14FE8CC"
+  },
+  {
+    "path": "licenses/Core-LICENSE.md",
+    "sha256": "B81E37048010EF1D336106151201A0323C3309CAE44AECDEDF57831FE88FA991"
+  },
+  {
+    "path": "licenses/Core-RedistributableFiles.txt",
+    "sha256": "D16C123688299E1E69A7F5EBC01B3BD75A8D408C024002A7D35B2AAE94003F8C"
+  },
+  {
+    "path": "licenses/Framework-LICENSE.md",
+    "sha256": "7ED849BFF1E6499AA7CD882E47D246DDBBE06817C1E84CB974DF949488302614"
+  },
+  {
+    "path": "licenses/Live2D-Open-Software-License.html",
+    "sha256": "A8274BF5F461335738791E9F392EB3F3684EAA22CBB4DFE1F3F887C3586A8D82"
+  },
+  {
+    "path": "licenses/Live2D-Proprietary-Software-License.html",
+    "sha256": "E7B4FFC6C636DE2CFDD6D2EED6A4E43FA7034E7F15A0C3A15F1603DBB3B4C2B6"
+  },
+  {
+    "path": "licenses/SDK-LICENSE.md",
+    "sha256": "787A7D1454240865420B96EA9A20AB5E1A5EC3C1ABCED2E308288C2DE8AAC991"
+  },
+  {
+    "path": "live2dcubismcore.min.js",
+    "sha256": "8741F739779B5D5210872BD3D7D99F0F1E56E6C87409E7D26D6BB4B80AA1EF47"
+  },
+  {
+    "path": "provenance.json",
+    "sha256": "560AF2BD998B8813D8ED70087E45F3D4A50B5737E849213800BC4E15BB7869D6"
+  },
+  {
+    "path": "README.md",
+    "sha256": "67B83DA606892BECD31EFF37CF5965A89529E38183290F0C1DA649E8297A5F6E"
+  },
+  {
+    "path": "renderer.js",
+    "sha256": "6EA7B0E8955214C0AC8F6B9BE3CD90F2DA284F2BE1BEDF0863C82E61E9D057EF"
+  },
+  {
+    "path": "runtime.css",
+    "sha256": "4D27D880199D478597F5B328F6C2E3DB7A92748D908780336A1619D3B64FE4F0"
+  },
+  {
+    "path": "shaders/fragshadersrcalphablend.frag",
+    "sha256": "855B247F02042A808A41E282EE4D7DE7CC4533ABEB5032B4AB8FE84F7DEC107F"
+  },
+  {
+    "path": "shaders/fragshadersrccolorblend.frag",
+    "sha256": "01D4BF6A14B4A738976E9A538767A21DA0DEFA8816F3845A7DF08A7713327538"
+  },
+  {
+    "path": "shaders/fragshadersrccopy.frag",
+    "sha256": "15C67A4EC3ADDA4C849AFF2A8319A3F6ACEEF8A84D5E5E1F3FB7FD9CD681193C"
+  },
+  {
+    "path": "shaders/fragshadersrcmaskinvertedpremultipliedalpha.frag",
+    "sha256": "1005CFF8113DE587CF1C0E295288D04D85F0F4EBC223684C8340E017FD8FC788"
+  },
+  {
+    "path": "shaders/fragshadersrcmaskpremultipliedalpha.frag",
+    "sha256": "F84FF615393D26EA6AB7C28747803DB6472524C92567C0AD01E8225FBAB36A3B"
+  },
+  {
+    "path": "shaders/fragshadersrcpremultipliedalpha.frag",
+    "sha256": "C93ABE215357CC782A25FC4EF20F5FE1F34E2CC193EE23D763B56B81FAE5FCE1"
+  },
+  {
+    "path": "shaders/fragshadersrcpremultipliedalphablend.frag",
+    "sha256": "2155076275199A2946959838391DFB856E9D1DB91B6CA3ABD19ED70D4FF27E15"
+  },
+  {
+    "path": "shaders/fragshadersrcsetupmask.frag",
+    "sha256": "3CCCC0B68A56CFBF4BD4841B0A759431DD159812C38DC280981BA633FA0AFE7A"
+  },
+  {
+    "path": "shaders/vertshadersrc.vert",
+    "sha256": "291ED3F35F71F1E71E6DF33FB055F009A8A9B36EE664F74F24F6CEFEF0C4029B"
+  },
+  {
+    "path": "shaders/vertshadersrcblend.vert",
+    "sha256": "2589837BD7A6A550A1C3AF41B4FA776011E6E71F2531320FA39AFCB83B209BF4"
+  },
+  {
+    "path": "shaders/vertshadersrccopy.vert",
+    "sha256": "B7BC4BA7517F405AF4812AC47D99BC2B633C99F463C1224029556B00E8DFF3CF"
+  },
+  {
+    "path": "shaders/vertshadersrcmasked.vert",
+    "sha256": "6704A9DF2E6D3EE5176C72FCA4BA59358BA4827A07054B1E0A72A3C574E281FD"
+  },
+  {
+    "path": "shaders/vertshadersrcsetupmask.vert",
+    "sha256": "649AAD2F6C0AF55A7A4ADCF33DBF78937EF9D77ED6BA917FD716176ADCE25AFE"
+  }
+]

@@ -1,0 +1,14 @@
+AI Pet 1.21.0：Live2D
+
+通过外观设置中的“Live2D 模型与导入”选择模型。导入已解压的 .model3.json，保留其引用的 .moc3、纹理等资源和相对目录。
+Cubism编辑器工程 .cmo3 或单张PNG不是可运行模型，需要先从编辑器导出SDK运行数据。
+用户导入的模型保存在 %LOCALAPPDATA%\AIPet\Live2D，不属于源码资源。
+
+当前自动眨眼与呼吸只驱动实际存在且范围合适的 ParamEyeLOpen、ParamEyeROpen、ParamBreath；未绑定变形的模型不会因此获得动作。
+当前不播放模型包中的动作、表情、物理或音频文件。普通PNG皮肤不会自动变成Live2D。
+人物使用原桌宠窗口与交互；隐藏、锁屏或显示状态变化会暂停或重建渲染。加载失败可退回PNG。
+需要WebView2 Runtime，正常Edge浏览器不能直接替代它。
+
+assets/live2d-runtime 为浏览器运行资源；live2d-web 保留相关源码与构建说明。日常C#构建使用已准备的运行资源。
+保留Live2D Framework/Core及示例模型各自LICENSE、NOTICE；专有Core保留为原始独立文件。
+参考：https://docs.live2d.com/en/cubism-editor-manual/export-moc3-motion3-files/

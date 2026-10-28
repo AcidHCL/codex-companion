@@ -1,0 +1,48 @@
+AI Pet 1.21.0：在新电脑上安全连接自己的 Codex
+
+桌宠可以独立运行。连接功能需要 Windows 11 x64、正在运行的官方 Codex 桌面 App，以及可在本机执行命令的 Codex 任务。
+本版使用 App 的本机内部接口，不需要 API Key。配对验证只读取额度和任务；桌宠默认不读取消息正文。
+
+操作方法
+1. 解压源码包，先按 README.md 构建。默认程序输出目录是 desktop-pet/dist；桌宠若已启动，先从系统托盘退出。
+2. 在 Codex 中打开本地任务，将源码包根文件夹作为工作目录。
+3. 将下面的请求发给 Codex，使用当前电脑自己的真实任务上下文完成配对。
+4. 配对成功后运行 desktop-pet/launch.ps1。若曾点过断开并清除，需在面板点重新连接。需要消息内容时再单独开启消息读取。
+
+复制给 Codex 的请求
+————————开始————————
+请帮我连接当前文件夹中的 AI Pet 桌宠。我授权你为本机桌宠取得当前任务的真实上下文，验证本机 Codex 身份及额度、任务只读接口，并由程序将连接记录用 Windows 当前用户 DPAPI 加密保存在 %LOCALAPPDATA%\AIPet\connection.dat。不要发送消息、创建或修改任务，不读取登录凭据，不上传或转发连接记录，不开启桌宠消息读取。
+
+先阅读 Connect-Codex.ps1 和 Codex首次连接.txt。读取工具进程中的 CODEX_THREAD_ID、CODEX_TURN_ID（如果有）、CODEX_APP_TOOLS_PIPE_PATH（如果有），不要将值输出到聊天或诊断。
+
+如果环境缺少 CODEX_TURN_ID，我允许你只为取得配对上下文，使用 Codex 已提供的 read_thread 工具读取 CODEX_THREAD_ID 对应的当前任务，参数 turnLimit=1、includeOutputs=false、maxOutputCharsPerItem=0。只提取匹配的 thread.id 及实际返回的最新 turns[].id，不保存或转述正文。这一次取上下文的授权不等于允许桌宠持续读取消息。若必要工具、真实任务或轮次不可用，请说明原因，不制造 ID、不扫描数据库、不借用他人连接材料。
+
+通过安全的 PowerShell 参数传递运行当前目录 Connect-Codex.ps1，传入真实 ThreadId、TurnId、ApplicationDirectory（构建输出 desktop-pet/dist 的完整路径），环境中有有效 Endpoint 时再传入。若提示桌宠仍在运行，请让我先从托盘退出。不要把标识符拼进 DesktopPet.exe 命令行，脚本只向验证子进程环境传递它们。
+
+执行前检查 Get-ExecutionPolicy -List。组织的 MachinePolicy 或 UserPolicy 必须遵守；如其阻止运行，停止并说明，不绕过。没有组织强制限制时，我允许用 powershell.exe -NoProfile -ExecutionPolicy Bypass -File 运行已阅读的这一个脚本；Bypass 仅限本次子进程，不修改永久策略。不以管理员身份运行，不跳过管道身份或签名验证。
+
+脚本启动 DesktopPet.exe --pair-codex，只有身份与接口验证成功才保存新连接记录。最后只报告结果和必要处理方法，不展示 ID、管道、额度数值或消息正文。
+————————结束————————
+
+参数与验证范围
+Connect-Codex.ps1 -ThreadId <真实任务ID> -TurnId <同一任务真实轮次ID> -ApplicationDirectory <程序目录> [-Endpoint <本机管道>]
+不要直接执行上面的占位符。普通终端或双击脚本不能凭空取得缺少的 TurnId。
+Endpoint 可以省略，由程序寻找本机已知 Codex 管道；不会扫描网络端口。
+配对程序在发送任何请求前验证同用户、同会话的管道服务进程、官方安装路径、有效 Windows 代码签名和 OpenAI 发布者；商店安装还检查 Windows 应用包身份。证书链离线检查不可完成时也拒绝，不提供跳过选项。
+随后仅执行 tools/list、get_usage_limits、list_threads。配对子进程不会调用 read_thread，也不会启用消息权限。--connection-test 仅检查已有连接，不能替代首次配对或恢复已撤销连接。
+脚本只读取程序返回的通过标记，不解析、复制、解密或备份连接材料。接口验证失败时程序不覆盖现有连接记录。
+connection-validation.json 仅含结果、安全错误代码和数量，不含账户标识、端点、任务 ID、余额或正文。
+
+本机保存与撤销
+connection.dat 使用 DPAPI CurrentUser 加密，并将权限限制到当前用户与 SYSTEM；只保存连接所需材料，不保存消息、额度或登录凭据。保存的配对记录90天有效，成功重连会刷新保存时间；过期需重新配对。
+旧版 connection.json 仅在成功连接并保存加密记录后删除；不再生成或保留明文备份。发行包不会附带任何人的连接记录。
+断开并清除会禁用连接并清除材料，同时建立 connection.revoked 撤销标记，避免从旧记录或环境自动恢复。恢复需主动重新配对，再在面板重新连接。
+DPAPI 与文件权限无法彻底防御同一 Windows 用户下的恶意软件。桌宠自己的只读请求白名单不是 Codex 服务端授予的独立只读凭证。
+
+常见问题
+没有真实上下文或 read_thread 工具：当前任务环境不能完成配对；仍可使用桌宠本地功能。
+身份、签名或安装路径无法验证：使用官方 Codex 与新版桌宠，按诊断代码排查；不要复制 EXE 改名、修改白名单或关闭检查来连接。
+接口不兼容：Codex 更新可能改变内部接口，需要更新桌宠，随机换 ID 没有帮助。
+无法写配置：使用当前用户可写的解压目录，无需管理员权限。
+换电脑、换 Windows 用户：必须在新环境重新配对，不复制旧 connection.dat、connection.json 或验证文件。
+

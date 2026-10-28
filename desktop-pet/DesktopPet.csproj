@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22000.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <AssemblyName>DesktopPet</AssemblyName>
+    <RootNamespace>DesktopPet</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.21.0</Version>
+    <Description>AI Pet Codex 桌面伙伴</Description>
+    <Deterministic>true</Deterministic>
+    <!-- WPF owns process DPI awareness; Windows Forms is used only for NotifyIcon. -->
+    <NoWarn>$(NoWarn);WFAC010;WFO0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="asr-service\*.py;asr-service\config.json;asr-service\*.txt;asr-service\*.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="voice-service\*.py;voice-service\config.json;voice-service\config.faster.example.json;voice-service\reference-info.json;voice-service\*.txt;voice-service\*.ps1;voice-service\*.wav;voice-service\reference\*.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+<ItemGroup><Content Include="使用说明.txt;Live2D说明.txt;动画说明.txt;动画包清单示例.txt;语音说明.txt"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content></ItemGroup>
+<ItemGroup><PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" /></ItemGroup>
+<ItemGroup><PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" /></ItemGroup>
+</Project>
+

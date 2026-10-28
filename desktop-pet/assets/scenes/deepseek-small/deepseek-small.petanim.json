@@ -1,0 +1,706 @@
+{
+  "version": 1,
+  "name": "DeepSeek 小版 · 内置状态动画",
+  "skinId": "deepseek",
+  "anchorX": 0.5,
+  "anchorY": 1,
+  "actions": {
+    "idle": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/idle/01.png",
+          "frames/idle/02.png",
+          "frames/idle/03.png",
+          "frames/idle/04.png",
+          "frames/idle/05.png",
+          "frames/idle/06.png",
+          "frames/idle/07.png",
+          "frames/idle/08.png"
+        ],
+        "durationsMs": [
+          1400,
+          250,
+          160,
+          70,
+          110,
+          70,
+          160,
+          600
+        ]
+      },
+      "repeat": true
+    },
+    "working": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/working/01.png",
+          "frames/working/02.png",
+          "frames/working/03.png",
+          "frames/working/04.png",
+          "frames/working/05.png",
+          "frames/working/06.png",
+          "frames/working/07.png",
+          "frames/working/08.png"
+        ],
+        "durationsMs": [
+          130,
+          90,
+          130,
+          90,
+          130,
+          90,
+          130,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "walk-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/walk-left/01.png",
+          "frames/walk-left/02.png",
+          "frames/walk-left/03.png",
+          "frames/walk-left/04.png",
+          "frames/walk-left/05.png",
+          "frames/walk-left/06.png",
+          "frames/walk-left/07.png",
+          "frames/walk-left/08.png"
+        ],
+        "durationsMs": [
+          120,
+          90,
+          120,
+          90,
+          120,
+          90,
+          120,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "walk-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/walk-right/01.png",
+          "frames/walk-right/02.png",
+          "frames/walk-right/03.png",
+          "frames/walk-right/04.png",
+          "frames/walk-right/05.png",
+          "frames/walk-right/06.png",
+          "frames/walk-right/07.png",
+          "frames/walk-right/08.png"
+        ],
+        "durationsMs": [
+          120,
+          90,
+          120,
+          90,
+          120,
+          90,
+          120,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "fall": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/fall/01.png",
+          "frames/fall/02.png",
+          "frames/fall/03.png",
+          "frames/fall/04.png",
+          "frames/fall/05.png",
+          "frames/fall/06.png",
+          "frames/fall/07.png",
+          "frames/fall/08.png"
+        ],
+        "durationsMs": [
+          90,
+          90,
+          90,
+          90,
+          90,
+          90,
+          90,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "land": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/land/01.png",
+          "frames/land/02.png",
+          "frames/land/03.png",
+          "frames/land/04.png",
+          "frames/land/05.png",
+          "frames/land/06.png",
+          "frames/land/07.png",
+          "frames/land/08.png"
+        ],
+        "durationsMs": [
+          60,
+          70,
+          90,
+          90,
+          100,
+          100,
+          110,
+          140
+        ]
+      },
+      "repeat": false
+    },
+    "drag": {
+      "start": {
+        "type": "frames",
+        "frames": [
+          "frames/drag-start/01.png",
+          "frames/drag-start/02.png",
+          "frames/drag-start/03.png",
+          "frames/drag-start/04.png"
+        ],
+        "durationsMs": [
+          100,
+          120,
+          120,
+          140
+        ]
+      },
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/drag/01.png",
+          "frames/drag/02.png",
+          "frames/drag/03.png",
+          "frames/drag/04.png",
+          "frames/drag/05.png",
+          "frames/drag/06.png",
+          "frames/drag/07.png",
+          "frames/drag/08.png"
+        ],
+        "durationsMs": [
+          110,
+          110,
+          110,
+          110,
+          110,
+          110,
+          110,
+          110
+        ]
+      },
+      "repeat": true
+    },
+    "sing": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/sing/01.png",
+          "frames/sing/02.png",
+          "frames/sing/03.png",
+          "frames/sing/04.png",
+          "frames/sing/05.png",
+          "frames/sing/06.png",
+          "frames/sing/07.png",
+          "frames/sing/08.png"
+        ],
+        "durationsMs": [
+          170,
+          140,
+          90,
+          180,
+          140,
+          180,
+          90,
+          170
+        ]
+      },
+      "repeat": true,
+      "audio": {
+        "file": "audio/let-me-go.mp3"
+      },
+      "thoughts": {
+        "title": "DeepSeek 正在思考…",
+        "lines": [
+          "Okay.",
+          "Let me go.",
+          "I'm making the calls.",
+          "Let me write the JSON.",
+          "I'll call the tool.",
+          "Let me do it.",
+          "Okay.",
+          "Let me go."
+        ]
+      }
+    },
+    "happy": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/happy/01.png",
+          "frames/happy/02.png",
+          "frames/happy/03.png",
+          "frames/happy/04.png",
+          "frames/happy/05.png",
+          "frames/happy/06.png"
+        ],
+        "durationsMs": [
+          250,
+          140,
+          160,
+          430,
+          180,
+          500
+        ]
+      },
+      "repeat": false
+    },
+    "angry": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/angry/01.png",
+          "frames/angry/02.png",
+          "frames/angry/03.png",
+          "frames/angry/04.png",
+          "frames/angry/05.png",
+          "frames/angry/06.png"
+        ],
+        "durationsMs": [
+          220,
+          120,
+          180,
+          480,
+          180,
+          440
+        ]
+      },
+      "repeat": false
+    },
+    "startled": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/startled/01.png",
+          "frames/startled/02.png",
+          "frames/startled/03.png",
+          "frames/startled/04.png",
+          "frames/startled/05.png",
+          "frames/startled/06.png"
+        ],
+        "durationsMs": [
+          260,
+          80,
+          130,
+          260,
+          190,
+          460
+        ]
+      },
+      "repeat": false
+    },
+    "bashful": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/bashful/01.png",
+          "frames/bashful/02.png",
+          "frames/bashful/03.png",
+          "frames/bashful/04.png",
+          "frames/bashful/05.png",
+          "frames/bashful/06.png"
+        ],
+        "durationsMs": [
+          240,
+          180,
+          220,
+          520,
+          220,
+          500
+        ]
+      },
+      "repeat": false
+    },
+    "jump-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/jump-right/01.png",
+          "frames/jump-right/02.png",
+          "frames/jump-right/03.png",
+          "frames/jump-right/04.png",
+          "frames/jump-right/05.png",
+          "frames/jump-right/06.png"
+        ],
+        "durationsMs": [
+          170,
+          90,
+          130,
+          160,
+          120,
+          180
+        ]
+      },
+      "repeat": false
+    },
+    "jump-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/jump-left/01.png",
+          "frames/jump-left/02.png",
+          "frames/jump-left/03.png",
+          "frames/jump-left/04.png",
+          "frames/jump-left/05.png",
+          "frames/jump-left/06.png"
+        ],
+        "durationsMs": [
+          170,
+          90,
+          130,
+          160,
+          120,
+          180
+        ]
+      },
+      "repeat": false
+    },
+    "climb-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-right/01.png",
+          "frames/climb-right/02.png",
+          "frames/climb-right/03.png",
+          "frames/climb-right/04.png",
+          "frames/climb-right/05.png",
+          "frames/climb-right/06.png"
+        ],
+        "durationsMs": [
+          150,
+          120,
+          140,
+          150,
+          120,
+          140
+        ]
+      },
+      "repeat": true
+    },
+    "climb-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-left/01.png",
+          "frames/climb-left/02.png",
+          "frames/climb-left/03.png",
+          "frames/climb-left/04.png",
+          "frames/climb-left/05.png",
+          "frames/climb-left/06.png"
+        ],
+        "durationsMs": [
+          150,
+          120,
+          140,
+          150,
+          120,
+          140
+        ]
+      },
+      "repeat": true
+    },
+    "climb-top-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-top-right/01.png",
+          "frames/climb-top-right/02.png",
+          "frames/climb-top-right/03.png",
+          "frames/climb-top-right/04.png",
+          "frames/climb-top-right/05.png",
+          "frames/climb-top-right/06.png"
+        ],
+        "durationsMs": [
+          220,
+          180,
+          220,
+          220,
+          200,
+          420
+        ]
+      },
+      "repeat": false
+    },
+    "climb-top-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-top-left/01.png",
+          "frames/climb-top-left/02.png",
+          "frames/climb-top-left/03.png",
+          "frames/climb-top-left/04.png",
+          "frames/climb-top-left/05.png",
+          "frames/climb-top-left/06.png"
+        ],
+        "durationsMs": [
+          220,
+          180,
+          220,
+          220,
+          200,
+          420
+        ]
+      },
+      "repeat": false
+    },
+    "token-come": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/token-come/01.png",
+          "frames/token-come/02.png",
+          "frames/token-come/03.png",
+          "frames/token-come/04.png",
+          "frames/token-come/05.png",
+          "frames/token-come/06.png",
+          "frames/token-come/07.png",
+          "frames/token-come/08.png",
+          "frames/token-come/09.png",
+          "frames/token-come/10.png",
+          "frames/token-come/11.png",
+          "frames/token-come/12.png"
+        ],
+        "durationsMs": [
+          300,
+          140,
+          180,
+          140,
+          160,
+          180,
+          150,
+          250,
+          200,
+          180,
+          180,
+          360
+        ]
+      },
+      "repeat": false
+    },
+    "bowl-tap": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/bowl-tap/01.png",
+          "frames/bowl-tap/02.png",
+          "frames/bowl-tap/03.png",
+          "frames/bowl-tap/04.png",
+          "frames/bowl-tap/05.png",
+          "frames/bowl-tap/06.png",
+          "frames/bowl-tap/07.png",
+          "frames/bowl-tap/08.png",
+          "frames/bowl-tap/09.png",
+          "frames/bowl-tap/10.png",
+          "frames/bowl-tap/11.png",
+          "frames/bowl-tap/12.png"
+        ],
+        "durationsMs": [
+          320,
+          150,
+          110,
+          160,
+          140,
+          110,
+          160,
+          160,
+          240,
+          160,
+          180,
+          360
+        ]
+      },
+      "repeat": false
+    },
+    "bowl-tap-eager": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/bowl-tap-eager/01.png",
+          "frames/bowl-tap-eager/02.png",
+          "frames/bowl-tap-eager/03.png",
+          "frames/bowl-tap-eager/04.png",
+          "frames/bowl-tap-eager/05.png",
+          "frames/bowl-tap-eager/06.png",
+          "frames/bowl-tap-eager/07.png",
+          "frames/bowl-tap-eager/08.png",
+          "frames/bowl-tap-eager/09.png",
+          "frames/bowl-tap-eager/10.png",
+          "frames/bowl-tap-eager/11.png",
+          "frames/bowl-tap-eager/12.png"
+        ],
+        "durationsMs": [
+          250,
+          180,
+          120,
+          160,
+          140,
+          180,
+          120,
+          160,
+          200,
+          140,
+          220,
+          380
+        ]
+      },
+      "repeat": false
+    },
+    "dance": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/dance/01.png",
+          "frames/dance/02.png",
+          "frames/dance/03.png",
+          "frames/dance/04.png",
+          "frames/dance/05.png",
+          "frames/dance/06.png",
+          "frames/dance/07.png",
+          "frames/dance/08.png",
+          "frames/dance/09.png",
+          "frames/dance/10.png",
+          "frames/dance/11.png",
+          "frames/dance/12.png"
+        ],
+        "durationsMs": [
+          220,
+          220,
+          220,
+          220,
+          220,
+          220,
+          240,
+          240,
+          280,
+          240,
+          220,
+          300
+        ]
+      },
+      "repeat": false
+    },
+    "dance-2": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/dance-2/01.png",
+          "frames/dance-2/02.png",
+          "frames/dance-2/03.png",
+          "frames/dance-2/04.png",
+          "frames/dance-2/05.png",
+          "frames/dance-2/06.png",
+          "frames/dance-2/07.png",
+          "frames/dance-2/08.png",
+          "frames/dance-2/09.png",
+          "frames/dance-2/10.png",
+          "frames/dance-2/11.png",
+          "frames/dance-2/12.png"
+        ],
+        "durationsMs": [
+          240,
+          200,
+          220,
+          200,
+          200,
+          220,
+          220,
+          280,
+          280,
+          260,
+          220,
+          300
+        ]
+      },
+      "repeat": false
+    },
+    "dance-3": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/dance-3/01.png",
+          "frames/dance-3/02.png",
+          "frames/dance-3/03.png",
+          "frames/dance-3/04.png",
+          "frames/dance-3/05.png",
+          "frames/dance-3/06.png",
+          "frames/dance-3/07.png",
+          "frames/dance-3/08.png",
+          "frames/dance-3/09.png",
+          "frames/dance-3/10.png",
+          "frames/dance-3/11.png",
+          "frames/dance-3/12.png"
+        ],
+        "durationsMs": [
+          240,
+          220,
+          220,
+          240,
+          220,
+          220,
+          280,
+          240,
+          220,
+          260,
+          220,
+          300
+        ]
+      },
+      "repeat": false
+    },
+    "fireworks": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/fireworks/01.png",
+          "frames/fireworks/02.png",
+          "frames/fireworks/03.png",
+          "frames/fireworks/04.png",
+          "frames/fireworks/05.png",
+          "frames/fireworks/06.png",
+          "frames/fireworks/07.png",
+          "frames/fireworks/08.png",
+          "frames/fireworks/09.png",
+          "frames/fireworks/10.png",
+          "frames/fireworks/11.png",
+          "frames/fireworks/12.png"
+        ],
+        "durationsMs": [
+          330,
+          310,
+          330,
+          300,
+          600,
+          160,
+          320,
+          520,
+          200,
+          260,
+          540,
+          630
+        ]
+      },
+      "repeat": false
+    }
+  }
+}

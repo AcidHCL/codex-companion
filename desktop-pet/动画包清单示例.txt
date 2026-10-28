@@ -1,0 +1,59 @@
+以下示例保存为角色文件夹中的 deepseek-working.petanim.json，补齐其引用的素材后导入。
+start / loop / end 可自由组合四种素材格式；单个片段使用一种格式。
+
+{
+  "version": 1,
+  "name": "DeepSeek 工作动作",
+  "skinId": "deepseek",
+  "anchorX": 0.5,
+  "anchorY": 1,
+  "actions": {
+    "working": {
+      "start": {
+        "type": "frames",
+        "frames": ["start/01.png", "start/02.png", "start/03.png"],
+        "fps": 12
+      },
+      "loop": {
+        "type": "spritesheet",
+        "file": "typing-sheet.png",
+        "frameWidth": 512,
+        "frameHeight": 512,
+        "frameCount": 8,
+        "fps": 12
+      },
+      "end": {
+        "type": "frames",
+        "frames": ["end/01.png", "end/02.png"],
+        "durationsMs": [100, 160]
+      },
+      "repeat": true
+    },
+    "complete": {
+      "loop": { "type": "apng", "file": "celebrate.apng" },
+      "repeat": false
+    },
+    "jump": {
+      "loop": { "type": "video", "file": "jump.webm" },
+      "repeat": false
+    }
+  }
+}
+
+typing-sheet.png 可以是 2048×1024，4 列×2 行，共 8 个 512×512 格子。
+序号按从左到右、从上到下排列；不支持格子间隔、裁切偏移或旋转帧。
+PNG 序列仅使用 frames 数组内列出的文件；目录中其他文件不会自动加入或排序。
+APNG 播放一次还是重复由场景的 repeat 控制；场景切换、预览停止后恢复待机。
+只想导入一段视频时，也需要最小清单（视频放在同一文件夹）：
+
+{
+  "version": 1,
+  "name": "DeepSeek 打键盘视频",
+  "skinId": "deepseek",
+  "actions": {
+    "working": {
+      "loop": { "type": "video", "file": "typing.webm" },
+      "repeat": true
+    }
+  }
+}
