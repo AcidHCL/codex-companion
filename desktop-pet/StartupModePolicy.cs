@@ -18,7 +18,7 @@ internal static class StartupModePolicy
         "--task-source-test" or "--privacy-ui-test" or "--scene-audio-ui-test" or "--speech-test" or "--speech-ui-test" or "--speech-live-test" or "--security-test" or "--pipe-trust-test" or
         "--ollama-client-test" or "--ollama-chat-test" or "--ollama-live-test" or "--pet-companion-ui-test" or
         "--chat-store-test" or "--shared-memory-test" or "--chat-history-ui-test" or "--chat-memory-live-test" or
-        "--pet-behavior-planner-test" or "--pet-behavior-queue-test" or "--pet-behavior-motion-test" or "--pet-behavior-chat-test" or
+        "--pet-click-interaction-test" or "--pet-click-pointer-fixture" or "--pet-behavior-planner-test" or "--pet-behavior-queue-test" or "--pet-behavior-motion-test" or "--pet-behavior-chat-test" or
         "--pet-behavior-live-test" or "--pet-behavior-coordinator-test" or "--deepseek-motion-test" or "--redrawn-motion-test" or "--redrawn-animation-test" or
         "--web-client-test" or "--web-chat-test" or "--web-ui-test" or "--web-live-test" or
         "--smoke-test" or "--live2d-test" or "--scene-test" or "--movement-test" or

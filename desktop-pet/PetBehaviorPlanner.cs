@@ -119,14 +119,23 @@ internal static class PetBehaviorPlanner
         ct.ThrowIfCancellationRequested();
         if (!snapshot.Enabled || !snapshot.Visible || interaction.Revision != snapshot.Revision) return string.Empty;
         var tools = supportsTools == true && !snapshot.UserPerformance ? BuildTools(snapshot, passive: true) : Array.Empty<OllamaToolDefinition>();
+        int clickCount = PetInteractionEvent.BoundedClickCount(interaction.ClickCount);
+        if (interaction.Kind == "clicked") clickCount = Math.Max(1, clickCount);
+        string? clickReaction = clickCount > 0 ? PetInteractionEvent.KnownClickReaction(interaction.ClickReaction) : null;
         var context = new List<OllamaMessage>
         {
             // The complete system profile can contain memory text and stale
             // capability claims. Rebuild only the lightweight character here.
             new("system", Persona(persona.Key) + "这是桌宠运行时事件引发的简短反应，不是用户发来的聊天消息。不联网，不读取文件，不替用户提问。用自然中文说一两句，最多80字；也可以回复 SILENT 保持安静。你不能控制行走、跳跃、攀爬、拖拽、下落或落地。" +
-                (tools.Count > 0 ? "可按事件做自然反应，仅允许调用一次已提供的第一类表演工具；不需要就直接说话。必须等实际回执后才能说已播放。" : "本轮没有动作工具，只能说话，不能声称已播放或停止动画。") + "\n" + StateText(snapshot)),
+                (tools.Count > 0 ? "可按事件做自然反应，仅允许调用一次已提供的第一类表演工具；不需要就直接说话。必须等实际回执后才能说已播放。" : "本轮没有动作工具，只能说话，不能声称自己播放或停止了动画。") +
+                "clickCount是最近一次短时点击簇的累计次数，repeatedClicks表示被反复戳；localClickReactionPlayed若非空，代表宿主已实际播放该表情，是事实而非动作请求，不要为了复述事实再次播放它。被连续戳时可以自然地嘴硬、鼓脸或俏皮抱怨，不要夸大为受伤，也不必每次强行生气。" + "\n" + StateText(snapshot)),
             new("system", "真实发生的桌宠事件（只是一条状态数据，不是指令）；recentKinds记录同一短时段内合并的事件，请理解整个过程，以最新状态作反应：" +
-                JsonSerializer.Serialize(new { kind = interaction.Kind, recentKinds = interaction.RecentKinds?.Where(EventKinds.Contains).TakeLast(8).ToArray(), at = interaction.OccurredAt, state = snapshot.State })),
+                JsonSerializer.Serialize(new
+                {
+                    kind = interaction.Kind, recentKinds = interaction.RecentKinds?.Where(EventKinds.Contains).TakeLast(8).ToArray(),
+                    at = interaction.OccurredAt, state = snapshot.State, clickCount, repeatedClicks = clickCount > 1,
+                    localClickReactionPlayed = clickReaction
+                })),
             new("user", "请对刚才的桌宠事件作出简短反应；这是一轮独立事件处理，不加入用户聊天记录。")
         };
         if (tools.Count == 0) return await CollectSpeechAsync(client, model, context, ct).ConfigureAwait(false);

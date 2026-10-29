@@ -17,6 +17,7 @@ internal sealed partial class PetWindow : IPetBehaviorHost
     private bool _observingBehaviorDrag, _behaviorDragStarted;
     private Point _behaviorDragOrigin;
     internal bool IsLlmBehaviorActive { get; private set; }
+    internal bool CanLlmReact => _explicitBehaviorCommandsActive;
     internal event Action<PetInteractionEvent>? InteractionOccurred;
     internal event Action? BehaviorStateChanged;
     internal event Action? BehaviorInvalidated;
@@ -91,10 +92,10 @@ internal sealed partial class PetWindow : IPetBehaviorHost
         // play a physical state from the presence of its animation in a pack.
         IReadOnlyList<string> performances = !IsSceneLoading && _scene != null
             ? PetPerformanceCatalog.Installed(CurrentScenePack) : Array.Empty<string>();
-        bool canWalk = BehaviorAvailable && Settings.MovementEnabled && _movement is { IsEnabled: true, Grounded: true, IsDragging: false } &&
+        bool canWalk = BehaviorAvailable && !_pointerPressed && Settings.MovementEnabled && _movement is { IsEnabled: true, Grounded: true, IsDragging: false } &&
             !PhysicalBehaviorBusy && !_manualScene && !_menuOpen && _motionPreferences().AllowsAnimation;
         return new PetBehaviorSnapshot(CurrentSkin.Id, state, _behaviorRevision, IsLlmBehaviorActive || _explicitBehaviorCommandsActive,
-            !_closed && IsVisible && !DisplayRenderingPaused, canWalk, performances, _manualScene && !_llmPerformance, Settings.SoundEnabled,
+            !_closed && IsVisible && !DisplayRenderingPaused, canWalk, performances, _manualScene && !_llmPerformance && !_clickPerformance, Settings.SoundEnabled,
             CanJump: canWalk && UsesBuiltInScenes, CanClimb: canWalk && UsesBuiltInScenes);
     }
 
@@ -114,7 +115,7 @@ internal sealed partial class PetWindow : IPetBehaviorHost
             case "play_performance":
                 if (command.Name == null || !PetPerformanceCatalog.Installed(CurrentScenePack).Contains(command.Name) || command.Direction != null)
                     return Reject("只能播放已安装的表演与情绪动画，不能控制被动动画。");
-                if (_manualScene && !_llmPerformance) return Reject("用户正在手动播放动画，模型不能替换它。");
+                if (_manualScene && !_llmPerformance && !_clickPerformance) return Reject("用户正在手动播放动画，模型不能替换它。");
                 if (PhysicalBehaviorBusy || _menuOpen) return Reject("请等移动、拖拽或落地结束后再表演。");
                 if (!CanPlayPerformance(command.Name)) return Reject("当前角色的这段动画暂不可用。");
                 if (_llmPerformance && _manualSceneAction == command.Name) return new(true, "正在播放：" + PetPerformanceCatalog.Label(command.Name), command.Action);
@@ -148,8 +149,8 @@ internal sealed partial class PetWindow : IPetBehaviorHost
                     : "已开始播放：" + PetPerformanceCatalog.Label(command.Name) + "。", command.Action);
             case "stop_performance":
                 if (command.Name != null || command.Direction != null) return Reject("停止演出不接受其他参数。");
-                if (_manualScene && !_llmPerformance) return Reject("这段演出由用户手动启动，模型不能停止它。");
-                if (_llmPerformance) { _llmPerformance = false; StopScenePreviewCore(); }
+                if (_manualScene && !_llmPerformance && !_clickPerformance) return Reject("这段演出由用户手动启动，模型不能停止它。");
+                if (_llmPerformance || _clickPerformance) { _llmPerformance = false; StopScenePreviewCore(); }
                 BehaviorStateChanged?.Invoke();
                 return new(true, "模型演出已停止。", command.Action);
             case "walk":
@@ -194,6 +195,8 @@ internal sealed partial class PetWindow : IPetBehaviorHost
 
     internal void BeginBehaviorPointerInteraction()
     {
+        _clickGeneration++;
+        _clickSequence.Reset();
         InvalidateLlmBehavior();
         var bounds = NativeMethods.GetWindowBoundsPixels(_handle);
         _behaviorDragOrigin = new Point(bounds.Left + VisibleFootPixels.X, bounds.Top + VisibleFootPixels.Y);
@@ -210,12 +213,13 @@ internal sealed partial class PetWindow : IPetBehaviorHost
         EmitBehaviorInteraction("drag_started");
     }
 
-    internal void CompleteBehaviorPointerInteraction()
+    internal void CompleteBehaviorPointerInteraction(bool forceDrag = false)
     {
         if (!_observingBehaviorDrag) return;
         ObserveBehaviorDrag();
         _observingBehaviorDrag = false;
-        EmitBehaviorInteraction(_behaviorDragStarted ? "released" : "clicked");
+        if (forceDrag && !_behaviorDragStarted) EmitBehaviorInteraction("drag_started");
+        EmitBehaviorInteraction(_behaviorDragStarted || forceDrag ? "released" : "clicked");
     }
 
     private void OnBehaviorMovementChanged(string state)
@@ -228,9 +232,10 @@ internal sealed partial class PetWindow : IPetBehaviorHost
         BehaviorStateChanged?.Invoke();
     }
 
-    private void EmitBehaviorInteraction(string kind)
+    private void EmitBehaviorInteraction(string kind, int clickCount = 0, string? clickReaction = null, DateTimeOffset? occurredAt = null)
     {
-        if (!BehaviorAvailable) return;
-        InteractionOccurred?.Invoke(new PetInteractionEvent(kind, DateTimeOffset.UtcNow, _behaviorRevision));
+        if (!Settings.LlmBehaviorEnabled || _closed || !IsVisible || DisplayRenderingPaused) return;
+        InteractionOccurred?.Invoke(new PetInteractionEvent(kind, occurredAt ?? DateTimeOffset.UtcNow, _behaviorRevision,
+            ClickCount: clickCount, ClickReaction: clickReaction));
     }
 }

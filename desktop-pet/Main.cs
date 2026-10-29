@@ -73,6 +73,8 @@ internal static class Program
             if (args.Contains("--chat-memory-live-test")) return ChatMemoryLiveChecks.Run();
             if (args.Contains("--pet-behavior-planner-test")) return RunBehaviorPlannerCheck().GetAwaiter().GetResult();
             if (args.Contains("--pet-behavior-queue-test")) return RunBehaviorQueueCheck();
+            if (args.Contains("--pet-click-interaction-test")) return PetClickInteractionChecks.Run();
+            if (args.Contains("--pet-click-pointer-fixture")) return PetClickInteractionChecks.Run(pointerFixture: true);
             if (args.Contains("--pet-behavior-motion-test")) return PetBehaviorMotionChecks.Run();
             if (args.Contains("--deepseek-motion-test")) return DeepSeekMotionIntegrationChecks.Run();
             if (args.Contains("--redrawn-motion-test")) return DeepSeekMotionIntegrationChecks.Run(true);
@@ -544,7 +546,7 @@ internal sealed class PetApplication : Application
         }
         else
         {
-            _pet.Say(GraphicsRecovery.CompatibilityMode ? "已进入显示兼容模式，重启桌宠可重试动画。" : "右键打开图标栏，双击我也能聊天。");
+            _pet.Say(GraphicsRecovery.CompatibilityMode ? "已进入显示兼容模式，重启桌宠可重试动画。" : "点我会回应，右键图标栏可以聊天。别一直戳哦～");
             if (GraphicsRecovery.IsRecoveryLaunch)
                 _tray.ShowBalloon("桌宠已恢复", GraphicsRecovery.CompatibilityMode ? "显示设备连续异常，已暂时使用静态待机；皮肤与动画设置已保留。" : "显示渲染异常后已自动重启，原设置已保留。");
             else if (Environment.GetCommandLineArgs().Contains("--chat")) ShowChat();

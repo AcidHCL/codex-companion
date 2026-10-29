@@ -32,12 +32,13 @@ internal sealed partial class PetWindow
         {
             // A song is an explicit user action. Never start it again after
             // locking, disconnecting, or rebuilding a failed renderer.
-            _displayManualAction = _manualScene && !IsSinging && !IsManualSoundScene ? _sceneAction : null;
-            _displayManualPack = _manualScene && !IsSinging && !IsManualSoundScene ? CurrentScenePack?.Id : null;
+            _displayManualAction = _manualScene && !_clickPerformance && !IsSinging && !IsManualSoundScene ? _sceneAction : null;
+            _displayManualPack = _manualScene && !_clickPerformance && !IsSinging && !IsManualSoundScene ? CurrentScenePack?.Id : null;
         }
         _displayResumeModel = CurrentLive2DModel ?? _displayResumeModel;
         _displayResumePack = CurrentScenePack ?? _displayResumePack;
         _displayRenderingPaused = true; // Must precede callbacks from SetPaused/ReleaseScene.
+        ResetClickInteraction();
         RefreshSpeechSuspension();
         if (DisplayLifecycle?.AllowsCompanionInteraction == false) CompanionSurfacesUnavailable?.Invoke();
         TopmostGuard?.Refresh();

@@ -153,7 +153,7 @@ internal sealed partial class PetWindow : Window
         };
         IsVisibleChanged += (_, _) =>
         {
-            if (!IsVisible) InvalidateLlmBehavior();
+            if (!IsVisible) { ResetClickInteraction(); InvalidateLlmBehavior(); }
             TopmostGuard?.Refresh();
             DisplayLifecycle?.SetHostVisible(IsVisible);
             UpdateActivityPause();
@@ -167,11 +167,15 @@ internal sealed partial class PetWindow : Window
             if (!_restoring && _movement?.IsMovingWindow != true) QueueSave();
         };
         _character.MouseLeftButtonDown += OnLeftDown;
+        _character.MouseMove += OnLeftMove;
+        _character.MouseLeftButtonUp += OnLeftUp;
+        _character.LostMouseCapture += OnPointerCaptureLost;
         _character.MouseWheel += (_, e) => { SetSize(Settings.Size + (e.Delta > 0 ? 20 : -20)); Say("大小 " + (int)Settings.Size + " px"); e.Handled = true; };
         _character.MouseRightButtonUp += (_, e) => { InvalidateLlmBehavior(); OpenQuickActionsRequested?.Invoke(); e.Handled = true; };
         _character.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) { SetMotion(!Settings.MotionEnabled); Say(Settings.MotionEnabled ? (CurrentLive2DModel != null ? "眨眼与呼吸已开启" : "呼吸动画已开启") : "安静陪伴中"); e.Handled = true; } };
         Closing += (_, _) =>
         {
+            ResetClickInteraction();
             InvalidateLlmBehavior();
             SaveNow();
             _closed = true;
@@ -214,20 +218,6 @@ internal sealed partial class PetWindow : Window
             QueueFootGeometryRefresh(); QueueSave();
         });
         return IntPtr.Zero;
-    }
-
-    private void OnLeftDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2) { InvalidateLlmBehavior(); OpenChatRequested?.Invoke(); e.Handled = true; return; }
-        BeginBehaviorPointerInteraction();
-        var before = NativeMethods.GetWindowBoundsPixels(_handle);
-        _movement?.BeginDrag();
-        try { DragMove(); } catch (InvalidOperationException) { }
-        finally { ClampPetToVisibleWorkArea(); _movement?.EndDrag(); CompleteBehaviorPointerInteraction(); }
-        var after = NativeMethods.GetWindowBoundsPixels(_handle);
-        if (Math.Abs(after.Left - before.Left) + Math.Abs(after.Top - before.Top) < 4) Bounce();
-        QueueSave();
-        e.Handled = true;
     }
 
     internal void OpenMoreActions()
@@ -309,6 +299,7 @@ internal sealed partial class PetWindow : Window
     {
         var skin = _skins.FirstOrDefault(s => s.Id == id);
         if (skin == null) return;
+        ResetClickInteraction();
         InvalidateLlmBehavior();
         DisplayLifecycle?.ResetRendererFailureBudget();
         if (CurrentSkin.Id != id) ForgetDisplaySelectionsForSkinChange();
@@ -460,7 +451,7 @@ internal sealed partial class PetWindow : Window
     public void SetTopmost(bool value) { Settings.Topmost = value; Topmost = value; TopmostGuard?.Refresh(); Changed(); }
     internal void SetTrayMenuOpen(bool value) { _trayMenuOpen = value; TopmostGuard?.RequestRestore(); }
     public void SetMotion(bool value) { if (Settings.MotionEnabled != value) InvalidateLlmBehavior(); Settings.MotionEnabled = value; ApplyMotion(); Changed(); }
-    public void SetClickThrough(bool value) { Settings.ClickThrough = value; if (_handle != IntPtr.Zero) NativeMethods.SetClickThrough(_handle, value); Changed(); }
+    public void SetClickThrough(bool value) { if (value) ResetClickInteraction(); Settings.ClickThrough = value; if (_handle != IntPtr.Zero) NativeMethods.SetClickThrough(_handle, value); Changed(); }
 
     public void ClampPosition() { if (_handle != IntPtr.Zero && (!DisplayRenderingPaused || _displayRestoreInProgress)) { ClampPetToVisibleWorkArea(); _movement?.NotifyExternalMove(); QueueFootGeometryRefresh(); } }
 

@@ -178,7 +178,7 @@ internal sealed class SettingsWindow : Window
         var footer = new Border { CornerRadius = new CornerRadius(12), Background = Ui.Brush("#EAF0E5"), Padding = new Thickness(17, 13, 17, 13), Margin = new Thickness(0, 6, 10, 0) };
         var footerStack = new StackPanel();
         footerStack.Children.Add(Ui.Text("小小操作，很快上手", 12, "#4D6A50", true));
-        var tips = Ui.Text("拖动移动  ·  滚轮缩放  ·  双击聊天  ·  右键图标栏", 11, "#7B8D78"); tips.Margin = new Thickness(0, 7, 0, 0); footerStack.Children.Add(tips);
+        var tips = Ui.Text("左键表情，连点生气  ·  拖动移动  ·  右键聊天", 11, "#7B8D78"); tips.Margin = new Thickness(0, 7, 0, 0); footerStack.Children.Add(tips);
         var version = Ui.VersionLabel(); version.Margin = new Thickness(0, 8, 0, 0); footerStack.Children.Add(version);
         var mediaButtons = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };
         var live2D = Ui.Button("Live2D 模型与导入…", (_, _) => _pet.OpenLive2DLibrary());
@@ -231,7 +231,7 @@ internal sealed class SettingsWindow : Window
             _llmBehavior.IsChecked = _pet.Settings.LlmBehaviorEnabled;
             _behaviorHint.Text = !_pet.Settings.LlmBehaviorEnabled
                 ? "默认模式：沿用当前行为，不自动调用模型。"
-                : (_pet.IsLlmBehaviorActive ? "LLM 模式已连接。" : "LLM 暂不可用，继续默认行为并自动重试。")
+                : (_pet.IsLlmBehaviorActive ? "LLM 模式已连接。" : _pet.CanLlmReact ? "LLM 可回应互动；动作使用默认逻辑。" : "LLM 暂不可用，继续默认行为并自动重试。")
                   + "点击、拖拽等互动会通知所选 Ollama 模型；可对话请求唱歌、跳舞、敲碗、表情和移动。移动仍需开启上方开关。";
             _sound.IsChecked = _pet.Settings.SoundEnabled;
             _volume.Value = _pet.Settings.SoundVolume * 100;

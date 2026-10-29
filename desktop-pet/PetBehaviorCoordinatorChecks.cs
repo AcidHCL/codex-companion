@@ -25,7 +25,7 @@ internal static class PetBehaviorCoordinatorChecks
         string evidence = Path.Combine(AppContext.BaseDirectory, "pet-behavior-coordinator-evidence", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(evidence);
         var app = new Application { Resources = Ui.CreateResources(), ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(9) };
+        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
         var client = new FixtureClient();
         PetWindow? pet = null;
         OllamaChatWindow? session = null;
@@ -99,16 +99,16 @@ internal static class PetBehaviorCoordinatorChecks
                 Require(preferenceChanges == 1, "readiness_and_settings_refresh_do_not_resave_preferences");
                 settingsWindow.SavePreview(Path.Combine(evidence, "llm-behavior-settings.png"));
                 phase = "hidden_event";
-                ClickFixture(pet);
+                await pet.ReactToClickAsync();
                 pet.Hide();
-                ClickFixture(pet);
+                await pet.ReactToClickAsync();
                 await Task.Delay(800);
                 Require(client.InferenceCalls == 0 && client.MetadataCalls == 2,
                     "hide_discards_queued_interaction_and_performs_no_background_request");
                 pet.Show();
                 await Until(() => pet.CompanionSurfacesAvailable);
                 phase = "background_reaction";
-                ClickFixture(pet);
+                await pet.ReactToClickAsync();
                 await Until(() => Descendants<TextBlock>(pet).Any(item => item.Text == FixtureClient.Answer));
                 Require(client.InferenceCalls == 1 && session?.IsVisible == false && client.LastMessages.Any(message => message.Content.Contains("clicked", StringComparison.Ordinal)),
                     "real_timer_sends_clicked_event_and_displays_background_bubble_without_opening_chat");
@@ -118,30 +118,36 @@ internal static class PetBehaviorCoordinatorChecks
                 phase = "text_only_model";
                 client.SupportsTools = false; await session!.CheckConnectionAsync(); coordinator.RefreshMode();
                 var textOnlySnapshot = await pet.GetSnapshotAsync(CancellationToken.None);
-                Require(session.BehaviorCommandsReady && !session.BehaviorServiceReady && !pet.IsLlmBehaviorActive && textOnlySnapshot.Enabled,
+                Require(session.BehaviorCommandsReady && session.BehaviorReactionReady && !session.BehaviorServiceReady && !pet.IsLlmBehaviorActive && textOnlySnapshot.Enabled,
                     "text_only_explicit_commands_do_not_take_over_default_autonomous_movement");
                 var unavailable = await pet.ExecuteAsync(new PetBehaviorCommand("walk", Direction: "left"), textOnlySnapshot.Revision, CancellationToken.None);
                 Require(!unavailable.Accepted, "text_only_command_permission_does_not_enable_arbitrary_movement");
+                // Use a fresh coordinator for this separate capability case;
+                // cooldown behavior is covered by PetInteractionQueueChecks.
+                coordinator.Dispose();
+                coordinator = new PetBehaviorCoordinator(pet, () => session,
+                    () => throw new InvalidOperationException("The existing text-only session must be reused."));
+                await pet.ReactToClickAsync();
+                await Until(() => client.InferenceCalls == 2);
+                await Until(() => session.CanReactToInteraction);
+                Require(!pet.IsLlmBehaviorActive && session.BehaviorReactionReady && !session.BehaviorServiceReady &&
+                    client.LastMessages.Any(message => message.Content.Contains("clicked", StringComparison.Ordinal)) &&
+                    client.LastMessages.Any(message => message.Content.Contains("本轮没有动作工具", StringComparison.Ordinal)),
+                    "text_only_model_consumes_click_queue_without_tools_or_movement_takeover");
+                Require(!session.IsVisible && store.ReadTurns(conversations[0].Id).Count == 0,
+                    "text_only_passive_response_keeps_composer_hidden_and_history_unchanged");
+                int metadataBeforeDisable = client.MetadataCalls;
                 phase = "disable_mode";
                 toggle.IsChecked = false;
-                ClickFixture(pet);
+                await pet.ReactToClickAsync();
                 await Task.Delay(750);
-                Require(!pet.IsLlmBehaviorActive && !(await pet.GetSnapshotAsync(CancellationToken.None)).Enabled && client.InferenceCalls == 1 && client.MetadataCalls == 4 && preferenceChanges == 2,
+                Require(!pet.IsLlmBehaviorActive && !(await pet.GetSnapshotAsync(CancellationToken.None)).Enabled && client.InferenceCalls == 2 && client.MetadataCalls == metadataBeforeDisable && preferenceChanges == 2,
                     "turning_mode_off_restores_default_authority_and_stops_background_requests");
                 Finish(true);
             }
             catch (Exception ex) { Finish(false, ex.ToString()); }
         };
         app.Run(); return result;
-    }
-
-    private static void ClickFixture(PetWindow pet)
-    {
-        // Invoke the same logical lifecycle without DragMove or injected input.
-        pet.BeginBehaviorPointerInteraction();
-        pet.MovementController!.BeginDrag();
-        pet.MovementController.EndDrag();
-        pet.CompleteBehaviorPointerInteraction();
     }
 
     private static async Task Until(Func<bool> condition)

@@ -95,7 +95,9 @@ internal sealed class PetBehaviorCoordinator : IDisposable
                 _nextProbe = now.AddSeconds(45);
                 await session.CheckConnectionAsync(); RefreshMode();
             }
-            if (!_pet.IsLlmBehaviorActive || !session.BehaviorServiceReady) { _queue.Clear(); return; }
+            // Text-only models can acknowledge a click without receiving any
+            // action tools or taking over the default movement controller.
+            if (!session.BehaviorReactionReady) { _queue.Clear(); return; }
             if (!_queue.TryTake(DateTimeOffset.UtcNow, session.CanReactToInteraction, out var interaction) || interaction == null) return;
             long epoch = _epoch;
             using var reaction = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);

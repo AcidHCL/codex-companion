@@ -11,9 +11,11 @@
     <RootNamespace>DesktopPet</RootNamespace>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.21.0</Version>
+    <Version>1.22.1</Version>
     <Description>AI Pet Codex 桌面伙伴</Description>
     <Deterministic>true</Deterministic>
+    <!-- Source release archives and prior outputs are not application code. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);releases\**;dist\**;publish-*\**;build-*\**</DefaultItemExcludes>
     <!-- WPF owns process DPI awareness; Windows Forms is used only for NotifyIcon. -->
     <NoWarn>$(NoWarn);WFAC010;WFO0003</NoWarn>
   </PropertyGroup>

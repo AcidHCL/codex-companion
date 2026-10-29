@@ -100,7 +100,7 @@ internal sealed partial class PetWindow
         if (action != null && _manualScene)
         {
             _scene?.SetAudioSettings(false, Settings.SoundVolume);
-            _manualScene = _llmPerformance = false; _manualSceneAction = null;
+            _manualScene = _llmPerformance = _clickPerformance = false; _manualSceneAction = null;
         }
         RefreshAutomaticScene();
     }
@@ -127,6 +127,6 @@ internal sealed partial class PetWindow
     {
         // Work/attention animations stay at their current support; gravity and dragging still work.
         bool busy = IsCompanionOpen || IsChatBusy || (UsesBuiltInScenes ? _scenePolicy.HasRunningTasks || _landingScene.IsPlaying : _sceneActive && _sceneAction is "working" or "attention" or "complete");
-        _movement?.SetAutonomous(!IsLlmBehaviorActive && !_manualScene && !busy);
+        _movement?.SetAutonomous(!IsLlmBehaviorActive && !_manualScene && !_pointerPressed && !busy);
     }
 }

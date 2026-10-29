@@ -423,9 +423,12 @@ internal sealed partial class OllamaChatWindow : Window
     // foreground generation. Controllers must not mistake user priority for a disconnect.
     internal bool BehaviorCommandsReady => !_shutdown && _behaviorHost != null && _connected &&
         _installedModels.Contains(_model, StringComparer.Ordinal) && _capabilities.SupportsChat != false;
+    // A passive reaction may be plain speech. Tool support is only required
+    // for the separate authority to choose autonomous pet actions.
+    internal bool BehaviorReactionReady => BehaviorCommandsReady;
     internal bool BehaviorServiceReady => BehaviorCommandsReady && _capabilities.SupportsTools == true;
 
-    internal bool CanReactToInteraction => BehaviorServiceReady && _settings.LlmBehaviorEnabled &&
+    internal bool CanReactToInteraction => BehaviorReactionReady && _settings.LlmBehaviorEnabled &&
         !_generating && !_userSendPending && !_switching && !_configuring && !_sessionSwitching && !_preparingImage && !VoiceInputBusy && !ModelMemoryBusy &&
         (_behaviorTask == null || _behaviorTask.IsCompleted) &&
         !(IsVisible && (_input.IsKeyboardFocusWithin || _imeComposing || DateTimeOffset.UtcNow - _lastInputActivity < TimeSpan.FromSeconds(3)));

@@ -12,7 +12,13 @@ internal sealed record PetBehaviorResult(bool Accepted, string Message, string A
 internal sealed record PetBehaviorSnapshot(string SkinId, string State, long Revision, bool Enabled,
     bool Visible, bool CanWalk, IReadOnlyList<string> Performances, bool UserPerformance = false, bool SoundEnabled = true,
     bool CanJump = false, bool CanClimb = false);
-internal sealed record PetInteractionEvent(string Kind, DateTimeOffset OccurredAt, long Revision, IReadOnlyList<string>? RecentKinds = null);
+internal sealed record PetInteractionEvent(string Kind, DateTimeOffset OccurredAt, long Revision,
+    IReadOnlyList<string>? RecentKinds = null, int ClickCount = 0, string? ClickReaction = null)
+{
+    internal const int MaximumClickCount = 100;
+    internal static int BoundedClickCount(int count) => Math.Clamp(count, 0, MaximumClickCount);
+    internal static string? KnownClickReaction(string? name) => name is "happy" or "startled" or "angry" ? name : null;
+}
 internal sealed record PetBehaviorPlanResult(string Instruction, IReadOnlyList<PetBehaviorResult> Results);
 
 // Implementations marshal to their UI thread. These capabilities control only

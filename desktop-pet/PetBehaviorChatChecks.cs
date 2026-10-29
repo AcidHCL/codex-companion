@@ -130,9 +130,22 @@ internal static class PetBehaviorChatChecks
                 phase = "metadata_reconnect";
                 client.SupportsTools = false; await window.CheckConnectionAsync();
                 int count = client.Calls.Count;
-                Require(!window.BehaviorServiceReady && await window.ReactToInteractionAsync(new("clicked", DateTimeOffset.UtcNow, host.Revision), CancellationToken.None) == null && client.Calls.Count == count, "unsupported_tools_disable_behavior_without_inference");
+                Require(!window.BehaviorServiceReady && window.BehaviorReactionReady && window.CanReactToInteraction,
+                    "text_model_can_react_without_autonomous_action_capability");
                 Require(window.BehaviorCommandsReady, "text_model_still_accepts_explicit_host_commands");
                 int commandCount = host.Commands.Count;
+                int textOnlyTurns = store.ReadTurns(window.CurrentConversationId!).Count;
+                input.Text = "文字模型的未发送草稿。";
+                client.Enqueue(Scenario.Speech("知道啦，别一直戳本鲸。"));
+                reaction = await window.ReactToInteractionAsync(new("clicked", DateTimeOffset.UtcNow, host.Revision), CancellationToken.None);
+                Require(reaction == "知道啦，别一直戳本鲸。" && client.Calls.Count == count + 1 && !client.Calls[^1].Tools,
+                    "text_model_receives_passive_event_through_one_plain_chat_call");
+                Require(host.Commands.Count == commandCount && client.Calls[^1].Messages.Any(message => message.Content.Contains("本轮没有动作工具", StringComparison.Ordinal)),
+                    "text_only_reaction_cannot_claim_or_execute_animation_tools");
+                Require(input.Text == "文字模型的未发送草稿。" && store.ReadTurns(window.CurrentConversationId!).Count == textOnlyTurns &&
+                    client.Calls[^1].Messages.All(message => !message.Content.Contains("未发送草稿", StringComparison.Ordinal)),
+                    "text_only_reaction_preserves_draft_history_and_background_isolation");
+                count = client.Calls.Count;
                 client.Enqueue(Scenario.Speech("已经开始唱歌啦。"));
                 input.Text = "请唱首歌给我听。"; await window.SendAsync();
                 Require(client.Calls.Count == count + 1 && !client.Calls[^1].Tools && host.Commands.Count == commandCount + 1 && host.Commands[^1].Name == "sing",
@@ -140,6 +153,9 @@ internal static class PetBehaviorChatChecks
                 Require(client.Calls[^1].Messages[0].Content.Contains("fixture-action-accepted", StringComparison.Ordinal) &&
                     client.Calls[^1].Messages[0].Content.Contains("当前模型没有自主动作工具", StringComparison.Ordinal), "text_model_song_uses_real_receipt_and_limited_capability_prompt");
                 settings.LlmBehaviorEnabled = false; window.RefreshBehaviorConfiguration();
+                Require(window.BehaviorReactionReady && !window.CanReactToInteraction &&
+                    await window.ReactToInteractionAsync(new("clicked", DateTimeOffset.UtcNow, host.Revision), CancellationToken.None) == null && client.Calls.Count == count + 1,
+                    "text_only_passive_reactions_still_require_explicit_behavior_mode");
                 client.Enqueue(Scenario.Speech("动作控制暂未开启。"));
                 input.Text = "唱歌"; await window.SendAsync();
                 Require(host.Commands.Count == commandCount + 1, "explicit_song_fast_path_respects_disabled_llm_mode");

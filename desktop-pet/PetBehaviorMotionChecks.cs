@@ -70,6 +70,7 @@ internal static class PetBehaviorMotionChecks
                 var snapshot = await pet.GetSnapshotAsync(CancellationToken.None);
                 Require(!snapshot.Enabled, "default_mode_has_no_model_authority");
                 Require(!(await pet.ExecuteAsync(new("walk", Direction: "right"), snapshot.Revision, CancellationToken.None)).Accepted, "disabled_mode_rejects_model_movement");
+                settings.LlmBehaviorEnabled = true;
                 pet.SetLlmBehaviorActive(true);
                 snapshot = await pet.GetSnapshotAsync(CancellationToken.None);
                 var disabled = await pet.ExecuteAsync(new("walk", Direction: "right"), snapshot.Revision, CancellationToken.None);

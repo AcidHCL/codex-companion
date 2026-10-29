@@ -135,12 +135,13 @@ internal sealed partial class PetWindow
         await PreviewSceneCoreAsync(action, llmOwned: false);
     }
 
-    private async Task PreviewSceneCoreAsync(string action, bool llmOwned)
+    private async Task PreviewSceneCoreAsync(string action, bool llmOwned, bool clickOwned = false)
     {
         _scene?.SetMotionFrame(null, 0);
         if (!llmOwned) _landingScene.Complete();
         _manualScene = true; _celebrating = false;
         _llmPerformance = llmOwned;
+        _clickPerformance = clickOwned;
         _manualSceneAction = action;
         RefreshSpeechSuspension();
         _desiredSceneKey = "preview:" + Guid.NewGuid().ToString("N");
@@ -183,7 +184,7 @@ internal sealed partial class PetWindow
     {
         bool restoreAutomatic = UsesBuiltInScenes || IsSinging || IsManualSoundScene;
         _scene?.SetAudioSettings(false, Settings.SoundVolume);
-        _manualScene = _celebrating = false;
+        _manualScene = _celebrating = _clickPerformance = false;
         _manualSceneAction = null;
         _llmPerformance = false;
         RefreshSpeechSuspension();
@@ -205,7 +206,7 @@ internal sealed partial class PetWindow
         if (UsesBuiltInScenes) { StopScenePreview(); return; }
         Settings.SceneAutoEnabled = enabled;
         _scene?.SetAudioSettings(false, Settings.SoundVolume);
-        _manualScene = _celebrating = false;
+        _manualScene = _celebrating = _clickPerformance = false;
         _manualSceneAction = null;
         _desiredSceneKey = "settings-changed";
         RefreshSpeechSuspension();
@@ -280,7 +281,7 @@ internal sealed partial class PetWindow
         // including while autonomous desktop movement is switched off.
         // Fall/jump retain the existing interruption rule for a landing preview.
         if (state is "drag" or "fall" or "jump" or "climb" or "climb-top")
-        { _scene?.SetAudioSettings(false, Settings.SoundVolume); _manualScene = _llmPerformance = false; _manualSceneAction = null; RefreshSpeechSuspension(); }
+        { _scene?.SetAudioSettings(false, Settings.SoundVolume); _manualScene = _llmPerformance = _clickPerformance = false; _manualSceneAction = null; RefreshSpeechSuspension(); }
         UpdateMovementAutonomy();
         RefreshAutomaticScene();
     }
@@ -313,7 +314,7 @@ internal sealed partial class PetWindow
     private void SceneCompleted()
     {
         if (_movement?.HasScriptedMotion == true && !_manualScene) return;
-        _llmPerformance = false;
+        _llmPerformance = _clickPerformance = false;
         _manualSceneAction = null;
         RefreshSpeechSuspension();
         if (UsesBuiltInScenes)
@@ -395,7 +396,7 @@ internal sealed partial class PetWindow
         {
             if (!_closed && generation == _sceneGeneration && command == _sceneCommand)
             {
-                _sceneActive = _manualScene = _celebrating = false;
+                _sceneActive = _manualScene = _celebrating = _clickPerformance = false;
                 _llmPerformance = false;
                 _manualSceneAction = null;
                 RefreshSpeechSuspension();
@@ -436,7 +437,7 @@ internal sealed partial class PetWindow
         _builtInContactGeometry = null;
         CurrentScenePack = null;
         IsSceneLoading = false;
-        _sceneActive = _manualScene = _celebrating = false;
+        _sceneActive = _manualScene = _celebrating = _clickPerformance = false;
         _manualSceneAction = null;
         RefreshSpeechSuspension();
         _landingScene.Complete();
