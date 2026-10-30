@@ -36,7 +36,7 @@ internal sealed partial class PetWindow : Window
     private bool _closed;
     public Live2DModelInfo? CurrentLive2DModel { get; private set; }
     public string CurrentDisplayName => CurrentLive2DModel?.Name ?? CurrentSkin.Name;
-    public string Live2DStatus { get; private set; } = "选择或导入 Live2D 模型";
+    public string Live2DStatus { get; private set; } = L.T("选择或导入 Live2D 模型", "Select or import a Live2D model");
     public bool IsLive2DLoading { get; private set; }
     internal Live2DView? Live2DRenderer => _live2D;
     private readonly TextBlock _speech;
@@ -105,9 +105,9 @@ internal sealed partial class PetWindow : Window
             IsHitTestVisible = false
         };
         root.Children.Add(_bubble);
-        _stateLabel = Ui.Text("连接 Codex…", 10, "#EAF5EE");
+        _stateLabel = Ui.Text(L.T("连接 Codex…", "Connect Codex…"), 10, "#EAF5EE");
         _stateLabel.TextTrimming = TextTrimming.CharacterEllipsis;
-        _stateBadge = new Border { Child = _stateLabel, Background = Ui.Brush("#214F38"), CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 2), Cursor = Cursors.Hand, ToolTip = AppVersion.ProductLabel + "\n点击打开 Codex 工作看板" };
+        _stateBadge = new Border { Child = _stateLabel, Background = Ui.Brush("#214F38"), CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 2), Cursor = Cursors.Hand, ToolTip = AppVersion.ProductLabel + L.T("\n点击打开 Codex 工作看板", "\nClick to open the Codex dashboard") };
         _stateBadge.MouseLeftButtonUp += (_, e) => { OpenDashboardRequested?.Invoke(); e.Handled = true; };
         root.Children.Add(_stateBadge);
         var versionBadge = new Border
@@ -170,9 +170,9 @@ internal sealed partial class PetWindow : Window
         _character.MouseMove += OnLeftMove;
         _character.MouseLeftButtonUp += OnLeftUp;
         _character.LostMouseCapture += OnPointerCaptureLost;
-        _character.MouseWheel += (_, e) => { SetSize(Settings.Size + (e.Delta > 0 ? 20 : -20)); Say("大小 " + (int)Settings.Size + " px"); e.Handled = true; };
+        _character.MouseWheel += (_, e) => { SetSize(Settings.Size + (e.Delta > 0 ? 20 : -20)); Say(L.T("大小 ", "Size ") + (int)Settings.Size + " px"); e.Handled = true; };
         _character.MouseRightButtonUp += (_, e) => { InvalidateLlmBehavior(); OpenQuickActionsRequested?.Invoke(); e.Handled = true; };
-        _character.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) { SetMotion(!Settings.MotionEnabled); Say(Settings.MotionEnabled ? (CurrentLive2DModel != null ? "眨眼与呼吸已开启" : "呼吸动画已开启") : "安静陪伴中"); e.Handled = true; } };
+        _character.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) { SetMotion(!Settings.MotionEnabled); Say(Settings.MotionEnabled ? (CurrentLive2DModel != null ? L.T("眨眼与呼吸已开启", "Blinking and breathing enabled") : L.T("呼吸动画已开启", "Breathing animation enabled")) : L.T("安静陪伴中", "Keeping you quiet company")); e.Handled = true; } };
         Closing += (_, _) =>
         {
             ResetClickInteraction();
@@ -231,22 +231,22 @@ internal sealed partial class PetWindow : Window
         var title = new MenuItem { Header = CurrentDisplayName + " · " + AppVersion.ProductLabel, IsEnabled = false };
         menu.Items.Add(title);
         menu.Items.Add(new Separator());
-        AddMenu(menu, "和桌宠聊天…", () => OpenChatRequested?.Invoke());
-        var skinsMenu = new MenuItem { Header = "换个角色" };
+        AddMenu(menu, L.T("和桌宠聊天…", "Chat with your pet…"), () => OpenChatRequested?.Invoke());
+        var skinsMenu = new MenuItem { Header = L.T("换个角色", "Change character") };
         foreach (var skin in _skins)
         {
             var item = new MenuItem { Header = skin.Name, IsCheckable = true, IsChecked = CurrentLive2DModel == null && skin.Id == CurrentSkin.Id };
-            item.Click += (_, _) => { SelectSkin(skin.Id); Say("现在是 " + skin.Name); };
+            item.Click += (_, _) => { SelectSkin(skin.Id); Say(L.T("现在是 ", "Now using ") + skin.Name); };
             skinsMenu.Items.Add(item);
         }
         menu.Items.Add(skinsMenu);
-        AddMenu(menu, "Live2D 模型…", OpenLive2DLibrary);
-        AddMenu(menu, "场景动画与导入…", OpenSceneLibrary);
-        var sing = new MenuItem { Header = "唱 Let Me Go", IsEnabled = CanSing && !IsSinging };
+        AddMenu(menu, L.T("Live2D 模型…", "Live2D models…"), OpenLive2DLibrary);
+        AddMenu(menu, L.T("场景动画与导入…", "Scene animations and import…"), OpenSceneLibrary);
+        var sing = new MenuItem { Header = L.T("唱 Let Me Go", "Sing Let Me Go"), IsEnabled = CanSing && !IsSinging };
         sing.Click += (_, _) => ObserveRendererOperation(SingAsync()); menu.Items.Add(sing);
-        var stopSong = new MenuItem { Header = "停止唱歌", IsEnabled = IsSinging };
+        var stopSong = new MenuItem { Header = L.T("停止唱歌", "Stop singing"), IsEnabled = IsSinging };
         stopSong.Click += (_, _) => StopSinging(); menu.Items.Add(stopSong);
-        var emotions = new MenuItem { Header = "表演与情绪" };
+        var emotions = new MenuItem { Header = L.T("表演与情绪", "Performances & emotions") };
         foreach (string action in PetPerformanceCatalog.Installed(CurrentScenePack).Where(action => action != "sing"))
         {
             var expression = new MenuItem { Header = PetPerformanceCatalog.Label(action), IsEnabled = CanPlayPerformance(action) };
@@ -254,31 +254,31 @@ internal sealed partial class PetWindow : Window
         }
         emotions.IsEnabled = emotions.Items.Count > 0;
         menu.Items.Add(emotions);
-        var sound = new MenuItem { Header = "音乐与声音", IsCheckable = true, IsChecked = Settings.SoundEnabled };
+        var sound = new MenuItem { Header = L.T("音乐与声音", "Music & sound"), IsCheckable = true, IsChecked = Settings.SoundEnabled };
         sound.Click += (_, _) => SetSoundEnabled(sound.IsChecked); menu.Items.Add(sound);
-        var movement = new MenuItem { Header = "桌面行走与窗口互动", IsCheckable = true, IsChecked = Settings.MovementEnabled };
+        var movement = new MenuItem { Header = L.T("桌面行走与窗口互动", "Desktop movement & window interaction"), IsCheckable = true, IsChecked = Settings.MovementEnabled };
         movement.Click += (_, _) => SetMovement(movement.IsChecked);
         menu.Items.Add(movement);
-        AddMenu(menu, "跳到附近窗口", JumpToNearbyWindow);
+        AddMenu(menu, L.T("跳到附近窗口", "Jump to a nearby window"), JumpToNearbyWindow);
         if (UsesBuiltInScenes)
         {
-            AddMenu(menu, "向左侧窗沿攀爬", () => ClimbNearbyWindow(-1));
-            AddMenu(menu, "向右侧窗沿攀爬", () => ClimbNearbyWindow(1));
+            AddMenu(menu, L.T("向左侧窗沿攀爬", "Climb the window edge on the left"), () => ClimbNearbyWindow(-1));
+            AddMenu(menu, L.T("向右侧窗沿攀爬", "Climb the window edge on the right"), () => ClimbNearbyWindow(1));
         }
-        AddMenu(menu, "Codex 工作看板…", () => OpenDashboardRequested?.Invoke());
-        AddMenu(menu, "设置…", () => OpenSettingsRequested?.Invoke());
-        AddMenu(menu, "放大一点", () => SetSize(Settings.Size + 20));
-        AddMenu(menu, "缩小一点", () => SetSize(Settings.Size - 20));
-        var top = new MenuItem { Header = "始终置顶", IsCheckable = true, IsChecked = Settings.Topmost };
+        AddMenu(menu, L.T("Codex 工作看板…", "Codex dashboard…"), () => OpenDashboardRequested?.Invoke());
+        AddMenu(menu, L.T("设置…", "Settings…"), () => OpenSettingsRequested?.Invoke());
+        AddMenu(menu, L.T("放大一点", "Make larger"), () => SetSize(Settings.Size + 20));
+        AddMenu(menu, L.T("缩小一点", "Make smaller"), () => SetSize(Settings.Size - 20));
+        var top = new MenuItem { Header = L.T("始终置顶", "Always on top"), IsCheckable = true, IsChecked = Settings.Topmost };
         top.Click += (_, _) => SetTopmost(top.IsChecked);
         menu.Items.Add(top);
-        var motion = new MenuItem { Header = CurrentLive2DModel != null ? "眨眼与呼吸" : "呼吸动画", IsCheckable = true, IsChecked = Settings.MotionEnabled };
+        var motion = new MenuItem { Header = CurrentLive2DModel != null ? L.T("眨眼与呼吸", "Blinking & breathing") : L.T("呼吸动画", "Breathing animation"), IsCheckable = true, IsChecked = Settings.MotionEnabled };
         motion.Click += (_, _) => SetMotion(motion.IsChecked);
         menu.Items.Add(motion);
-        AddMenu(menu, "开启鼠标穿透", () => { SetClickThrough(true); Say("从托盘打开设置可恢复互动"); });
+        AddMenu(menu, L.T("开启鼠标穿透", "Enable click-through"), () => { SetClickThrough(true); Say(L.T("从托盘打开设置可恢复互动", "Open Settings from the tray to restore interaction")); });
         menu.Items.Add(new Separator());
-        AddMenu(menu, "暂时隐藏（托盘恢复）", Hide);
-        AddMenu(menu, "退出桌宠", () => ExitRequested?.Invoke());
+        AddMenu(menu, L.T("暂时隐藏（托盘恢复）", "Hide temporarily (restore from tray)"), Hide);
+        AddMenu(menu, L.T("退出桌宠", "Quit AI Pet"), () => ExitRequested?.Invoke());
         menu.PlacementTarget = _character;
         menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         _menuOpen = true;
@@ -315,7 +315,7 @@ internal sealed partial class PetWindow : Window
         StopSpeech();
         _voice?.ApplySettings();
         RefreshSpeechSuspension();
-        Live2DStatus = "当前使用 PNG：" + skin.Name;
+        Live2DStatus = L.T("当前使用 PNG：", "Current PNG skin: ") + skin.Name;
         _image.Source = LoadDefaultSkinImage(skin);
         _live2DGeometry = null;
         Title = AppVersion.WindowTitle(skin.Name);
@@ -351,9 +351,9 @@ internal sealed partial class PetWindow : Window
         else
         {
             Settings.Live2DModelId = null;
-            Live2DStatus = issues.Count > 0 ? issues[0] : "原 Live2D 模型不可用，已显示 PNG 皮肤。";
+            Live2DStatus = issues.Count > 0 ? issues[0] : L.T("原 Live2D 模型不可用，已显示 PNG 皮肤。", "The previous Live2D model is unavailable. Showing the PNG skin.");
             Changed();
-            Say("Live2D 模型不可用，可从设置中重新导入。");
+            Say(L.T("Live2D 模型不可用，可从设置中重新导入。", "The Live2D model is unavailable. Import it again in Settings."));
         }
     }
 
@@ -371,7 +371,7 @@ internal sealed partial class PetWindow : Window
         CurrentLive2DModel = null;
         _image.Visibility = Visibility.Visible;
         IsLive2DLoading = true;
-        Live2DStatus = "正在加载 " + model.Name + "…";
+        Live2DStatus = L.T("正在加载 ", "Loading ") + model.Name + "…";
         SettingsChanged?.Invoke();
         Live2DView? renderer = null;
         try
@@ -396,13 +396,13 @@ internal sealed partial class PetWindow : Window
             Settings.Live2DModelId = model.Id;
             _image.Visibility = Visibility.Hidden;
             Title = AppVersion.WindowTitle(model.Name + " · Live2D");
-            Live2DStatus = "已载入 · " + model.Name;
+            Live2DStatus = L.T("已载入 · ", "Loaded · ") + model.Name;
             IsLive2DLoading = false;
             renderer.Failed += error =>
             {
                 if (_closed || generation != _modelGeneration) return;
                 Program.Log(new InvalidOperationException(error));
-                QueueRendererRecovery("Live2D 暂不可用");
+                QueueRendererRecovery(L.T("Live2D 暂不可用", "Live2D temporarily unavailable"));
             };
             ApplyMotion();
             QueueFootGeometryRefresh();
@@ -416,12 +416,12 @@ internal sealed partial class PetWindow : Window
             ReleaseLive2D();
             CurrentLive2DModel = null;
             IsLive2DLoading = false;
-            Live2DStatus = "加载失败：" + ex.Message;
+            Live2DStatus = L.T("加载失败：", "Load failed: ") + ex.Message;
             Title = AppVersion.WindowTitle(CurrentSkin.Name);
             _image.Visibility = Visibility.Visible;
             ApplyMotion();
             Changed();
-            if (!_displayRestoreInProgress) QueueRendererRecovery("模型载入暂时失败");
+            if (!_displayRestoreInProgress) QueueRendererRecovery(L.T("模型载入暂时失败", "Model loading temporarily failed"));
             return false;
         }
     }
@@ -456,6 +456,18 @@ internal sealed partial class PetWindow : Window
         }
         _movement?.NotifyExternalMove();
         Changed();
+    }
+
+    public void SetLanguage(string value)
+    {
+        if (value is not (L.Chinese or L.English))
+            throw new ArgumentException(L.T("不支持的界面语言。", "Unsupported interface language."), nameof(value));
+        string previous = Settings.Language;
+        Settings.Language = value;
+        try { if (_persist) Settings.Save(); }
+        catch { Settings.Language = previous; throw; }
+        // Apply at next startup. Do not interrupt active chat, audio or drafts.
+        SettingsChanged?.Invoke();
     }
 
     public void SetTopmost(bool value) { Settings.Topmost = value; Topmost = value; TopmostGuard?.Refresh(); Changed(); }
@@ -544,11 +556,11 @@ internal sealed partial class PetWindow : Window
         int attention = snapshot.Tasks.Count(t => t.NeedsAttention);
         var codex = snapshot.Buckets.FirstOrDefault(b => b.Id == "codex") ?? snapshot.Buckets.FirstOrDefault();
         var week = codex?.Windows.FirstOrDefault(w => w.DurationMinutes == 10080);
-        string usage = week?.RemainingPercent is double remaining ? " · 周余 " + remaining.ToString("0.#") + "%" : "";
-        if (snapshot.UsageUpdatedAt is DateTimeOffset at && (DateTimeOffset.Now - at).TotalSeconds > 90) usage = " · 用量待更新";
-        _stateLabel.Text = !snapshot.Connected ? (snapshot.Refreshing ? "连接 Codex…" : "Codex 未连接") : (attention > 0 ? attention + " 项待处理" : running > 0 ? running + " 项执行中" : "Codex 待命") + usage;
+        string usage = week?.RemainingPercent is double remaining ? L.T(" · 周余 ", " · Weekly remaining ") + remaining.ToString("0.#") + "%" : "";
+        if (snapshot.UsageUpdatedAt is DateTimeOffset at && (DateTimeOffset.Now - at).TotalSeconds > 90) usage = L.T(" · 用量待更新", " · Usage pending");
+        _stateLabel.Text = !snapshot.Connected ? (snapshot.Refreshing ? L.T("连接 Codex…", "Connect Codex…") : L.T("Codex 未连接", "Codex disconnected")) : (attention > 0 ? attention + L.T(" 项待处理", " need attention") : running > 0 ? running + L.T(" 项执行中", " running") : L.T("Codex 待命", "Codex standing by")) + usage;
         _stateBadge.Background = Ui.Brush(!snapshot.Connected ? "#69736A" : attention > 0 ? "#876344" : running > 0 ? "#325C76" : "#214F38");
-        _stateBadge.ToolTip = AppVersion.ProductLabel + "\n" + snapshot.StatusText + "\n点击查看用量、任务与对话";
+        _stateBadge.ToolTip = AppVersion.ProductLabel + "\n" + snapshot.StatusText + L.T("\n点击查看用量、任务与对话", "\nClick for usage, tasks, and conversations");
         UpdateSceneFromCodex(snapshot);
     }
     public new void Hide() { base.Hide(); ApplyMotion(); SettingsChanged?.Invoke(); }

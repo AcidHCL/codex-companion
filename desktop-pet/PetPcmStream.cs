@@ -14,7 +14,7 @@ internal readonly record struct PetPcmFormat(int SampleRate, int Channels)
     internal void Validate()
     {
         if (SampleRate is < 8000 or > 48000 || Channels is < 1 or > 2)
-            throw new InvalidOperationException("语音流音频格式无效。");
+            throw new InvalidOperationException(L.T("语音流音频格式无效。", "Invalid speech stream audio format."));
     }
 }
 internal sealed record PetPcmChunk(PetPcmFormat Format, byte[] Data);
@@ -58,37 +58,37 @@ internal static class PetPcmProtocol
                 byte value = buffer[i];
                 if (value != 10)
                 {
-                    if (record.Length >= MaximumRecordBytes) throw new InvalidOperationException("语音流片段超过允许大小。");
+                    if (record.Length >= MaximumRecordBytes) throw new InvalidOperationException(L.T("语音流片段超过允许大小。", "The speech stream chunk exceeds the size limit."));
                     record.WriteByte(value); continue;
                 }
-                if (done) throw new InvalidOperationException("语音流结束后仍有数据。");
+                if (done) throw new InvalidOperationException(L.T("语音流结束后仍有数据。", "Data arrived after the speech stream ended."));
                 using var json = JsonDocument.Parse(record.GetBuffer().AsMemory(0, (int)record.Length), new JsonDocumentOptions { MaxDepth = 5 });
                 record.SetLength(0);
                 var root = json.RootElement;
                 string? type = root.GetProperty("type").GetString();
                 if (type == "format")
                 {
-                    if (format != null || root.GetProperty("sample_format").GetString() != "s16le") throw new InvalidOperationException("语音流音频格式无效。");
+                    if (format != null || root.GetProperty("sample_format").GetString() != "s16le") throw new InvalidOperationException(L.T("语音流音频格式无效。", "Invalid speech stream audio format."));
                     var next = new PetPcmFormat(root.GetProperty("sample_rate").GetInt32(), root.GetProperty("channels").GetInt32());
                     next.Validate(); format = next;
                 }
                 else if (type == "audio")
                 {
-                    if (format is not { } pcmFormat) throw new InvalidOperationException("语音流缺少音频格式。");
+                    if (format is not { } pcmFormat) throw new InvalidOperationException(L.T("语音流缺少音频格式。", "The speech stream is missing its audio format."));
                     byte[] data = root.GetProperty("data").GetBytesFromBase64();
                     if (data.Length == 0 || data.Length % (pcmFormat.Channels * 2) != 0 || (total += data.Length) > MaximumAudioBytes)
-                        throw new InvalidOperationException("语音流片段无效或超过允许长度。");
+                        throw new InvalidOperationException(L.T("语音流片段无效或超过允许长度。", "The speech stream chunk is invalid or exceeds the duration limit."));
                     heard = true; yield return new PetPcmChunk(pcmFormat, data);
                 }
                 else if (type == "done")
                 {
-                    if (format == null || !heard) throw new InvalidOperationException("语音引擎返回了空音频。");
+                    if (format == null || !heard) throw new InvalidOperationException(L.T("语音引擎返回了空音频。", "The speech engine returned empty audio."));
                     done = true;
                 }
-                else if (type == "error") throw new InvalidOperationException("本地流式语音合成中断，请重试。");
-                else throw new InvalidOperationException("语音流返回未知数据。");
+                else if (type == "error") throw new InvalidOperationException(L.T("本地流式语音合成中断，请重试。", "Local streaming speech synthesis was interrupted. Retry."));
+                else throw new InvalidOperationException(L.T("语音流返回未知数据。", "The speech stream returned unknown data."));
             }
         }
-        if (!done || record.Length != 0) throw new InvalidOperationException("语音流传输中断，声音未完整生成。");
+        if (!done || record.Length != 0) throw new InvalidOperationException(L.T("语音流传输中断，声音未完整生成。", "The speech stream was interrupted before audio generation finished."));
     }
 }

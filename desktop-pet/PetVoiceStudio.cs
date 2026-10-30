@@ -56,12 +56,12 @@ internal sealed class PetVoiceStudio : IPetVoiceStudio
 
     internal static void ValidateInput(string skinId, string instruction, string text, string language)
     {
-        if (!PetVoiceProfiles.KnownSkin(skinId)) throw new InvalidOperationException("请选择一个桌宠角色。");
+        if (!PetVoiceProfiles.KnownSkin(skinId)) throw new InvalidOperationException(L.T("请选择一个桌宠角色。", "Select a pet character."));
         if (string.IsNullOrWhiteSpace(instruction) || instruction.Length > 600 || !ValidUnicode(instruction) || instruction.Any(c => char.IsControl(c) && c is not ('\n' or '\t')))
-            throw new InvalidOperationException("请填写 1–600 字的音色描述。");
+            throw new InvalidOperationException(L.T("请填写 1–600 字的音色描述。", "Enter a voice description containing 1–600 characters."));
         if (string.IsNullOrWhiteSpace(text) || text.Length > 100 || !ValidUnicode(text) || text.Any(c => char.IsControl(c)))
-            throw new InvalidOperationException("试听台词须为 1–100 字的单段文字。");
-        if (!PetVoiceProfiles.Languages.Contains(language)) throw new InvalidOperationException("请选择支持的试听语言。");
+            throw new InvalidOperationException(L.T("试听台词须为 1–100 字的单段文字。", "Audition text must be a single paragraph containing 1–100 characters."));
+        if (!PetVoiceProfiles.Languages.Contains(language)) throw new InvalidOperationException(L.T("请选择支持的试听语言。", "Select a supported audition language."));
     }
 
     private static bool ValidUnicode(string text)
@@ -91,8 +91,8 @@ internal sealed class PetVoiceStudio : IPetVoiceStudio
             token.ThrowIfCancellationRequested();
             synthesizer = _createSynthesizer(); _activeSynthesizer = synthesizer;
             if (synthesizer is not IPetVoiceProfileSelector selector)
-                throw new InvalidOperationException("当前语音引擎不支持文字设计音色。");
-            await selector.SelectProfileAsync(new("voice-design", "Vivian", language, instruction.Trim()), token);
+                throw new InvalidOperationException(L.T("当前语音引擎不支持文字设计音色。", "The current speech engine does not support voice design from text."));
+            await selector.SelectProfileAsync(new("voice-design", "Vivian", language, instruction.Trim(), FollowAppLanguage: false), token);
             byte[] wave = await synthesizer.SynthesizeAsync(text.Trim(), Guid.NewGuid().ToString("N"), token);
             token.ThrowIfCancellationRequested();
             var sample = new PetVoiceDesignSample(skinId.ToLowerInvariant(), instruction.Trim(), text.Trim(), language, wave);

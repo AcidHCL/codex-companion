@@ -53,7 +53,7 @@ internal static class PetCompanionUiChecks
             catch (Exception ex) { passed = false; error = "cleanup_" + ex.GetType().Name; }
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "pet-companion-ui-validation.json"), JsonSerializer.Serialize(new
             {
-                passed, version = AppVersion.Number, assertions = checks.Count, checks, phase, error, evidence, captures, samples,
+                passed, version = AppVersion.Number, language = L.Language, assertions = checks.Count, checks, phase, error, evidence, captures, samples,
                 syntheticTransport = true, realAccountRequests = 0, realModelRequests = 0, userSettingsWrites = 0,
                 userWindowsMoved = 0, operatingSystemInputInjected = false, compositeCapturesContainOnlyTestWindows = true,
                 settingsClicks, dashboardClicks, chatClicks, imageRequests = client.Requests.Count(request => request.Any(message => message.Images?.Count > 0)),
@@ -141,7 +141,7 @@ internal static class PetCompanionUiChecks
                 input.Text = "这是附属聊天面板的合成测试。";
                 Require(Named<Button>(chat, "OllamaSend").IsEnabled && !input.IsReadOnly, "attached_composer_accepts_text_and_enables_send");
                 await chat.SendAsync();
-                Require(client.Requests.Count == 1 && client.Completed == 1 && Named<TextBlock>(chat, "OllamaChatStatus").Text.StartsWith("回复完成", StringComparison.Ordinal), "attached_chat_streams_and_completes_synthetic_answer");
+                Require(client.Requests.Count == 1 && client.Completed == 1 && Named<TextBlock>(chat, "OllamaChatStatus").Text.StartsWith(L.T("回复完成", "Reply complete"), StringComparison.Ordinal), "attached_chat_streams_and_completes_synthetic_answer");
                 Require(Descendants<TextBox>(chat).Any(text => text.IsReadOnly && text.Text.Contains("附属面板已收到", StringComparison.Ordinal)), "assistant_output_is_visible_in_attached_panel");
                 string imagePath = Path.Combine(evidence, "attachment-fixture.png");
                 CreateImage(imagePath);

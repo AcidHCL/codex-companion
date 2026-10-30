@@ -77,7 +77,12 @@ def read_wave(raw: bytes) -> tuple[bytes, bool]:
     return pcm, silent
 
 
-def recognize(raw: bytes, service: Path) -> dict:
+def recognition_prompt(ui_language: str) -> str:
+    return ("Natural conversational English and Mandarin Chinese. Transcribe the spoken language as heard."
+            if ui_language == "en-US" else "以下是简体中文和英语的自然对话。")
+
+
+def recognize(raw: bytes, service: Path, ui_language: str = "zh-CN") -> dict:
     pcm, silent = read_wave(raw)
     if silent:
         return {"text": "", "language": "", "language_probability": 0.0}
@@ -94,7 +99,7 @@ def recognize(raw: bytes, service: Path) -> dict:
         samples, task="transcribe", language=None, beam_size=5,
         temperature=0.0, condition_on_previous_text=False,
         vad_filter=True, vad_parameters={"min_silence_duration_ms": 300, "speech_pad_ms": 200},
-        initial_prompt="以下是简体中文和英语的自然对话。",
+        initial_prompt=recognition_prompt(ui_language),
     )
     text = "".join(segment.text for segment in segments).strip()
     return {"text": text, "language": info.language if text else "",
@@ -133,6 +138,7 @@ def main() -> int:
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("--parent-pid", required=True, type=int)
+    parser.add_argument("--ui-language", choices=("zh-CN", "en-US"), default="zh-CN")
     args = parser.parse_args()
     if args.parent_pid <= 0:
         parser.error("Invalid parent process")
@@ -144,7 +150,7 @@ def main() -> int:
         # They are discarded, rather than logging possible transcript fragments.
         with open(os.devnull, "w", encoding="utf-8") as sink:
             with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
-                result = recognize(raw, Path(__file__).resolve().parent)
+                result = recognize(raw, Path(__file__).resolve().parent, args.ui_language)
         print(json.dumps(result, ensure_ascii=False), flush=True)
         return 0
     except AsrError as exc:

@@ -22,11 +22,33 @@ internal static class PetExplicitCommand
     private static readonly Regex Stop = new(@"\A" + Prefix + @"(?:停止唱歌|停止播放letmego|停止播放《letmego》|不要再唱(?:歌)?了|别唱(?:歌)?了|别再唱(?:歌)?了|不要唱(?:歌)?了|不唱了|停(?:止|下)唱歌)" + @"(?:吧|呀|啊|啦|好吗)?\z",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
 
+    private const string EnglishPrefix = @"(?:(?:deepseek|gpt|little dragon|little whale)[,，]?\s+)?(?:(?:can you|could you|would you)\s+)?(?:please\s+)?";
+    private const string EnglishSuffix = @"(?:\s+(?:please|now|for me))*[.!?]?\z";
+    private const string EnglishBangyouName = @"(?:bangyou(?: de jiu)?|bouncy spin|spinning dance)";
+    private static readonly Regex EnglishSing = new(@"\A" + EnglishPrefix + @"(?:sing(?:\s+(?:me\s+)?(?:a song|let me go))?|start singing|play\s+let me go)" + EnglishSuffix,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
+    private static readonly Regex EnglishBangyou = new(@"\A" + EnglishPrefix + @"(?:play|sing|perform|do)\s+(?:the\s+)?" + EnglishBangyouName + EnglishSuffix,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
+    private static readonly Regex EnglishStop = new(@"\A" + EnglishPrefix + @"stop\s+singing" + EnglishSuffix,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
+    private static readonly Regex EnglishStopSong = new(@"\A" + EnglishPrefix + @"stop\s+(?:(?:playing|singing)\s+)?let me go" + EnglishSuffix,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
+    private static readonly Regex EnglishStopBangyou = new(@"\A" + EnglishPrefix + @"stop\s+(?:(?:playing|singing|performing)\s+)?(?:the\s+)?" + EnglishBangyouName + EnglishSuffix,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromMilliseconds(50));
+
     internal static PetBehaviorCommand? Parse(string text, out string? stopTarget)
     {
         stopTarget = null;
         if (string.IsNullOrWhiteSpace(text) || text.Length > 120 || text.IndexOfAny(new[] { '\r', '\n', '"', '\'', '“', '”', '‘', '’', '`', '：', ':', '>', '<' }) >= 0)
             return null;
+        // Keep word boundaries in English. Whole-input matching deliberately
+        // rejects quoted, negated, historical and implementation discussions.
+        string english = Regex.Replace(text.Trim(), @"\s+", " ", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+        if (EnglishStopBangyou.IsMatch(english)) { stopTarget = "bangyou-dance"; return new("stop_performance"); }
+        if (EnglishStopSong.IsMatch(english)) { stopTarget = "sing"; return new("stop_performance"); }
+        if (EnglishStop.IsMatch(english)) return new("stop_performance");
+        if (EnglishBangyou.IsMatch(english)) return new("play_performance", Name: "bangyou-dance");
+        if (EnglishSing.IsMatch(english)) return new("play_performance", Name: "sing");
         string value = string.Concat(text.Trim().Where(character => !char.IsWhiteSpace(character))).TrimEnd('。', '.', '！', '!', '？', '?', '~', '～');
         if (StopBangyou.IsMatch(value)) { stopTarget = "bangyou-dance"; return new("stop_performance"); }
         if (StopLetMeGo.IsMatch(value)) { stopTarget = "sing"; return new("stop_performance"); }

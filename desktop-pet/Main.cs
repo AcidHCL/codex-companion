@@ -37,9 +37,11 @@ internal static class Program
             // data here. This report contains no caller context or arguments.
             try { File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "independent-start-validation.json"), JsonSerializer.Serialize(new { passed = false, errorType = ex.GetType().Name, errorHResult = ex.HResult })); } catch { }
             if (!args.Any(value => value.EndsWith("-test", StringComparison.Ordinal) || value is "--pair-codex" or "--independent-launch-host" or "--independent-launch-child"))
-                MessageBox.Show("桌宠无法进入独立桌面环境。请从解压目录直接启动 DesktopPet.exe；无需管理员权限。", AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(L.T("桌宠无法进入独立桌面环境。请从解压目录直接启动 DesktopPet.exe；无需管理员权限。", "AI Pet could not start in an independent desktop session. Launch DesktopPet.exe directly from the extracted folder; administrator rights are not needed."), AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Error);
             return 1;
         }
+        if (!StartupModePolicy.IsIsolatedDiagnostic(args)) L.Initialize(DesktopSettings.ReadLanguage());
+        else if (args.Contains("--test-english", StringComparer.Ordinal)) L.Initialize(L.English);
         if (!GraphicsRecovery.Initialize(args)) return 2;
         if (GraphicsRecovery.CompatibilityMode) RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         if (DisplayRecoveryIntegrationChecks.HandleProbe(args) is int probeResult) return probeResult;
@@ -56,6 +58,8 @@ internal static class Program
         if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-result.json"), "{\"passed\":false,\"status\":\"starting\"}");
         try
         {
+            if (args.Contains("--localization-test")) return LocalizationChecks.Run();
+            if (args.Contains("--localization-ui-test")) return LocalizationUiChecks.Run();
             if (args.Contains("--speech-pcm-live-test")) return PetPcmLiveChecks.Run();
             if (args.Contains("--speech-stream-live-test")) return PetStreamingSpeechLiveChecks.Run();
             if (args.Contains("--voice-worker-lifecycle-test")) return PetVoiceWorkerChecks.Run();
@@ -107,7 +111,7 @@ internal static class Program
             if (modelOption >= 0)
             {
                 if (!live2DTest || modelOption + 1 >= args.Length || args[modelOption + 1].StartsWith("--", StringComparison.Ordinal))
-                    throw new ArgumentException("--live2d-test-model 需要同时指定 --live2d-test 和模型入口路径。");
+                    throw new ArgumentException(L.T("--live2d-test-model 需要同时指定 --live2d-test 和模型入口路径。", "--live2d-test-model requires --live2d-test and a model entry path."));
                 live2DTestModel = Path.GetFullPath(args[modelOption + 1]);
             }
             var skins = SkinCatalog.Load(AppContext.BaseDirectory);
@@ -115,14 +119,14 @@ internal static class Program
             string? sceneManifest = null;
             if (sceneTest)
             {
-                if (sceneOption < 0 || sceneOption + 1 >= args.Length || args[sceneOption + 1].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException("--scene-test 需要 --scene-test-manifest 和本地测试清单路径。");
+                if (sceneOption < 0 || sceneOption + 1 >= args.Length || args[sceneOption + 1].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException(L.T("--scene-test 需要 --scene-test-manifest 和本地测试清单路径。", "--scene-test requires --scene-test-manifest and a local test manifest path."));
                 sceneManifest = Path.GetFullPath(args[sceneOption + 1]);
             }
             if (selfTest) return ValidateAssets(skins);
             using var mutex = new Mutex(true, @"Local\AIPet.DesktopPet", out bool owner);
             if (!owner)
             {
-                if (smoke) throw new InvalidOperationException("测试未运行：请先退出已经运行的桌宠。");
+                if (smoke) throw new InvalidOperationException(L.T("测试未运行：请先退出已经运行的桌宠。", "Test not started: exit the running pet first."));
                 try { using var signal = EventWaitHandle.OpenExisting(args.Contains("--exit") ? @"Local\AIPet.Exit" : args.Contains("--chat") ? @"Local\AIPet.ShowChat" : @"Local\AIPet.ShowSettings"); signal.Set(); } catch { }
                 return 0;
             }
@@ -141,6 +145,25 @@ internal static class Program
             var app = new PetApplication(skins, smoke, integration, live2DTest, live2DTestModel, sceneManifest, movementTest, deepSeekStateTest, fallLandTest, dragStateTest);
             int result = app.Run();
             mutex.ReleaseMutex();
+            // The singleton uses createdNew, so release AND close the handle
+            // before launching. All normal WPF/worker teardown has finished.
+            mutex.Dispose();
+            if (app.RestartRequested)
+            {
+                try
+                {
+                    using var child = IndependentProcessLauncher.LaunchCurrent(new[] { "--settings" });
+                    LifecycleLog.Record(LifecycleEvent.RestartChildStarted, child.Id);
+                }
+                catch (Exception ex)
+                {
+                    LifecycleLog.RecordException(LifecycleEvent.RestartFailed, ex);
+                    Program.Log(ex);
+                    MessageBox.Show(L.T("桌宠已退出，但自动重新启动失败。设置已保存，请从原目录重新打开 DesktopPet.exe。", "AI Pet closed, but could not restart automatically. Your settings were saved. Open DesktopPet.exe from its original folder."),
+                        AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Error);
+                    return 1;
+                }
+            }
             return result;
         }
         catch (Exception ex)
@@ -149,7 +172,7 @@ internal static class Program
             Log(ex);
             if (selfTest) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "asset-validation.json"), JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex) }));
             if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-result.json"), JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex) }));
-            if (!selfTest && !smoke) MessageBox.Show("桌宠启动失败。\n" + ex.Message + "\n\n详细信息已写入本地日志。", AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!selfTest && !smoke) MessageBox.Show(L.T("桌宠启动失败。\n", "AI Pet failed to start.\n") + ex.Message + L.T("\n\n详细信息已写入本地日志。", "\n\nDetails were written to the local log."), AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Error);
             return 1;
         }
     }
@@ -312,7 +335,7 @@ internal static class Program
         var rows = new List<object>();
         foreach (string id in expected)
         {
-            var skin = skins.SingleOrDefault(s => s.Id == id) ?? throw new InvalidDataException("缺少皮肤：" + id);
+            var skin = skins.SingleOrDefault(s => s.Id == id) ?? throw new InvalidDataException(L.T("缺少皮肤：", "Missing skin: ") + id);
             using var bmp = new System.Drawing.Bitmap(skin.ImagePath);
             int transparent = 0, opaque = 0, samples = 0;
             for (int y = 0; y < bmp.Height; y += Math.Max(1, bmp.Height / 80))
@@ -324,7 +347,7 @@ internal static class Program
                     samples++;
                 }
             if (transparent < samples * .05 || opaque < samples * .05)
-                throw new InvalidDataException("皮肤不是有效透明立绘：" + id);
+                throw new InvalidDataException(L.T("皮肤不是有效透明立绘：", "The skin is not a valid transparent character image: ") + id);
             rows.Add(new { id, width = bmp.Width, height = bmp.Height, transparentSamples = transparent, opaqueSamples = opaque, samples });
         }
         File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "asset-validation.json"),
@@ -377,7 +400,7 @@ internal static class Program
             using var pairingGuard = pairing ? new Mutex(false, @"Local\AIPet.DesktopPet", out pairingSlotCreated) : null;
             // The helper normally checks this as well; direct CLI pairing must not
             // race a running pet writing its previous connection record.
-            if (pairing && !pairingSlotCreated) throw new InvalidOperationException("请先退出桌宠再配对。");
+            if (pairing && !pairingSlotCreated) throw new InvalidOperationException(L.T("请先退出桌宠再配对。", "Exit the pet before pairing."));
             using var connection = new CodexConnection(explicitPairing: pairing);
             var usage = CodexParser.ParseUsage(await connection.CallAsync("get_usage_limits", new { }, timeout.Token));
             var tasks = CodexParser.ParseTasks(await connection.CallAsync("list_threads", new { limit = 50 }, timeout.Token));
@@ -391,7 +414,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex), hint = "请检查 Codex 官方安装来源、是否已退出桌宠、配对上下文及目录权限。" }, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex), hint = L.T("请检查 Codex 官方安装来源、是否已退出桌宠、配对上下文及目录权限。", "Check the official Codex installation, exit the pet, and verify the pairing context and folder permissions.") }, new JsonSerializerOptions { WriteIndented = true }));
             return 1;
         }
     }
@@ -459,6 +482,7 @@ internal sealed class PetApplication : Application
     private readonly bool _dragStateTest;
     private bool _errorDialogOpen;
     private DateTimeOffset _lastErrorDialog;
+    internal bool RestartRequested { get; private set; }
 
     public PetApplication(IReadOnlyList<SkinInfo> skins, bool smoke, bool integration, bool live2DTest = false, string? live2DTestModel = null, string? sceneTestManifest = null, bool movementTest = false, bool deepSeekStateTest = false, bool fallLandTest = false, bool dragStateTest = false)
     {
@@ -488,7 +512,7 @@ internal sealed class PetApplication : Application
             {
                 _errorDialogOpen = true;
                 _lastErrorDialog = DateTimeOffset.UtcNow;
-                try { MessageBox.Show("桌宠遇到问题：" + e.Exception.Message, AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Warning); }
+                try { MessageBox.Show(L.T("桌宠遇到问题：", "AI Pet encountered a problem: ") + e.Exception.Message, AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Warning); }
                 finally { _errorDialogOpen = false; }
             }
         };
@@ -499,6 +523,7 @@ internal sealed class PetApplication : Application
         base.OnStartup(e);
         Resources = Ui.CreateResources();
         var settings = _smoke ? new DesktopSettings() : DesktopSettings.Load();
+        L.Initialize(settings.Language);
         if (!_smoke) AnimationPresetSelection.Apply(settings, Environment.GetCommandLineArgs());
         _pet = new PetWindow(_skins, settings, persist: !_smoke);
         MainWindow = _pet;
@@ -551,9 +576,10 @@ internal sealed class PetApplication : Application
         }
         else
         {
-            _pet.Say(GraphicsRecovery.CompatibilityMode ? "已进入显示兼容模式，重启桌宠可重试动画。" : "点我会回应，右键图标栏可以聊天。别一直戳哦～");
+            _pet.Say(GraphicsRecovery.CompatibilityMode ? L.T("已进入显示兼容模式，重启桌宠可重试动画。", "Display compatibility mode is active. Restart the pet to retry animations.") : L.T("点我会回应，右键图标栏可以聊天。别一直戳哦～", "Click me for a reaction, or right-click to chat. Easy on the poking!"));
             if (GraphicsRecovery.IsRecoveryLaunch)
-                _tray.ShowBalloon("桌宠已恢复", GraphicsRecovery.CompatibilityMode ? "显示设备连续异常，已暂时使用静态待机；皮肤与动画设置已保留。" : "显示渲染异常后已自动重启，原设置已保留。");
+                _tray.ShowBalloon(L.T("桌宠已恢复", "AI Pet recovered"), GraphicsRecovery.CompatibilityMode ? L.T("显示设备连续异常，已暂时使用静态待机；皮肤与动画设置已保留。", "Repeated display failures: using a static idle image for now. Skin and animation settings have been preserved.") : L.T("显示渲染异常后已自动重启，原设置已保留。", "Restarted automatically after a rendering failure. Your settings have been preserved."));
+            else if (Environment.GetCommandLineArgs().Contains("--settings")) ShowSettings();
             else if (Environment.GetCommandLineArgs().Contains("--chat")) ShowChat();
             else if (Environment.GetCommandLineArgs().Contains("--scenes")) ShowScenes();
             else if (Environment.GetCommandLineArgs().Contains("--live2d")) ShowLive2D(); else ShowDashboard();
@@ -579,7 +605,7 @@ internal sealed class PetApplication : Application
             if (_integration && _monitor != null)
             {
                 await _monitor.RefreshAsync(true);
-                if (!_monitor.Snapshot.Connected) throw new InvalidOperationException(_monitor.Snapshot.Error ?? "Codex未连接");
+                if (!_monitor.Snapshot.Connected) throw new InvalidOperationException(_monitor.Snapshot.Error ?? L.T("Codex未连接", "Codex disconnected"));
                 // Verify both the initial refresh and a later dispatcher-timer
                 // tick while the actual WPF subscribers are attached.
                 int completedRefreshes = 0;
@@ -596,14 +622,14 @@ internal sealed class PetApplication : Application
                     _monitor.Start();
                     var until = DateTimeOffset.UtcNow.AddSeconds(25);
                     while (completedRefreshes < 2 && DateTimeOffset.UtcNow < until) await Task.Delay(200);
-                    if (completedRefreshes < 2) throw new InvalidOperationException("Codex 自动刷新未恢复。");
+                    if (completedRefreshes < 2) throw new InvalidOperationException(L.T("Codex 自动刷新未恢复。", "Codex automatic refresh has not recovered."));
                 }
                 finally { _monitor.Changed -= ObserveRefresh; }
                 ShowDashboard();
                 var selected = _monitor.Snapshot.Tasks.FirstOrDefault(t => t.Id == _monitor.CallerThreadId) ?? _monitor.Snapshot.Tasks.FirstOrDefault();
                 if (_monitor.MessagesEnabled && selected != null) await _monitor.SelectTaskAsync(selected);
                 if (_monitor.ConversationError != null) throw new InvalidOperationException(_monitor.ConversationError);
-                if (_monitor.MessagesEnabled && selected?.Id == _monitor.CallerThreadId && _monitor.Conversation?.Messages.Count == 0) throw new InvalidDataException("当前真实任务的公开消息未载入。");
+                if (_monitor.MessagesEnabled && selected?.Id == _monitor.CallerThreadId && _monitor.Conversation?.Messages.Count == 0) throw new InvalidDataException(L.T("当前真实任务的公开消息未载入。", "Public messages for the current task were not loaded."));
                 codexChecks = new { connected = true, tasks = _monitor.Snapshot.Tasks.Count, buckets = _monitor.Snapshot.Buckets.Count, publicMessages = _monitor.Conversation?.Messages.Count ?? 0, automaticPollingVerified = true, completedRefreshes };
             }
             object? live2DChecks = _live2DTest ? await Live2DIntegrationChecks.RunAsync(_pet, _live2DTestModel) : null;
@@ -622,7 +648,7 @@ internal sealed class PetApplication : Application
                 if (_live2DTestModel != null)
                 {
                     var model = new Live2DModelCatalog().Validate(_live2DTestModel, "integration-deepseek");
-                    if (!await _pet.SelectLive2DAsync(model)) throw new InvalidOperationException("场景测试前无法载入真实 Live2D。");
+                    if (!await _pet.SelectLive2DAsync(model)) throw new InvalidOperationException(L.T("场景测试前无法载入真实 Live2D。", "Could not load the real Live2D model before the scene test."));
                 }
                 movementIntegrationChecks = await DesktopMovementIntegrationChecks.RunAsync(_pet);
                 sceneChecks = await SceneAnimationIntegrationChecks.RunAsync(_pet, _sceneTestManifest);
@@ -685,7 +711,7 @@ internal sealed class PetApplication : Application
         if (_settingsWindow == null)
         {
             _settingsWindow = new AppSettingsWindow(_pet, ShowWardrobe, ShowDashboard, ShowChat, SetLlmBehaviorMode,
-                modelServices: CreateModelSettingsServices());
+                modelServices: CreateModelSettingsServices(), restart: RequestRestart);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
@@ -708,11 +734,11 @@ internal sealed class PetApplication : Application
 
     private DashboardModelServices CreateModelSettingsServices() => DashboardModelServices.Create(_pet,
         load => EnsureChatWindow(showErrors: false)?.SetDashboardModelLoadedAsync(load) ??
-            Task.FromResult("无法打开聊天模型控制器，请检查本地聊天记录是否可用。"),
+            Task.FromResult(L.T("无法打开聊天模型控制器，请检查本地聊天记录是否可用。", "Could not open chat model controls. Check whether local chat history is accessible.")),
         () => _chatWindow?.ModelMemoryOperationText,
         () => _chatWindow?.DashboardModelControlBlockedReason,
         selected => EnsureChatWindow(showErrors: false)?.SelectDashboardModelAsync(selected) ??
-            Task.FromResult("无法打开聊天模型控制器，请检查本地聊天记录是否可用。"));
+            Task.FromResult(L.T("无法打开聊天模型控制器，请检查本地聊天记录是否可用。", "Could not open chat model controls. Check whether local chat history is accessible.")));
 
     private void ShowChat()
     {
@@ -755,7 +781,7 @@ internal sealed class PetApplication : Application
             {
                 store?.Dispose();
                 LifecycleLog.RecordException(LifecycleEvent.ChatStorageFailure, ex);
-                if (showErrors) MessageBox.Show("本地聊天记录暂时无法打开，原记录文件已保留。请检查磁盘空间和文件权限后重试。\n\n" + ChatMemoryStore.DefaultPath,
+                if (showErrors) MessageBox.Show(L.T("本地聊天记录暂时无法打开，原记录文件已保留。请检查磁盘空间和文件权限后重试。\n\n", "Local chat history could not be opened. The original files are preserved. Check disk space and file permissions, then retry.\n\n") + ChatMemoryStore.DefaultPath,
                     AppVersion.ProductLabel, MessageBoxButton.OK, MessageBoxImage.Warning);
                 return null;
             }
@@ -777,6 +803,17 @@ internal sealed class PetApplication : Application
         if (_dashboard.WindowState == WindowState.Minimized) _dashboard.WindowState = WindowState.Normal;
         _dashboard.Activate();
     }
+    private void RequestRestart()
+    {
+        if (RestartRequested || _pet == null || _smoke) return;
+        _pet.SaveNow();
+        // SaveNow logs geometry/save failures; require a successful settings
+        // write before closing, so a failed save leaves the current UI usable.
+        _pet.Settings.Save();
+        RestartRequested = true;
+        RequestExit(LifecycleEvent.RestartRequested);
+    }
+
     private void RequestExit(LifecycleEvent reason)
     {
         LifecycleLog.Record(reason);

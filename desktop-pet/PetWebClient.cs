@@ -93,7 +93,7 @@ internal sealed class PetWebClient : IPetWebClient
             ? new[] { literal }
             : await resolver(normalized, cancellationToken).ConfigureAwait(false);
         if (addresses.Length == 0 || addresses.Any(address => !IsPublicAddress(address)))
-            throw new WebReadException("只允许读取公开互联网网页；本机、内网和保留地址已被阻止。");
+            throw new WebReadException(L.T("只允许读取公开互联网网页；本机、内网和保留地址已被阻止。", "Only public internet pages can be read. Local, private-network, and reserved addresses are blocked."));
         return addresses;
     }
 
@@ -128,13 +128,13 @@ internal sealed class PetWebClient : IPetWebClient
             !Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
             uri.Port is not (80 or 443) || !string.IsNullOrEmpty(uri.UserInfo))
-            throw new WebReadException("请输入不含账号密码的公开 HTTP/HTTPS 网页链接（端口 80 或 443）。");
+            throw new WebReadException(L.T("请输入不含账号密码的公开 HTTP/HTTPS 网页链接（端口 80 或 443）。", "Enter a public HTTP/HTTPS URL without credentials, using port 80 or 443."));
         string host = uri.IdnHost.Trim('[', ']').TrimEnd('.').ToLowerInvariant();
         if (host.Length == 0 || host.Contains('%') ||
             IPAddress.TryParse(host, out var address) && !IsPublicAddress(address) ||
             !IPAddress.TryParse(host, out _) && (!host.Contains('.') ||
                 new[] { ".localhost", ".local", ".internal", ".lan", ".home", ".test", ".invalid", ".onion" }.Any(host.EndsWith)))
-            throw new WebReadException("只允许读取公开互联网网页；本机、内网和保留地址已被阻止。");
+            throw new WebReadException(L.T("只允许读取公开互联网网页；本机、内网和保留地址已被阻止。", "Only public internet pages can be read. Local, private-network, and reserved addresses are blocked."));
         return new UriBuilder(uri) { Fragment = string.Empty }.Uri;
     }
 
@@ -143,7 +143,7 @@ internal sealed class PetWebClient : IPetWebClient
         cancellationToken.ThrowIfCancellationRequested();
         query = query?.Trim() ?? string.Empty;
         if (query.Length == 0 || query.Length > 300 || query.Any(char.IsControl))
-            return Failure("搜索词需要为 1～300 个字符，且不能包含控制字符。");
+            return Failure(L.T("搜索词需要为 1～300 个字符，且不能包含控制字符。", "Search queries must contain 1–300 characters without control characters."));
         try
         {
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -151,17 +151,17 @@ internal sealed class PetWebClient : IPetWebClient
             // DuckDuckGo documents this HTML endpoint for browsers without JavaScript.
             // No unofficial API token, browser profile, CAPTCHA workaround, or page action.
             var page = await ReadPublicAsync(new Uri("https://html.duckduckgo.com/html/?q=" + Uri.EscapeDataString(query)), deadline.Token).ConfigureAwait(false);
-            if (IsChallenge(page.Body)) return Failure("搜索服务要求人机验证，暂时无法自动搜索。可以稍后重试，或发送具体网页链接。");
+            if (IsChallenge(page.Body)) return Failure(L.T("搜索服务要求人机验证，暂时无法自动搜索。可以稍后重试，或发送具体网页链接。", "The search service requires human verification. Retry later or send a specific webpage link."));
             var sources = ParseSearchResults(page.Body);
             if (sources.Count > 0) return new PetWebResult(sources);
             return Failure(page.Body.Contains("no-results", StringComparison.OrdinalIgnoreCase) || page.Body.Contains("No results found", StringComparison.OrdinalIgnoreCase)
-                ? "没有找到可读取的搜索结果，请换一个更具体的搜索词。"
-                : "搜索服务没有返回可识别的结果，可能暂时限制访问或页面格式发生变化。可以发送具体网页链接。");
+                ? L.T("没有找到可读取的搜索结果，请换一个更具体的搜索词。", "No readable search results found. Try a more specific query.")
+                : L.T("搜索服务没有返回可识别的结果，可能暂时限制访问或页面格式发生变化。可以发送具体网页链接。", "The search service returned no recognizable results. Access may be limited or the page format may have changed. Try a specific webpage link."));
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure("联网搜索超时，请检查网络后重试。"); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure(L.T("联网搜索超时，请检查网络后重试。", "Web search timed out. Check the network and retry.")); }
         catch (OperationCanceledException) { throw; }
         catch (WebReadException exception) { return Failure(exception.Message); }
-        catch (Exception exception) when (IsExpectedFailure(exception)) { return Failure("暂时无法连接搜索服务，请检查网络后重试；也可以发送具体网页链接。"); }
+        catch (Exception exception) when (IsExpectedFailure(exception)) { return Failure(L.T("暂时无法连接搜索服务，请检查网络后重试；也可以发送具体网页链接。", "Could not connect to the search service. Check the network and retry, or send a specific webpage link.")); }
     }
 
     public async Task<PetWebResult> FetchAsync(string url, CancellationToken cancellationToken)
@@ -173,16 +173,16 @@ internal sealed class PetWebClient : IPetWebClient
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(25));
             var page = await ReadPublicAsync(uri, deadline.Token).ConfigureAwait(false);
-            if (IsChallenge(page.Body)) return Failure("该网页要求人机验证或登录，无法自动读取。请粘贴需要分析的正文。");
+            if (IsChallenge(page.Body)) return Failure(L.T("该网页要求人机验证或登录，无法自动读取。请粘贴需要分析的正文。", "This webpage requires human verification or login. Paste the text you want to analyze."));
             string title = ExtractTitle(page.Body, page.Uri.Host);
             string text = page.MediaType is "text/plain" or "text/markdown" ? CleanPlainText(page.Body) : ExtractPageText(page.Body);
-            if (text.Length < 30) return Failure("该网页没有足够的可读正文，可能需要登录、运行 JavaScript，或是媒体/下载页面。请粘贴正文。");
+            if (text.Length < 30) return Failure(L.T("该网页没有足够的可读正文，可能需要登录、运行 JavaScript，或是媒体/下载页面。请粘贴正文。", "This webpage has insufficient readable text. It may need login or JavaScript, or be a media/download page. Paste its text instead."));
             return new PetWebResult(new[] { new PetWebSource(title, page.Uri.AbsoluteUri, Limit(text, MaximumPageCharacters)) });
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure("读取网页超时，请稍后重试或粘贴正文。"); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure(L.T("读取网页超时，请稍后重试或粘贴正文。", "Reading the webpage timed out. Retry later or paste its text.")); }
         catch (OperationCanceledException) { throw; }
         catch (WebReadException exception) { return Failure(exception.Message); }
-        catch (Exception exception) when (IsExpectedFailure(exception)) { return Failure("无法读取该网页，可能是网络或网站访问限制。请稍后重试或粘贴正文。"); }
+        catch (Exception exception) when (IsExpectedFailure(exception)) { return Failure(L.T("无法读取该网页，可能是网络或网站访问限制。请稍后重试或粘贴正文。", "Could not read the webpage due to a network or site restriction. Retry later or paste its text.")); }
     }
 
     private async Task<ReadPage> ReadPublicAsync(Uri uri, CancellationToken cancellationToken)
@@ -196,18 +196,18 @@ internal sealed class PetWebClient : IPetWebClient
             if (response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Redirect or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect)
             {
                 if (redirect >= MaximumRedirects || response.Headers.Location is not { } location)
-                    throw new WebReadException("网页重定向次数过多或地址无效，无法读取。");
+                    throw new WebReadException(L.T("网页重定向次数过多或地址无效，无法读取。", "Too many webpage redirects or an invalid address. The page could not be read."));
                 uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
                 continue;
             }
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests or HttpStatusCode.Accepted)
-                throw new WebReadException("网站限制自动访问、要求验证或暂时限流。请稍后重试，或粘贴网页正文。");
-            if (!response.IsSuccessStatusCode) throw new WebReadException("网站返回访问失败（HTTP " + (int)response.StatusCode + "），未读取到正文。");
+                throw new WebReadException(L.T("网站限制自动访问、要求验证或暂时限流。请稍后重试，或粘贴网页正文。", "The website restricts automated access, requires verification, or is rate-limiting requests. Retry later or paste the text."));
+            if (!response.IsSuccessStatusCode) throw new WebReadException(L.T("网站返回访问失败（HTTP ", "The website returned HTTP ") + (int)response.StatusCode + L.T("），未读取到正文。", "; no page text was retrieved."));
             string mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? string.Empty;
             if (mediaType is not ("text/html" or "application/xhtml+xml" or "text/plain" or "text/markdown"))
-                throw new WebReadException("暂时只支持 HTML 和纯文本网页；PDF、图片、视频或下载文件请提供正文。");
+                throw new WebReadException(L.T("暂时只支持 HTML 和纯文本网页；PDF、图片、视频或下载文件请提供正文。", "Only HTML and plain-text webpages are supported. Provide text for PDF, image, video, or downloadable files."));
             if (response.Content.Headers.ContentLength > MaximumBodyBytes)
-                throw new WebReadException("网页超过读取大小限制（1 MB），请提供更精简的页面或粘贴正文。");
+                throw new WebReadException(L.T("网页超过读取大小限制（1 MB），请提供更精简的页面或粘贴正文。", "The webpage exceeds the 1 MB reading limit. Use a smaller page or paste its text."));
             await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var buffer = new MemoryStream();
             byte[] block = new byte[8192];
@@ -215,7 +215,7 @@ internal sealed class PetWebClient : IPetWebClient
             while ((count = await stream.ReadAsync(block.AsMemory(0, Math.Min(block.Length, MaximumBodyBytes + 1 - (int)buffer.Length)), cancellationToken).ConfigureAwait(false)) != 0)
             {
                 buffer.Write(block, 0, count);
-                if (buffer.Length > MaximumBodyBytes) throw new WebReadException("网页超过读取大小限制（1 MB），请提供更精简的页面或粘贴正文。");
+                if (buffer.Length > MaximumBodyBytes) throw new WebReadException(L.T("网页超过读取大小限制（1 MB），请提供更精简的页面或粘贴正文。", "The webpage exceeds the 1 MB reading limit. Use a smaller page or paste its text."));
             }
             Encoding encoding = Encoding.UTF8;
             string? charset = response.Content.Headers.ContentType?.CharSet?.Trim('"', '\'');
@@ -272,9 +272,12 @@ internal sealed class PetWebClient : IPetWebClient
         return result;
     }
 
-    private static bool HasSearchSnippet(string text) => text.Length > 0 &&
-        !new[] { "搜索结果未提供摘要", "No snippet available", "No description available", "No description available for this site" }
-            .Contains(text.TrimEnd('.', '。', '!', '！'), StringComparer.OrdinalIgnoreCase);
+    // These are incoming provider/data sentinels, not UI text. Recognize every
+    // supported form in either interface language before counting evidence.
+    internal static bool HasSearchSnippet(string text) => !string.IsNullOrWhiteSpace(text) &&
+        !new[] { "搜索结果未提供摘要", "No search snippet provided", "The search result did not include a summary",
+            "No snippet available", "No description available", "No description available for this site" }
+            .Contains(text.Trim().TrimEnd('.', '。', '!', '！'), StringComparer.OrdinalIgnoreCase);
 
     private static Uri DecodeSearchTarget(string href)
     {
@@ -287,7 +290,7 @@ internal sealed class PetWebClient : IPetWebClient
         if ((uri.Host.Equals("duckduckgo.com", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("html.duckduckgo.com", StringComparison.OrdinalIgnoreCase)) && uri.AbsolutePath.Equals("/l/", StringComparison.Ordinal))
         {
             string[][] destinations = uri.Query.TrimStart('?').Split('&').Select(part => part.Split('=', 2)).Where(parts => parts.Length == 2 && parts[0] == "uddg").ToArray();
-            if (destinations.Length != 1) throw new WebReadException("无有效链接。");
+            if (destinations.Length != 1) throw new WebReadException(L.T("无有效链接。", "No valid link."));
             href = Uri.UnescapeDataString(destinations[0][1]);
         }
         return ParsePublicUri(href);

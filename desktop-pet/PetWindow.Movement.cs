@@ -57,32 +57,32 @@ internal sealed partial class PetWindow
     public void JumpToWindow(int direction)
     {
         InvalidateLlmBehavior();
-        if (PhysicalBehaviorBusy || _manualScene) { Say("等我落稳或播放结束后，再试跳跃。"); return; }
-        if (DisplayRenderingPaused) { Say("显示恢复后可继续桌面移动。"); return; }
+        if (PhysicalBehaviorBusy || _manualScene) { Say(L.T("等我落稳或播放结束后，再试跳跃。", "Wait until I land or finish performing, then try jumping.")); return; }
+        if (DisplayRenderingPaused) { Say(L.T("显示恢复后可继续桌面移动。", "Desktop movement will resume when the display recovers.")); return; }
         if (!Settings.MovementEnabled)
         {
             SetMovement(true);
-            Say("已开启桌面移动。等我落稳后，再点击跳到附近窗口。");
+            Say(L.T("已开启桌面移动。等我落稳后，再点击跳到附近窗口。", "Desktop movement enabled. Wait until I land, then click Jump to a nearby window."));
             return;
         }
-        if (!_motionPreferences().AllowsAnimation) { Say("请先允许系统显示动态效果。"); return; }
+        if (!_motionPreferences().AllowsAnimation) { Say(L.T("请先允许系统显示动态效果。", "Enable animation effects in Windows first.")); return; }
         // A menu command runs before ContextMenu.Closed. Release its temporary pause here.
         _movement?.SetPaused(!IsVisible);
         bool jumped = _movement?.TryJumpToWindow(direction) == true;
-        if (!jumped) Say("附近没有可落脚且能跳到的窗口顶边。可先把我拖近窗口。");
+        if (!jumped) Say(L.T("附近没有可落脚且能跳到的窗口顶边。可先把我拖近窗口。", "No reachable window top nearby. Try dragging me closer to a window."));
     }
 
     public void ClimbNearbyWindow(int direction)
     {
         InvalidateLlmBehavior();
-        if (!UsesBuiltInScenes) { Say("请先选择带有攀爬动作的内置角色动画。"); return; }
+        if (!UsesBuiltInScenes) { Say(L.T("请先选择带有攀爬动作的内置角色动画。", "Select a built-in character animation set with climbing support first.")); return; }
         if (DisplayRenderingPaused || !IsVisible) return;
-        if (!Settings.MovementEnabled) { SetMovement(true); Say("已开启桌面移动。把我放在窗口侧边附近，落稳后再试攀爬。"); return; }
-        if (!_motionPreferences().AllowsAnimation) { Say("请先允许系统显示动态效果。"); return; }
-        if (PhysicalBehaviorBusy || _manualScene) { Say("等我落稳或播放结束后，再试攀爬。"); return; }
+        if (!Settings.MovementEnabled) { SetMovement(true); Say(L.T("已开启桌面移动。把我放在窗口侧边附近，落稳后再试攀爬。", "Desktop movement enabled. Put me near a window edge, let me land, then try climbing.")); return; }
+        if (!_motionPreferences().AllowsAnimation) { Say(L.T("请先允许系统显示动态效果。", "Enable animation effects in Windows first.")); return; }
+        if (PhysicalBehaviorBusy || _manualScene) { Say(L.T("等我落稳或播放结束后，再试攀爬。", "Wait until I land or finish performing, then try climbing.")); return; }
         _movement?.SetPaused(false);
         if (_movement?.TryClimbToWindow(direction) != true)
-            Say("这一侧没有足够近且未被遮挡的窗沿。请把我拖到窗口侧边附近，落稳后再试。");
+            Say(L.T("这一侧没有足够近且未被遮挡的窗沿。请把我拖到窗口侧边附近，落稳后再试。", "No nearby unobstructed window edge on this side. Drag me closer to a window edge, let me land, then retry."));
     }
 
     private void SyncMovementSceneFrame()

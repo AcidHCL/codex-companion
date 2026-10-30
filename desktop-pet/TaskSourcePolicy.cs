@@ -72,8 +72,8 @@ internal static class TaskSourcePolicy
     };
 
     internal static string SourceLabel(CodexTaskInfo task) =>
-        (task.Source switch { TaskSource.Codex => "Codex", TaskSource.Dot => "Dot", _ => "来源待确认" }) +
-        (task.SourceIsManual ? " · 手动" : "");
+        (task.Source switch { TaskSource.Codex => "Codex", TaskSource.Dot => "Dot", _ => L.T("来源待确认", "Source unconfirmed") }) +
+        (task.SourceIsManual ? L.T(" · 手动", " · Manual") : "");
 
     internal static CodexSnapshot Project(CodexSnapshot snapshot, TaskSource source) =>
         snapshot with { Tasks = snapshot.Tasks.Where(task => task.Source == source).ToArray() };

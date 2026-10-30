@@ -35,7 +35,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
                 Path.Combine(directory.FullName, "asr-service", "transcribe.py") })
                 if (File.Exists(script)) return (python, script);
         }
-        throw new InvalidOperationException("本地语音识别尚未安装，请按 asr-service 中的说明安装。");
+        throw new InvalidOperationException(L.T("本地语音识别尚未安装，请按 asr-service 中的说明安装。", "Local speech recognition is not installed. Follow the instructions in asr-service."));
     }
 
     public async Task<string> TranscribeAsync(byte[] wave, CancellationToken cancellationToken)
@@ -59,6 +59,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
             };
             start.ArgumentList.Add("-u"); start.ArgumentList.Add(runtime.Script);
             start.ArgumentList.Add("--parent-pid"); start.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            start.ArgumentList.Add("--ui-language"); start.ArgumentList.Add(L.Language);
             start.Environment["PYTHONUTF8"] = "1";
             start.Environment["HF_HUB_OFFLINE"] = "1";
             start.Environment["HF_HUB_DISABLE_TELEMETRY"] = "1";
@@ -69,7 +70,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 token.ThrowIfCancellationRequested();
-                if (!process.Start()) throw new InvalidOperationException("本地语音识别进程未能启动。");
+                if (!process.Start()) throw new InvalidOperationException(L.T("本地语音识别进程未能启动。", "The local speech recognition process could not start."));
                 _active = process;
             }
             using var cancel = token.Register(() => Kill(process));
@@ -95,7 +96,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
             }
         }
         catch (Exception) when (operation.IsCancellationRequested && !cancellationToken.IsCancellationRequested && !_lifetime.IsCancellationRequested)
-        { throw new InvalidOperationException("语音识别超时，请缩短录音后重试。"); }
+        { throw new InvalidOperationException(L.T("语音识别超时，请缩短录音后重试。", "Speech recognition timed out. Try a shorter recording.")); }
         catch (Exception) when (cancellationToken.IsCancellationRequested || _lifetime.IsCancellationRequested)
         { throw new OperationCanceledException(cancellationToken); }
         finally
@@ -113,7 +114,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
     internal static void ValidateWave(byte[] bytes)
     {
         if (bytes.Length < 44 || bytes.Length > MaximumWaveBytes || Encoding.ASCII.GetString(bytes, 0, 4) != "RIFF" || Encoding.ASCII.GetString(bytes, 8, 4) != "WAVE")
-            throw new InvalidOperationException("录音数据无效或超过 60 秒。");
+            throw new InvalidOperationException(L.T("录音数据无效或超过 60 秒。", "The recording is invalid or longer than 60 seconds."));
     }
 
     internal static string ParseResult(string output)
@@ -122,12 +123,12 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
         {
             using var json = JsonDocument.Parse(output);
             if (!json.RootElement.TryGetProperty("text", out var field) || field.ValueKind != JsonValueKind.String)
-                throw new InvalidOperationException("语音识别未返回有效文字。");
+                throw new InvalidOperationException(L.T("语音识别未返回有效文字。", "Speech recognition did not return valid text."));
             string text = field.GetString()!.Trim();
-            if (text.Length > 12000 || text.Contains('\0')) throw new InvalidOperationException("语音识别结果无效或过长。");
+            if (text.Length > 12000 || text.Contains('\0')) throw new InvalidOperationException(L.T("语音识别结果无效或过长。", "The transcription is invalid or too long."));
             return text;
         }
-        catch (JsonException) { throw new InvalidOperationException("语音识别返回的数据无效，请重试。"); }
+        catch (JsonException) { throw new InvalidOperationException(L.T("语音识别返回的数据无效，请重试。", "Speech recognition returned invalid data. Please try again.")); }
     }
 
     private static string SafeError(string error)
@@ -143,10 +144,10 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
         catch (JsonException) { }
         return code switch
         {
-            "model_missing" => "本地语音识别模型缺失，请按 asr-service 中的说明安装。",
-            "invalid_audio" or "invalid_wav" or "audio_too_long" => "录音格式无效或超过 60 秒，请重新录音。",
-            "dependency_missing" => "语音识别环境不完整，请运行本地识别安装脚本。",
-            _ => "本地语音识别失败，请稍后重试；原有输入已保留。"
+            "model_missing" => L.T("本地语音识别模型缺失，请按 asr-service 中的说明安装。", "The local speech recognition model is missing. Follow the instructions in asr-service."),
+            "invalid_audio" or "invalid_wav" or "audio_too_long" => L.T("录音格式无效或超过 60 秒，请重新录音。", "The recording format is invalid or exceeds 60 seconds. Record again."),
+            "dependency_missing" => L.T("语音识别环境不完整，请运行本地识别安装脚本。", "The speech recognition environment is incomplete. Run its local setup script."),
+            _ => L.T("本地语音识别失败，请稍后重试；原有输入已保留。", "Local speech recognition failed. Try again shortly; your existing input has been kept.")
         };
     }
 
@@ -155,7 +156,7 @@ internal sealed class PetSpeechRecognizer : IPetSpeechRecognizer
         var value = new StringBuilder(); var buffer = new char[2048]; int read;
         while ((read = await reader.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false)) > 0)
         {
-            if (value.Length + read > 32768) throw new InvalidOperationException("语音识别进程输出超过允许大小。");
+            if (value.Length + read > 32768) throw new InvalidOperationException(L.T("语音识别进程输出超过允许大小。", "The speech recognition process exceeded the output size limit."));
             value.Append(buffer, 0, read);
         }
         return value.ToString();

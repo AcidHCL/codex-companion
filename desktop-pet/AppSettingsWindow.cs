@@ -20,10 +20,10 @@ internal sealed class AppSettingsWindow : Window
 
     internal AppSettingsWindow(PetWindow pet, Action? openSkins = null, Action? openDashboard = null,
         Action? openChat = null, Action<bool>? setLlmBehavior = null,
-        DashboardModelServices? modelServices = null, IPetVoiceStudio? voiceStudio = null)
+        DashboardModelServices? modelServices = null, IPetVoiceStudio? voiceStudio = null, Action? restart = null)
     {
         _pet = pet;
-        Title = AppVersion.WindowTitle("设置");
+        Title = AppVersion.WindowTitle(L.T("设置", "Settings"));
         Width = 1220; Height = 860; MinWidth = 1060; MinHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = Ui.Brush("#F4F6F0");
@@ -37,12 +37,12 @@ internal sealed class AppSettingsWindow : Window
         navigation.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var brand = new StackPanel { Margin = new Thickness(24, 28, 18, 0) };
         brand.Children.Add(Ui.Text("AI PET", 23, "#214332", true));
-        var subtitle = Ui.Text("偏好与模型", 12, "#71826D"); subtitle.Margin = new Thickness(0, 8, 0, 0);
+        var subtitle = Ui.Text(L.T("偏好与模型", "Preferences & models"), 12, "#71826D"); subtitle.Margin = new Thickness(0, 8, 0, 0);
         brand.Children.Add(subtitle); navigation.Children.Add(brand);
         var choices = new StackPanel { Margin = new Thickness(14, 30, 14, 0) };
         Grid.SetRow(choices, 1);
-        _generalNav = Navigation("桌宠与互动", "SettingsNavGeneral", () => SelectPage(false));
-        _modelNav = Navigation("模型与语音", "SettingsNavModels", () => SelectPage(true));
+        _generalNav = Navigation(L.T("桌宠与互动", "Pet & interaction"), "SettingsNavGeneral", () => SelectPage(false));
+        _modelNav = Navigation(L.T("模型与语音", "Models & speech"), "SettingsNavModels", () => SelectPage(true));
         choices.Children.Add(_generalNav); choices.Children.Add(_modelNav); navigation.Children.Add(choices);
         var footer = new StackPanel { Margin = new Thickness(24, 18, 18, 24) };
         _currentRole = Ui.Text("", 12, "#597D61", true); _currentRole.Name = "SettingsCurrentRole";
@@ -56,13 +56,13 @@ internal sealed class AppSettingsWindow : Window
         main.RowDefinitions.Add(new RowDefinition());
         var header = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 22) };
         var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
-        AddLink(actions, "角色换装", "SettingsOpenSkins", openSkins);
-        AddLink(actions, "工作看板", "SettingsOpenDashboard", openDashboard);
-        AddLink(actions, "聊天", "SettingsOpenChat", openChat);
+        AddLink(actions, L.T("角色换装", "Character wardrobe"), "SettingsOpenSkins", openSkins);
+        AddLink(actions, L.T("工作看板", "Work dashboard"), "SettingsOpenDashboard", openDashboard);
+        AddLink(actions, L.T("聊天", "Chat"), "SettingsOpenChat", openChat);
         DockPanel.SetDock(actions, Dock.Right); header.Children.Add(actions);
-        header.Children.Add(Ui.Text("设置", 28, "#203E2C", true)); main.Children.Add(header);
+        header.Children.Add(Ui.Text(L.T("设置", "Settings"), 28, "#203E2C", true)); main.Children.Add(header);
         var pages = new Grid { Name = "SettingsPages" }; Grid.SetRow(pages, 1);
-        _general = new GeneralSettingsView(pet, setLlmBehavior);
+        _general = new GeneralSettingsView(pet, setLlmBehavior, restart);
         _models = new ModelSettingsView(pet.Settings, pet, modelServices, voiceStudio) { Visibility = Visibility.Collapsed };
         pages.Children.Add(_general); pages.Children.Add(_models); main.Children.Add(pages);
         root.Children.Add(main); Content = root;
@@ -104,10 +104,10 @@ internal sealed class AppSettingsWindow : Window
         button.BorderBrush = selected ? Ui.Brush("#B3CBA9") : Brushes.Transparent;
         button.Foreground = Ui.Brush(selected ? "#244A34" : "#71826D");
         button.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Normal;
-        AutomationProperties.SetItemStatus(button, selected ? "当前页面" : "");
+        AutomationProperties.SetItemStatus(button, selected ? L.T("当前页面", "Current page") : "");
     }
 
-    private void RefreshRole() => _currentRole.Text = "当前角色\n" + _pet.CurrentDisplayName;
+    private void RefreshRole() => _currentRole.Text = L.T("当前角色\n", "Current character\n") + _pet.CurrentDisplayName;
     internal void ModelSelectionChanged() => _models.ModelSelectionChanged();
 
     internal void SavePreview(string path)

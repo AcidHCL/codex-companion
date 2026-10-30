@@ -42,7 +42,7 @@ internal interface IChatMemoryStore : IDisposable
 
 internal sealed class ChatMemoryStoreException : Exception
 {
-    public ChatMemoryStoreException(Exception inner) : base("本地对话数据库暂时无法读取或保存；原文件已保留，请勿删除数据库。", inner) { }
+    public ChatMemoryStoreException(Exception inner) : base(L.T("本地对话数据库暂时无法读取或保存；原文件已保留，请勿删除数据库。", "The local chat database could not be read or saved. Original files are preserved; do not delete the database."), inner) { }
 }
 
 // One small SQLite transaction commits each complete turn. Sensitive values are DPAPI
@@ -57,7 +57,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     public const int MaximumMemoryTitleCharacters = 80;
     public const int MaximumMemoryContentCharacters = 1000;
     public const int MaximumMemories = 2000;
-    private const string NewTitle = "新对话";
+    private static string NewTitle => L.T("新对话", "New conversation");
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly object gate = new();
     private readonly SqliteConnection connection;
@@ -68,7 +68,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     // Tests and transient windows must opt in explicitly before accessing user data.
     public ChatMemoryStore(string databasePath = ":memory:")
     {
-        if (string.IsNullOrWhiteSpace(databasePath)) throw new ArgumentException("数据库路径不能为空。", nameof(databasePath));
+        if (string.IsNullOrWhiteSpace(databasePath)) throw new ArgumentException(L.T("数据库路径不能为空。", "The database path cannot be empty."), nameof(databasePath));
         DatabasePath = databasePath == ":memory:" ? databasePath : Path.GetFullPath(databasePath);
         connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -211,7 +211,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         return Locked(() =>
         {
             using var transaction = connection.BeginTransaction();
-            if (Scalar(transaction, "SELECT id FROM conversations WHERE id=$id;", ("$id", id)) is null) throw new InvalidOperationException("对话已不存在，请重新选择对话。");
+            if (Scalar(transaction, "SELECT id FROM conversations WHERE id=$id;", ("$id", id)) is null) throw new InvalidOperationException(L.T("对话已不存在，请重新选择对话。", "This conversation no longer exists. Select another conversation."));
             long sequence = Convert.ToInt64(Scalar(transaction, "SELECT COALESCE(MAX(sequence),0)+1 FROM turns WHERE conversation_id=$id;", ("$id", id)), CultureInfo.InvariantCulture);
             var now = DateTimeOffset.UtcNow;
             // Full page text was transient retrieval evidence, not permanent conversation memory.
@@ -227,7 +227,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     public IReadOnlyList<ChatStoredTurn> ReadTurns(string id, int limit = 50, long? beforeSequence = null)
     {
         id = ValidId(id);
-        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit), "每页须为 1–100 轮。");
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit), L.T("每页须为 1–100 轮。", "Each page must contain 1–100 turns."));
         if (beforeSequence is <= 0) throw new ArgumentOutOfRangeException(nameof(beforeSequence));
         return Locked(() =>
         {
@@ -261,7 +261,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
             using (var command = Command(transaction, "SELECT endpoint,persona_key FROM conversations WHERE id=$id;", ("$id", id)))
             using (var reader = command.ExecuteReader())
             {
-                if (!reader.Read()) throw new InvalidOperationException("对话已不存在，请重新选择对话。");
+                if (!reader.Read()) throw new InvalidOperationException(L.T("对话已不存在，请重新选择对话。", "This conversation no longer exists. Select another conversation."));
                 endpoint = reader.GetString(0); persona = reader.GetString(1);
             }
             SetActive(transaction, id, endpoint, persona); transaction.Commit(); return true;
@@ -300,9 +300,9 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         {
             using var transaction = connection.BeginTransaction();
             string? existingEndpoint = Scalar(transaction, "SELECT endpoint FROM shared_memories WHERE id=$id;", ("$id", id)) as string;
-            if (existingEndpoint != null && existingEndpoint != endpoint) throw new InvalidOperationException("记忆不能移动到另一台服务器；请在目标服务器下另建记忆。");
+            if (existingEndpoint != null && existingEndpoint != endpoint) throw new InvalidOperationException(L.T("记忆不能移动到另一台服务器；请在目标服务器下另建记忆。", "Memories cannot be moved to another server. Create a new memory on the destination server."));
             if (existingEndpoint == null && Convert.ToInt64(Scalar(transaction, "SELECT COUNT(*) FROM shared_memories WHERE endpoint=$endpoint;", ("$endpoint", endpoint)), CultureInfo.InvariantCulture) >= MaximumMemories)
-                throw new InvalidOperationException("此服务器的记忆已达到 2000 条，请先整理或删除旧记忆。");
+                throw new InvalidOperationException(L.T("此服务器的记忆已达到 2000 条，请先整理或删除旧记忆。", "This server has reached 2,000 memories. Organize or delete old memories first."));
             var now = DateTimeOffset.UtcNow;
             Execute(transaction, "INSERT INTO shared_memories(id,endpoint,payload,pinned,updated_utc) VALUES($id,$endpoint,$payload,$pinned,$now) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,pinned=excluded.pinned,updated_utc=excluded.updated_utc;",
                 ("$id", id), ("$endpoint", endpoint), ("$payload", Encode(new MemoryPayload(title, content))), ("$pinned", memory.Pinned), ("$now", Stamp(now)));
@@ -348,25 +348,25 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     private static string ScopeEndpoint(string endpoint) => OllamaEndpoint.Parse(endpoint).AbsoluteUri.TrimEnd('/');
     private static string Stamp(DateTimeOffset time) => time.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     private static DateTimeOffset Date(string value) => DateTimeOffset.ParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.None);
-    private static void RequireChanged(int rows) { if (rows != 1) throw new InvalidOperationException("对话已不存在，请重新选择对话。"); }
-    private static string ValidId(string value) => Guid.TryParseExact(value, "N", out var id) ? id.ToString("N") : throw new ArgumentException("无效的对话或记忆标识。", nameof(value));
-    private static string ValidModel(string value) => OllamaModels.IsSupported(value) ? value : throw new ArgumentException("无效的模型名称。", nameof(value));
+    private static void RequireChanged(int rows) { if (rows != 1) throw new InvalidOperationException(L.T("对话已不存在，请重新选择对话。", "This conversation no longer exists. Select another conversation.")); }
+    private static string ValidId(string value) => Guid.TryParseExact(value, "N", out var id) ? id.ToString("N") : throw new ArgumentException(L.T("无效的对话或记忆标识。", "Invalid conversation or memory ID."), nameof(value));
+    private static string ValidModel(string value) => OllamaModels.IsSupported(value) ? value : throw new ArgumentException(L.T("无效的模型名称。", "Invalid model name."), nameof(value));
     private static string ValidText(string? value, int maximum, bool allowEmpty, string parameter)
     {
-        if (value == null || value.Length > maximum || (!allowEmpty && string.IsNullOrWhiteSpace(value)) || value.Contains('\0')) throw new ArgumentException("内容为空、过长或含无效字符。", parameter);
+        if (value == null || value.Length > maximum || (!allowEmpty && string.IsNullOrWhiteSpace(value)) || value.Contains('\0')) throw new ArgumentException(L.T("内容为空、过长或含无效字符。", "Content is empty, too long, or contains invalid characters."), parameter);
         return value;
     }
     private static string DeriveTitle(string user)
     {
         string title = string.Join(" ", user.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        if (title.Length == 0) title = "图片对话";
+        if (title.Length == 0) title = L.T("图片对话", "Image conversation");
         if (title.Length > 80) title = title[..79] + "…";
         return title;
     }
     private static void ValidateImages(IReadOnlyList<ChatStoredImage> images)
     {
         ArgumentNullException.ThrowIfNull(images);
-        if (images.Count > 2) throw new ArgumentException("每轮最多保存两张图片。", nameof(images));
+        if (images.Count > 2) throw new ArgumentException(L.T("每轮最多保存两张图片。", "Each turn can store at most two images."), nameof(images));
         foreach (var image in images)
         {
             ArgumentNullException.ThrowIfNull(image);
@@ -374,22 +374,22 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
             ValidText(image.Base64, MaximumImageCharacters, false, nameof(image.Base64));
             // Validation without allocating another decoded copy of the image.
             if (image.Base64.Length % 4 != 0 || image.Base64.Any(c => !(c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '+' or '/' or '=')))
-                throw new ArgumentException("图片编码无效。", nameof(images));
+                throw new ArgumentException(L.T("图片编码无效。", "Invalid image encoding."), nameof(images));
             int padding = image.Base64.EndsWith("==", StringComparison.Ordinal) ? 2 : image.Base64.EndsWith('=') ? 1 : 0;
-            if (image.Base64[..(image.Base64.Length - padding)].Contains('=')) throw new ArgumentException("图片编码无效。", nameof(images));
+            if (image.Base64[..(image.Base64.Length - padding)].Contains('=')) throw new ArgumentException(L.T("图片编码无效。", "Invalid image encoding."), nameof(images));
         }
     }
     private static void ValidateTurn(ChatStoredTurn turn)
     {
         ValidText(turn.User, 12000, true, nameof(turn.User)); ValidText(turn.Assistant, 512 * 1024, false, nameof(turn.Assistant)); ValidModel(turn.Model);
         ValidateImages(turn.Images);
-        if (string.IsNullOrWhiteSpace(turn.User) && turn.Images.Count == 0) throw new ArgumentException("对话问题不能为空。", nameof(turn));
+        if (string.IsNullOrWhiteSpace(turn.User) && turn.Images.Count == 0) throw new ArgumentException(L.T("对话问题不能为空。", "A conversation question cannot be empty."), nameof(turn));
         ArgumentNullException.ThrowIfNull(turn.Sources);
-        if (turn.Sources.Count > 20) throw new ArgumentException("引用来源数量过多。", nameof(turn));
+        if (turn.Sources.Count > 20) throw new ArgumentException(L.T("引用来源数量过多。", "Too many sources."), nameof(turn));
         foreach (var source in turn.Sources)
         {
             ArgumentNullException.ThrowIfNull(source); ValidText(source.Title, 2000, true, nameof(source.Title)); ValidText(source.Url, 8000, false, nameof(source.Url));
-            if (!Uri.TryCreate(source.Url, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https") || !string.IsNullOrEmpty(uri.UserInfo)) throw new ArgumentException("引用来源必须为网页链接。", nameof(turn));
+            if (!Uri.TryCreate(source.Url, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https") || !string.IsNullOrEmpty(uri.UserInfo)) throw new ArgumentException(L.T("引用来源必须为网页链接。", "Sources must use webpage URLs."), nameof(turn));
         }
         if (turn.WebWarning != null) ValidText(turn.WebWarning, 8000, true, nameof(turn.WebWarning));
     }
@@ -399,7 +399,7 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         byte[] clear = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
         try
         {
-            if (clear.Length > MaximumPayloadBytes) throw new ArgumentException("对话附件过大，无法保存。");
+            if (clear.Length > MaximumPayloadBytes) throw new ArgumentException(L.T("对话附件过大，无法保存。", "The conversation attachment is too large to save."));
             return ChatDataProtection.Transform(clear, true, MaximumPayloadBytes + 4096);
         }
         finally { CryptographicOperations.ZeroMemory(clear); }

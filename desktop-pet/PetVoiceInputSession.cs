@@ -22,7 +22,7 @@ internal sealed class PetVoiceInputSession : IDisposable
     public event Action? Changed;
     public event Action<string>? Transcribed;
     public PetVoiceInputState State { get; private set; }
-    public string StatusText { get; private set; } = "点击麦克风录音，转成文字后确认发送";
+    public string StatusText { get; private set; } = L.T("点击麦克风录音，转成文字后确认发送", "Click the microphone to record, then review the transcript before sending.");
     public double ElapsedSeconds => Math.Min(60, _clock.Elapsed.TotalSeconds);
 
     public PetVoiceInputSession(Dispatcher dispatcher, IPetMicrophoneRecorder? recorder = null, IPetSpeechRecognizer? recognizer = null)
@@ -46,7 +46,7 @@ internal sealed class PetVoiceInputSession : IDisposable
         try
         {
             // Notify the host to mute its own voice before opening the microphone.
-            SetState(PetVoiceInputState.Recording, "正在录音 0 秒 · 再点麦克风结束 · Esc 取消");
+            SetState(PetVoiceInputState.Recording, L.T("正在录音 0 秒 · 再点麦克风结束 · Esc 取消", "Recording: 0 seconds · Click again to finish · Esc to cancel"));
             if (_disposed || epoch != _epoch) return;
             _limitHandler = () => _dispatcher.BeginInvoke(new Action(() =>
             { if (!_disposed && epoch == _epoch && State == PetVoiceInputState.Recording) _ = StopAsync(); }));
@@ -65,7 +65,7 @@ internal sealed class PetVoiceInputSession : IDisposable
     {
         if (_disposed || State != PetVoiceInputState.Recording) return;
         if (!_recorder.IsRecording || ElapsedSeconds >= 60) { _ = StopAsync(); return; }
-        StatusText = $"正在录音 {ElapsedSeconds:0} 秒 / 60 秒 · 再点结束 · Esc 取消";
+        StatusText = L.T($"正在录音 {ElapsedSeconds:0} 秒 / 60 秒 · 再点结束 · Esc 取消", $"Recording: {ElapsedSeconds:0} / 60 seconds · Click to finish · Esc to cancel");
         Changed?.Invoke();
     }
 
@@ -79,21 +79,21 @@ internal sealed class PetVoiceInputSession : IDisposable
         _operation = operation;
         try
         {
-            SetState(PetVoiceInputState.Transcribing, "正在本地识别… · 再点麦克风或按 Esc 取消");
+            SetState(PetVoiceInputState.Transcribing, L.T("正在本地识别… · 再点麦克风或按 Esc 取消", "Transcribing locally… · Click the microphone or press Esc to cancel"));
             if (_disposed || epoch != _epoch) return;
             byte[] wave = _recorder.Stop();
             PetSpeechRecognizer.ValidateWave(wave);
-            if (wave.Length < 8_044) { SetState(PetVoiceInputState.Idle, "录音太短，请说完一句话后再结束。"); return; }
+            if (wave.Length < 8_044) { SetState(PetVoiceInputState.Idle, L.T("录音太短，请说完一句话后再结束。", "The recording is too short. Finish a sentence before stopping.")); return; }
             string text = await _recognizer.TranscribeAsync(wave, operation.Token);
             if (_disposed || epoch != _epoch || operation.IsCancellationRequested) return;
-            if (string.IsNullOrWhiteSpace(text)) SetState(PetVoiceInputState.Idle, "没有识别到清晰语音，请靠近麦克风重试。");
+            if (string.IsNullOrWhiteSpace(text)) SetState(PetVoiceInputState.Idle, L.T("没有识别到清晰语音，请靠近麦克风重试。", "No clear speech was detected. Move closer to the microphone and try again."));
             else
             {
                 Transcribed?.Invoke(text);
-                if (!_disposed && epoch == _epoch) SetState(PetVoiceInputState.Idle, "转写已填入输入框，可编辑后发送。");
+                if (!_disposed && epoch == _epoch) SetState(PetVoiceInputState.Idle, L.T("转写已填入输入框，可编辑后发送。", "The transcript is in the input box. Review or edit it before sending."));
             }
         }
-        catch (OperationCanceledException) { if (!_disposed && epoch == _epoch) SetState(PetVoiceInputState.Idle, "已取消语音输入。"); }
+        catch (OperationCanceledException) { if (!_disposed && epoch == _epoch) SetState(PetVoiceInputState.Idle, L.T("已取消语音输入。", "Voice input canceled.")); }
         catch (Exception ex)
         {
             DiscardRecording();
@@ -109,7 +109,7 @@ internal sealed class PetVoiceInputSession : IDisposable
         _epoch++; _timer.Stop(); _clock.Stop(); DetachLimit();
         _operation?.Cancel();
         _recorder.Cancel();
-        SetState(PetVoiceInputState.Idle, "已取消语音输入，原有文字已保留。");
+        SetState(PetVoiceInputState.Idle, L.T("已取消语音输入，原有文字已保留。", "Voice input canceled. Your existing text has been kept."));
     }
 
     private void DetachLimit()
@@ -118,7 +118,7 @@ internal sealed class PetVoiceInputSession : IDisposable
     private void DiscardRecording()
     { try { _recorder.Cancel(); } catch (Exception) { /* Preserve the original device error and keep the UI usable. */ } }
 
-    private static string ErrorText(Exception ex) => ex is InvalidOperationException ? ex.Message : "语音输入暂不可用，请检查麦克风及本地识别环境。";
+    private static string ErrorText(Exception ex) => ex is InvalidOperationException ? ex.Message : L.T("语音输入暂不可用，请检查麦克风及本地识别环境。", "Voice input is unavailable. Check the microphone and local recognition setup.");
 
     public void Dispose()
     {

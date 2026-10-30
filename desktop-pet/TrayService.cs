@@ -25,19 +25,19 @@ internal sealed class TrayService : IDisposable
         menu.Closed += (_, _) => MenuOpenChanged?.Invoke(false);
         menu.Items.Add(new ToolStripLabel(AppVersion.ProductLabel) { Name = "AppVersionLabel", ForeColor = Color.DimGray });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("和桌宠聊天…", null, (_, _) => ChatRequested?.Invoke());
-        menu.Items.Add("Codex 工作看板…", null, (_, _) => DashboardRequested?.Invoke());
-        menu.Items.Add("显示桌宠", null, (_, _) => ShowRequested?.Invoke());
-        menu.Items.Add("隐藏桌宠", null, (_, _) => HideRequested?.Invoke());
+        menu.Items.Add(L.T("和桌宠聊天…", "Chat with your pet…"), null, (_, _) => ChatRequested?.Invoke());
+        menu.Items.Add(L.T("Codex 工作看板…", "Codex work dashboard…"), null, (_, _) => DashboardRequested?.Invoke());
+        menu.Items.Add(L.T("显示桌宠", "Show pet"), null, (_, _) => ShowRequested?.Invoke());
+        menu.Items.Add(L.T("隐藏桌宠", "Hide pet"), null, (_, _) => HideRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("设置…", null, (_, _) => SettingsRequested?.Invoke());
-        menu.Items.Add("角色换装…", null, (_, _) => SkinsRequested?.Invoke());
+        menu.Items.Add(L.T("设置…", "Settings…"), null, (_, _) => SettingsRequested?.Invoke());
+        menu.Items.Add(L.T("角色换装…", "Character wardrobe…"), null, (_, _) => SkinsRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("退出桌宠", null, (_, _) => ExitRequested?.Invoke());
+        menu.Items.Add(L.T("退出桌宠", "Quit AI Pet"), null, (_, _) => ExitRequested?.Invoke());
         icon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
-            Text = AppVersion.ProductLabel + " · 桌宠",
+            Text = AppVersion.ProductLabel + L.T(" · 桌宠", " · Desktop pet"),
             ContextMenuStrip = menu,
             Visible = true
         };

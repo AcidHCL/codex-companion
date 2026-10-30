@@ -54,18 +54,18 @@ internal sealed class Live2DModelCatalog
             {
                 string id = Path.GetFileName(directory);
                 if (!IsImportedId(id)) continue; // Never treat staging/unrelated directories as models.
-                if (++count > 2048) { errors.Add("模型目录数量超过上限，请减少已导入模型后重试。"); break; }
+                if (++count > 2048) { errors.Add(L.T("模型目录数量超过上限，请减少已导入模型后重试。", "Too many model directories. Remove some imported models and retry.")); break; }
                 try
                 {
                     CheckNoReparsePoints(directory);
                     using var stream = OpenChecked(Path.Combine(directory, MetadataName));
-                    using var metadata = ParseJson(stream, 16 * 1024, "导入记录");
+                    using var metadata = ParseJson(stream, 16 * 1024, L.T("导入记录", "Import record"));
                     var data = metadata.RootElement;
                     if (!data.TryGetProperty("schemaVersion", out var version) || version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int number) || number != 1 ||
                         ReadString(data, "id") != id)
-                        throw Invalid("模型导入记录格式不兼容。");
+                        throw Invalid(L.T("模型导入记录格式不兼容。", "The model import record format is incompatible."));
                     string modelFile = NormalizeReference(ReadString(data, "modelFile") ?? "", ".model3.json");
-                    if (modelFile.Contains('/')) throw Invalid("模型入口必须位于导入目录根部。");
+                    if (modelFile.Contains('/')) throw Invalid(L.T("模型入口必须位于导入目录根部。", "The model entry must be at the root of the imported directory."));
                     models.Add(Validate(Path.Combine(directory, modelFile), id, ReadString(data, "name")));
                 }
                 catch (Exception ex) when (IsDisplayableFailure(ex))
@@ -95,7 +95,7 @@ internal sealed class Live2DModelCatalog
     {
         var checkedModel = Validate(model.ModelPath, model.Id, model.Name);
         if (!string.Equals(checkedModel.RootDirectory, LocalFullPath(model.RootDirectory), StringComparison.OrdinalIgnoreCase))
-            throw Invalid("模型根目录与入口文件不一致。");
+            throw Invalid(L.T("模型根目录与入口文件不一致。", "The model root directory does not match its entry file."));
         return checkedModel.Files;
     }
 
@@ -116,7 +116,7 @@ internal sealed class Live2DModelCatalog
             string destination = ChildPath(RootDirectory, id);
             EnsureDirectory(RootDirectory);
             staging = ChildPath(RootDirectory, ".import-" + Guid.NewGuid().ToString("N"));
-            if (Directory.Exists(staging) || File.Exists(staging)) throw Invalid("导入临时目录已存在，请重试。");
+            if (Directory.Exists(staging) || File.Exists(staging)) throw Invalid(L.T("导入临时目录已存在，请重试。", "The temporary import directory already exists. Retry."));
             Directory.CreateDirectory(staging);
             createdStaging = true;
             CheckNoReparsePoints(staging);
@@ -136,10 +136,10 @@ internal sealed class Live2DModelCatalog
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     copied += read;
-                    if (copied > entry.Length) throw Invalid("模型资源在导入期间发生变化，请重新选择模型。");
+                    if (copied > entry.Length) throw Invalid(L.T("模型资源在导入期间发生变化，请重新选择模型。", "Model assets changed during import. Select the model again."));
                     target.Write(buffer, 0, read);
                 }
-                if (copied != entry.Length) throw Invalid("模型资源未能完整复制，请重试。");
+                if (copied != entry.Length) throw Invalid(L.T("模型资源未能完整复制，请重试。", "Model assets were not fully copied. Retry."));
                 target.Flush(true);
             }
 
@@ -158,7 +158,7 @@ internal sealed class Live2DModelCatalog
             cancellationToken.ThrowIfCancellationRequested();
             CheckNoReparsePoints(RootDirectory);
             CheckNoReparsePoints(staging);
-            if (Directory.Exists(destination) || File.Exists(destination)) throw Invalid("模型 ID 已存在，未覆盖现有模型。");
+            if (Directory.Exists(destination) || File.Exists(destination)) throw Invalid(L.T("模型 ID 已存在，未覆盖现有模型。", "This model ID already exists. No existing model was overwritten."));
             Directory.Move(staging, destination); // Same parent/volume; existing directories are never replaced.
             createdStaging = false;
             return validated with { RootDirectory = destination, ModelPath = Path.Combine(destination, modelFile) };
@@ -172,7 +172,7 @@ internal sealed class Live2DModelCatalog
                 catch (Exception cleanup) { cleanupFailure = cleanup; }
             }
             if (cleanupFailure != null)
-                throw new IOException("模型导入未完成，且临时目录清理失败；现有模型未被覆盖。请检查模型目录权限。", ex);
+                throw new IOException(L.T("模型导入未完成，且临时目录清理失败；现有模型未被覆盖。请检查模型目录权限。", "Model import and temporary directory cleanup failed. Existing models were not overwritten. Check directory permissions."), ex);
             if (ex is OperationCanceledException) throw;
             if (IsDisplayableFailure(ex)) throw new InvalidDataException(DisplayError(ex), ex);
             throw;
@@ -183,8 +183,8 @@ internal sealed class Live2DModelCatalog
     {
         string full = LocalFullPath(modelPath);
         if (!full.EndsWith(".model3.json", StringComparison.OrdinalIgnoreCase))
-            throw Invalid("请选择以 .model3.json 结尾的 Live2D 模型入口。");
-        string root = Path.GetDirectoryName(full) ?? throw Invalid("模型入口目录无效。");
+            throw Invalid(L.T("请选择以 .model3.json 结尾的 Live2D 模型入口。", "Select a Live2D model entry ending in .model3.json."));
+        string root = Path.GetDirectoryName(full) ?? throw Invalid(L.T("模型入口目录无效。", "Invalid model entry directory."));
         string fileName = NormalizeReference(Path.GetFileName(full), ".model3.json");
         var plan = new Plan(full, root);
         try
@@ -194,23 +194,23 @@ internal sealed class Live2DModelCatalog
             var json = document.RootElement;
             RejectUnknown(json, "Version", "FileReferences", "Groups", "HitAreas", "Layout");
             if (!json.TryGetProperty("Version", out var version) || version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out int value) || value != 3)
-                throw Invalid("目前只支持 Version=3 的 Cubism .model3.json。");
+                throw Invalid(L.T("目前只支持 Version=3 的 Cubism .model3.json。", "Only Cubism .model3.json files with Version=3 are supported."));
             if (!json.TryGetProperty("FileReferences", out var refs) || refs.ValueKind != JsonValueKind.Object)
-                throw Invalid("模型入口缺少有效的 FileReferences。");
+                throw Invalid(L.T("模型入口缺少有效的 FileReferences。", "The model entry is missing valid FileReferences."));
             var allowedRefs = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Moc", "Textures", "Physics", "Pose", "UserData", "DisplayInfo", "MotionSync", "Motions", "Expressions"
             };
             foreach (var property in refs.EnumerateObject())
                 if (!allowedRefs.Contains(property.Name))
-                    throw Invalid("模型引用了暂不支持的资源字段：" + property.Name + "。不会复制未知资源或脚本。");
+                    throw Invalid(L.T("模型引用了暂不支持的资源字段：", "The model references an unsupported resource field: ") + property.Name + L.T("。不会复制未知资源或脚本。", ". Unknown resources and scripts will not be copied."));
 
             plan.Add(RequiredString(refs, "Moc"), ".moc3", token);
             if (!refs.TryGetProperty("Textures", out var textures) || textures.ValueKind != JsonValueKind.Array ||
                 textures.GetArrayLength() < 1 || textures.GetArrayLength() > MaxTextures)
-                throw Invalid("Textures 必须包含 1–64 张 PNG 纹理。");
+                throw Invalid(L.T("Textures 必须包含 1–64 张 PNG 纹理。", "Textures must contain 1–64 PNG textures."));
             foreach (var texture in textures.EnumerateArray())
-                plan.Add(ElementString(texture, "纹理路径"), ".png", token);
+                plan.Add(ElementString(texture, L.T("纹理路径", "Texture path")), ".png", token);
 
             foreach (var optional in new[]
             {
@@ -225,7 +225,7 @@ internal sealed class Live2DModelCatalog
                 RequireArray(expressions, "Expressions");
                 foreach (var expression in expressions.EnumerateArray())
                 {
-                    RequireObject(expression, "表情条目");
+                    RequireObject(expression, L.T("表情条目", "Expression entry"));
                     RequiredString(expression, "Name");
                     plan.Add(RequiredString(expression, "File"), ".exp3.json", token);
                     RejectUnknown(expression, "Name", "File", "FadeInTime", "FadeOutTime");
@@ -236,13 +236,13 @@ internal sealed class Live2DModelCatalog
                 RequireObject(motions, "Motions");
                 foreach (var group in motions.EnumerateObject())
                 {
-                    RequireArray(group.Value, "动作组 " + group.Name);
+                    RequireArray(group.Value, L.T("动作组 ", "Motion group ") + group.Name);
                     foreach (var motion in group.Value.EnumerateArray())
                     {
-                        RequireObject(motion, "动作条目");
+                        RequireObject(motion, L.T("动作条目", "Motion entry"));
                         plan.Add(RequiredString(motion, "File"), ".motion3.json", token);
                         if (motion.TryGetProperty("Sound", out var sound) && sound.ValueKind != JsonValueKind.Null)
-                            plan.Add(ElementString(sound, "动作音频"), ".wav|.ogg|.mp3", token);
+                            plan.Add(ElementString(sound, L.T("动作音频", "Motion audio")), ".wav|.ogg|.mp3", token);
                         RejectUnknown(motion, "File", "Sound", "MotionSync", "FadeInTime", "FadeOutTime");
                     }
                 }
@@ -266,14 +266,14 @@ internal sealed class Live2DModelCatalog
             token.ThrowIfCancellationRequested();
             string relative = NormalizeReference(path, extension);
             if (files.TryGetValue(relative, out var existing)) return existing;
-            if (Entries.Count >= MaxFiles) throw Invalid("模型引用文件过多，最多支持 1024 个文件。");
+            if (Entries.Count >= MaxFiles) throw Invalid(L.T("模型引用文件过多，最多支持 1024 个文件。", "Too many model references. At most 1,024 files are supported."));
             string full = ChildPath(Root, relative);
             var stream = OpenChecked(full);
             try
             {
                 long length = stream.Length;
-                if (length <= 0 || length > MaxFileBytes) throw Invalid("资源为空或超过单文件 128 MiB 上限：" + relative);
-                if (totalBytes + length > MaxPackageBytes) throw Invalid("模型资源总大小超过 512 MiB 上限。");
+                if (length <= 0 || length > MaxFileBytes) throw Invalid(L.T("资源为空或超过单文件 128 MiB 上限：", "The asset is empty or exceeds the 128 MiB per-file limit: ") + relative);
+                if (totalBytes + length > MaxPackageBytes) throw Invalid(L.T("模型资源总大小超过 512 MiB 上限。", "Model assets exceed the 512 MiB package limit."));
                 ValidateResource(stream, relative, ref totalTexturePixels);
                 var entry = new Entry(relative, stream, length);
                 files.Add(relative, entry); Entries.Add(entry); totalBytes += length;
@@ -296,19 +296,19 @@ internal sealed class Live2DModelCatalog
         if (relative.EndsWith(".moc3", StringComparison.OrdinalIgnoreCase))
         {
             if (stream.Length < 64 || !header.AsSpan(0, 4).SequenceEqual("MOC3"u8))
-                throw Invalid("MOC3 文件头无效：" + relative);
+                throw Invalid(L.T("MOC3 文件头无效：", "Invalid MOC3 header: ") + relative);
         }
         else if (relative.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
         {
             ReadOnlySpan<byte> signature = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 };
             if (header.Length < 24 || !header.AsSpan(0, 8).SequenceEqual(signature) ||
                 !header.AsSpan(12, 4).SequenceEqual("IHDR"u8))
-                throw Invalid("纹理不是有效的 PNG 文件：" + relative);
+                throw Invalid(L.T("纹理不是有效的 PNG 文件：", "The texture is not a valid PNG: ") + relative);
             uint width = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(16, 4));
             uint height = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(20, 4));
             if (width == 0 || height == 0 || width > 8192 || height > 8192 ||
                 texturePixels + (long)width * height > MaxTexturePixels)
-                throw Invalid("纹理尺寸过大，单边最多 8192 像素，总纹理最多 6400 万像素。");
+                throw Invalid(L.T("纹理尺寸过大，单边最多 8192 像素，总纹理最多 6400 万像素。", "Textures are too large. Each edge is limited to 8,192 pixels and all textures to 64 million pixels."));
             texturePixels += (long)width * height;
         }
         else if (relative.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
@@ -318,23 +318,23 @@ internal sealed class Live2DModelCatalog
         else if (relative.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
         {
             if (header.Length < 12 || !header.AsSpan(0, 4).SequenceEqual("RIFF"u8) || !header.AsSpan(8, 4).SequenceEqual("WAVE"u8))
-                throw Invalid("动作音频不是有效的 WAV：" + relative);
+                throw Invalid(L.T("动作音频不是有效的 WAV：", "Motion audio is not a valid WAV: ") + relative);
         }
         else if (relative.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase))
         {
-            if (header.Length < 4 || !header.AsSpan(0, 4).SequenceEqual("OggS"u8)) throw Invalid("动作音频不是有效的 OGG：" + relative);
+            if (header.Length < 4 || !header.AsSpan(0, 4).SequenceEqual("OggS"u8)) throw Invalid(L.T("动作音频不是有效的 OGG：", "Motion audio is not a valid OGG: ") + relative);
         }
         else if (relative.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase))
         {
             if (header.Length < 3 || !(header.AsSpan(0, 3).SequenceEqual("ID3"u8) || header[0] == 255 && (header[1] & 224) == 224))
-                throw Invalid("动作音频不是有效的 MP3：" + relative);
+                throw Invalid(L.T("动作音频不是有效的 MP3：", "Motion audio is not a valid MP3: ") + relative);
         }
         stream.Position = 0;
     }
 
     private static JsonDocument ParseJson(FileStream stream, long maximum, string label)
     {
-        if (stream.Length <= 0 || stream.Length > maximum) throw Invalid(label + " 大小无效或超过 JSON 上限。");
+        if (stream.Length <= 0 || stream.Length > maximum) throw Invalid(label + L.T(" 大小无效或超过 JSON 上限。", " has an invalid size or exceeds the JSON size limit."));
         stream.Position = 0;
         byte[] bytes = new byte[checked((int)stream.Length)];
         stream.ReadExactly(bytes);
@@ -342,7 +342,7 @@ internal sealed class Live2DModelCatalog
         int offset = bytes.Length >= 3 && bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191 ? 3 : 0;
         JsonDocument document;
         try { document = JsonDocument.Parse(bytes.AsMemory(offset), JsonOptions); }
-        catch (JsonException ex) { throw new InvalidDataException(label + " 不是有效的 JSON。", ex); }
+        catch (JsonException ex) { throw new InvalidDataException(label + L.T(" 不是有效的 JSON。", " is not valid JSON."), ex); }
         try { RequireObject(document.RootElement, label); RejectDuplicateKeys(document.RootElement); return document; }
         catch { document.Dispose(); throw; }
         finally { stream.Position = 0; }
@@ -354,7 +354,7 @@ internal sealed class Live2DModelCatalog
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in element.EnumerateObject())
             {
-                if (!names.Add(property.Name)) throw Invalid("JSON 中存在重复字段：" + property.Name);
+                if (!names.Add(property.Name)) throw Invalid(L.T("JSON 中存在重复字段：", "Duplicate JSON field: ") + property.Name);
                 RejectDuplicateKeys(property.Value);
             }
         }
@@ -364,22 +364,22 @@ internal sealed class Live2DModelCatalog
     private static void RejectUnknown(JsonElement element, params string[] names)
     {
         foreach (var property in element.EnumerateObject())
-            if (!names.Contains(property.Name, StringComparer.Ordinal)) throw Invalid("暂不支持的模型资源字段：" + property.Name);
+            if (!names.Contains(property.Name, StringComparer.Ordinal)) throw Invalid(L.T("暂不支持的模型资源字段：", "Unsupported model resource field: ") + property.Name);
     }
 
     private static string NormalizeReference(string reference, string extension)
     {
         if (string.IsNullOrWhiteSpace(reference) || reference.Length > 240 || Path.IsPathRooted(reference) ||
             reference.StartsWith('/') || reference.StartsWith('\\') || reference.Any(ch => ch < 32 || ":?#%<>|\"*".Contains(ch)))
-            throw Invalid("模型资源必须使用不含 URL、绝对路径或特殊字符的相对路径。");
+            throw Invalid(L.T("模型资源必须使用不含 URL、绝对路径或特殊字符的相对路径。", "Model assets must use relative paths without URLs, absolute paths, or special characters."));
         var segments = reference.Replace('\\', '/').Split('/');
         if (segments.Any(segment => segment.Length == 0 || segment is "." or ".." ||
             segment.EndsWith('.') || segment.EndsWith(' ') || IsDeviceName(segment)))
-            throw Invalid("模型资源路径不能包含空段、点路径、设备名或结尾空格。");
+            throw Invalid(L.T("模型资源路径不能包含空段、点路径、设备名或结尾空格。", "Model paths cannot contain empty segments, dot segments, device names, or trailing spaces."));
         string normalized = string.Join("/", segments);
         if (normalized.Equals(MetadataName, StringComparison.OrdinalIgnoreCase) ||
             !extension.Split('|').Any(suffix => normalized.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
-            throw Invalid("资源类型不受支持或疑似脚本：" + normalized + "；需要 " + extension + "。");
+            throw Invalid(L.T("资源类型不受支持或疑似脚本：", "Unsupported resource type or suspected script: ") + normalized + L.T("；需要 ", "; required: ") + extension + "。");
         return normalized;
     }
     private static bool IsDeviceName(string segment)
@@ -392,17 +392,17 @@ internal sealed class Live2DModelCatalog
     private static string LocalFullPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.StartsWith(@"\\", StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
-            throw Invalid("请选择本机磁盘中的模型目录或文件，不支持网络和设备路径。");
+            throw Invalid(L.T("请选择本机磁盘中的模型目录或文件，不支持网络和设备路径。", "Select a model directory or file on a local disk. Network and device paths are not supported."));
         try { return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)); }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        { throw new InvalidDataException("模型文件路径无效。", ex); }
+        { throw new InvalidDataException(L.T("模型文件路径无效。", "Invalid model file path."), ex); }
     }
     private static string ChildPath(string root, string relative)
     {
         string fullRoot = LocalFullPath(root);
         string path = Path.GetFullPath(Path.Combine(fullRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
         if (!path.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            throw Invalid("模型资源路径超出允许目录。");
+            throw Invalid(L.T("模型资源路径超出允许目录。", "The model asset path is outside the permitted directory."));
         return path;
     }
     private static void EnsureDirectory(string path)
@@ -419,7 +419,7 @@ internal sealed class Live2DModelCatalog
             try
             {
                 var attrs = File.GetAttributes(part);
-                if ((attrs & FileAttributes.ReparsePoint) != 0) throw Invalid("模型路径不能经过符号链接或目录联接点。");
+                if ((attrs & FileAttributes.ReparsePoint) != 0) throw Invalid(L.T("模型路径不能经过符号链接或目录联接点。", "Model paths cannot pass through symbolic links or junctions."));
             }
             catch (FileNotFoundException) { }
             catch (DirectoryNotFoundException) { }
@@ -428,7 +428,7 @@ internal sealed class Live2DModelCatalog
     }
     private static FileStream OpenChecked(string path)
     {
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("安全模型导入仅支持 Windows。");
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(L.T("安全模型导入仅支持 Windows。", "Secure model import is supported only on Windows."));
         CheckNoReparsePoints(path);
         // MSIX can legitimately redirect an AppData directory into its package
         // cache. Pin every lexical ancestor without following a reparse point,
@@ -437,15 +437,15 @@ internal sealed class Live2DModelCatalog
         using var parents = PinParentDirectories(path);
         FileStream stream;
         try { stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read); }
-        catch (FileNotFoundException ex) { throw new InvalidDataException("缺少模型引用资源：" + Path.GetFileName(path), ex); }
-        catch (DirectoryNotFoundException ex) { throw new InvalidDataException("缺少模型资源目录：" + Path.GetFileName(path), ex); }
+        catch (FileNotFoundException ex) { throw new InvalidDataException(L.T("缺少模型引用资源：", "Missing referenced model asset: ") + Path.GetFileName(path), ex); }
+        catch (DirectoryNotFoundException ex) { throw new InvalidDataException(L.T("缺少模型资源目录：", "Missing model asset directory: ") + Path.GetFileName(path), ex); }
         try
         {
             string actual = FinalHandlePath(stream.SafeFileHandle);
             string actualParent = FinalHandlePath(parents.Handles[^1]);
             string expected = Path.Combine(actualParent, Path.GetFileName(path));
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
-                throw Invalid("模型文件解析到其它位置，可能包含符号链接。");
+                throw Invalid(L.T("模型文件解析到其它位置，可能包含符号链接。", "The model file resolves to another location and may involve a symbolic link."));
             CheckNoReparsePoints(path);
             CheckNoReparsePoints(actual);
             return stream;
@@ -472,7 +472,7 @@ internal sealed class Live2DModelCatalog
                     throw new Win32Exception(Marshal.GetLastWin32Error());
                 if ((info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 ||
                     (info.FileAttributes & (uint)FileAttributes.Directory) == 0)
-                    throw Invalid("模型路径不能经过符号链接或目录联接点。");
+                    throw Invalid(L.T("模型路径不能经过符号链接或目录联接点。", "Model paths cannot pass through symbolic links or junctions."));
             }
             return pinned;
         }
@@ -503,7 +503,7 @@ internal sealed class Live2DModelCatalog
         string parent = LocalFullPath(expectedParent);
         if (!string.Equals(Path.GetDirectoryName(full), parent, StringComparison.OrdinalIgnoreCase) ||
             !Path.GetFileName(full).StartsWith(requiredPrefix, StringComparison.Ordinal) || full == parent)
-            throw Invalid("拒绝清理非本次创建的临时目录。");
+            throw Invalid(L.T("拒绝清理非本次创建的临时目录。", "Refused to clean up a temporary directory not created by this import."));
         if (!Directory.Exists(full)) return;
         CheckNoReparsePoints(full);
         DeleteCheckedTree(full);
@@ -524,35 +524,35 @@ internal sealed class Live2DModelCatalog
     {
         string name = requested?.Trim() ?? Path.GetFileName(modelPath)[..^".model3.json".Length];
         if (string.IsNullOrWhiteSpace(name) || name.Length > 80 || name.Any(char.IsControl))
-            throw Invalid("模型名称需为 1–80 个不含控制字符的字符。");
+            throw Invalid(L.T("模型名称需为 1–80 个不含控制字符的字符。", "Model names must contain 1–80 characters without control characters."));
         return name;
     }
     private static void ValidateId(string id)
     {
         if (id.Length is < 1 or > 80 || id.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_')))
-            throw Invalid("模型 ID 只能包含字母、数字、横线和下划线。");
+            throw Invalid(L.T("模型 ID 只能包含字母、数字、横线和下划线。", "Model IDs may contain only letters, numbers, hyphens, and underscores."));
     }
     private static bool IsImportedId(string id) => id.StartsWith("l2d-", StringComparison.Ordinal) &&
         id.Length == 36 && Guid.TryParseExact(id[4..], "N", out _);
     private static string? ReadString(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static string RequiredString(JsonElement element, string name) =>
-        ReadString(element, name) is string value && value.Length > 0 ? value : throw Invalid("模型缺少有效字段：" + name);
+        ReadString(element, name) is string value && value.Length > 0 ? value : throw Invalid(L.T("模型缺少有效字段：", "The model is missing a valid field: ") + name);
     private static string ElementString(JsonElement element, string label) =>
-        element.ValueKind == JsonValueKind.String && element.GetString() is string value && value.Length > 0 ? value : throw Invalid(label + " 必须为非空字符串。");
+        element.ValueKind == JsonValueKind.String && element.GetString() is string value && value.Length > 0 ? value : throw Invalid(label + L.T(" 必须为非空字符串。", " must be a nonempty string."));
     private static void RequireObject(JsonElement element, string label)
-    { if (element.ValueKind != JsonValueKind.Object) throw Invalid(label + " 必须是 JSON 对象。"); }
+    { if (element.ValueKind != JsonValueKind.Object) throw Invalid(label + L.T(" 必须是 JSON 对象。", " must be a JSON object.")); }
     private static void RequireArray(JsonElement element, string label)
-    { if (element.ValueKind != JsonValueKind.Array) throw Invalid(label + " 必须是 JSON 数组。"); }
+    { if (element.ValueKind != JsonValueKind.Array) throw Invalid(label + L.T(" 必须是 JSON 数组。", " must be a JSON array.")); }
     private static InvalidDataException Invalid(string message) => new(message);
     private static bool IsDisplayableFailure(Exception ex) =>
         ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException or Win32Exception;
     private static string DisplayError(Exception ex) => ex switch
     {
         InvalidDataException => ex.Message,
-        UnauthorizedAccessException => "无法访问模型资源，请检查文件和目录权限。",
-        Win32Exception => "无法安全核验模型文件位置，请确认模型位于本机普通文件夹。",
-        _ => "模型文件读取或复制失败：" + ex.Message
+        UnauthorizedAccessException => L.T("无法访问模型资源，请检查文件和目录权限。", "Could not access model assets. Check file and directory permissions."),
+        Win32Exception => L.T("无法安全核验模型文件位置，请确认模型位于本机普通文件夹。", "Could not safely verify model file locations. Use a regular local folder."),
+        _ => L.T("模型文件读取或复制失败：", "Could not read or copy model files: ") + ex.Message
     };
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

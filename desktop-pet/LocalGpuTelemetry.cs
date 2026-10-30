@@ -37,20 +37,20 @@ internal static class LocalGpuTelemetry
         process.StartInfo.ArgumentList.Add("--format=csv,noheader,nounits");
         try
         {
-            if (!process.Start()) throw new InvalidOperationException("无法启动本机显存查询。");
+            if (!process.Start()) throw new InvalidOperationException(L.T("无法启动本机显存查询。", "Could not start the local GPU memory query."));
             Task<string> output = ReadBoundedAsync(process.StandardOutput, 64 * 1024, deadline.Token);
             Task<string> error = ReadBoundedAsync(process.StandardError, 8 * 1024, deadline.Token);
             await Task.WhenAll(process.WaitForExitAsync(deadline.Token), output, error).ConfigureAwait(false);
-            if (process.ExitCode != 0) throw new InvalidOperationException("NVIDIA 驱动暂时无法提供本机显存信息。");
+            if (process.ExitCode != 0) throw new InvalidOperationException(L.T("NVIDIA 驱动暂时无法提供本机显存信息。", "The NVIDIA driver cannot currently provide local GPU memory information."));
             return Parse(output.Result);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException("本机显存查询超时，请稍后刷新。");
+            throw new TimeoutException(L.T("本机显存查询超时，请稍后刷新。", "The local GPU memory query timed out. Refresh again shortly."));
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            throw new InvalidOperationException("无法读取本机显存，请检查 NVIDIA 驱动。", ex);
+            throw new InvalidOperationException(L.T("无法读取本机显存，请检查 NVIDIA 驱动。", "Could not read local GPU memory. Check the NVIDIA driver."), ex);
         }
         finally
         {
@@ -69,7 +69,7 @@ internal static class LocalGpuTelemetry
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe")
         })
             if (Path.IsPathFullyQualified(file) && File.Exists(file)) return file;
-        throw new NotSupportedException("未找到 NVIDIA 显存查询工具；当前设备暂不提供本机总显存数据。");
+        throw new NotSupportedException(L.T("未找到 NVIDIA 显存查询工具；当前设备暂不提供本机总显存数据。", "The NVIDIA query tool was not found. Local GPU memory totals are unavailable on this device."));
     }
 
     private static async Task<string> ReadBoundedAsync(StreamReader reader, int limit, CancellationToken cancellationToken)
@@ -80,7 +80,7 @@ internal static class LocalGpuTelemetry
         {
             int count = await reader.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
             if (count == 0) return result.ToString();
-            if (result.Length + count > limit) throw new InvalidOperationException("本机显存查询返回了过长的数据。");
+            if (result.Length + count > limit) throw new InvalidOperationException(L.T("本机显存查询返回了过长的数据。", "The local GPU memory query returned too much data."));
             result.Append(buffer, 0, count);
         }
     }
@@ -105,7 +105,7 @@ internal static class LocalGpuTelemetry
             results.Add(new LocalGpuInfo(name, total, used, utilization));
             if (results.Count > 64) throw InvalidData();
         }
-        if (results.Count == 0) throw new InvalidOperationException("本机未检测到可查询的 NVIDIA 显卡。");
+        if (results.Count == 0) throw new InvalidOperationException(L.T("本机未检测到可查询的 NVIDIA 显卡。", "No queryable NVIDIA GPU was detected on this computer."));
         return results;
     }
 
@@ -116,5 +116,5 @@ internal static class LocalGpuTelemetry
         return (long)(mib * 1024m * 1024m);
     }
 
-    private static InvalidOperationException InvalidData() => new("NVIDIA 驱动未提供有效的本机显存数据。");
+    private static InvalidOperationException InvalidData() => new(L.T("NVIDIA 驱动未提供有效的本机显存数据。", "The NVIDIA driver did not provide valid local GPU memory data."));
 }

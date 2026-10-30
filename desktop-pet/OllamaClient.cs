@@ -22,10 +22,10 @@ internal static class OllamaModels
 {
     public const string FastModel = "qwen3.5:9b-q8_0";
     public const string QualityModel = "qwen3.8:27b-q4_K_M";
-    public static IReadOnlyList<OllamaModelChoice> Supported { get; } = Array.AsReadOnly(new[]
+    public static IReadOnlyList<OllamaModelChoice> Supported => Array.AsReadOnly(new[]
     {
-        new OllamaModelChoice(FastModel, "Qwen3.5 9B · Q8_0（快速）"),
-        new OllamaModelChoice(QualityModel, "Qwen3.8 27B · Q4_K_M（高质量）")
+        new OllamaModelChoice(FastModel, L.T("Qwen3.5 9B · Q8_0（快速）", "Qwen3.5 9B · Q8_0 (fast)")),
+        new OllamaModelChoice(QualityModel, L.T("Qwen3.8 27B · Q4_K_M（高质量）", "Qwen3.8 27B · Q4_K_M (quality)"))
     });
 
     private static readonly Regex ModelName = new(@"^[A-Za-z0-9][A-Za-z0-9._-]*(?::[0-9]{1,5})?(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$", RegexOptions.CultureInvariant);
@@ -50,13 +50,13 @@ internal interface IOllamaClient : IDisposable
     Uri Endpoint => OllamaClient.LocalEndpoint;
     Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct);
     Task<IReadOnlyList<OllamaRunningModel>> ListRunningModelsAsync(CancellationToken ct)
-        => Task.FromException<IReadOnlyList<OllamaRunningModel>>(new NotSupportedException("此服务器暂不提供模型驻留状态。"));
+        => Task.FromException<IReadOnlyList<OllamaRunningModel>>(new NotSupportedException(L.T("此服务器暂不提供模型驻留状态。", "This server does not provide loaded-model status.")));
     Task<OllamaModelCapabilities> GetModelInfoAsync(string model, CancellationToken ct) => Task.FromResult(OllamaModelCapabilities.Unknown);
     IAsyncEnumerable<OllamaChatDelta> ChatAsync(string model, IReadOnlyList<OllamaMessage> messages, CancellationToken ct);
     IAsyncEnumerable<OllamaChatDelta> ChatWithToolsAsync(string model, IReadOnlyList<OllamaMessage> messages,
         IReadOnlyList<OllamaToolDefinition> tools, CancellationToken ct) => ChatAsync(model, messages, ct);
     Task UnloadAsync(string model, CancellationToken ct);
-    Task PreloadAsync(string model, CancellationToken ct) => Task.FromException(new NotSupportedException("此连接暂不支持手动预加载。"));
+    Task PreloadAsync(string model, CancellationToken ct) => Task.FromException(new NotSupportedException(L.T("此连接暂不支持手动预加载。", "This connection does not support manual preloading.")));
 }
 
 // Only the user-selected server receives messages. No proxy, redirect, cloud model,
@@ -143,7 +143,7 @@ internal sealed class OllamaClient : IOllamaClient
         using var request = new HttpRequestMessage(HttpMethod.Get, "api/ps");
         using var response = await SendAsync(request, deadline.Token, ct).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented)
-            throw new NotSupportedException("此 Ollama 服务器暂不提供模型驻留状态。连接与聊天仍可正常使用。");
+            throw new NotSupportedException(L.T("此 Ollama 服务器暂不提供模型驻留状态。连接与聊天仍可正常使用。", "This Ollama server does not provide loaded-model status. Connection and chat remain available."));
         await EnsureSuccessAsync(response, deadline.Token, ct).ConfigureAwait(false);
         string body = await ReadBodyAsync(response, MaxDocumentChars, truncate: false, deadline.Token, ct).ConfigureAwait(false);
         using var document = ParseDocument(body);
@@ -197,7 +197,7 @@ internal sealed class OllamaClient : IOllamaClient
             var root = document.RootElement;
             ThrowResponseError(root);
             if (HasNonEmptyString(root, "remote_model") || HasNonEmptyString(root, "remote_host"))
-                throw new OllamaException("所选模型会转发到云端，桌宠仅使用该 Ollama 服务器已安装的本地模型。");
+                throw new OllamaException(L.T("所选模型会转发到云端，桌宠仅使用该 Ollama 服务器已安装的本地模型。", "The selected model forwards requests to the cloud. AI Pet uses only local models installed on this Ollama server."));
             bool? chat = null, images = null, thinking = null, tools = null;
             if (root.TryGetProperty("capabilities", out var capabilities) && capabilities.ValueKind == JsonValueKind.Array)
             {
@@ -234,7 +234,7 @@ internal sealed class OllamaClient : IOllamaClient
     private async Task RequireInstalledModelAsync(string model, CancellationToken ct)
     {
         if (!await IsInstalledModelAsync(model, ct).ConfigureAwait(false))
-            throw new OllamaException("所选模型尚未安装在当前 Ollama 服务器，或属于云端模型。请刷新模型列表后重新选择。");
+            throw new OllamaException(L.T("所选模型尚未安装在当前 Ollama 服务器，或属于云端模型。请刷新模型列表后重新选择。", "The selected model is not installed on this Ollama server, or is a cloud model. Refresh the list and choose again."));
     }
 
     private async Task<bool> IsInstalledModelAsync(string model, CancellationToken ct)
@@ -258,11 +258,11 @@ internal sealed class OllamaClient : IOllamaClient
         ValidateTools(tools);
         ct.ThrowIfCancellationRequested();
         var info = await ReadModelInfoAsync(model, ct).ConfigureAwait(false);
-        if (info.Capabilities.SupportsChat == false) throw new OllamaException("所选模型不支持聊天，请选择支持对话的模型。");
+        if (info.Capabilities.SupportsChat == false) throw new OllamaException(L.T("所选模型不支持聊天，请选择支持对话的模型。", "The selected model does not support chat. Choose a chat-capable model."));
         if (info.Capabilities.SupportsImages == false && messages.Any(message => message.Images?.Count > 0))
-            throw new OllamaException("所选模型不支持图片理解。请移除图片或选择支持图片的模型。");
+            throw new OllamaException(L.T("所选模型不支持图片理解。请移除图片或选择支持图片的模型。", "The selected model does not support image understanding. Remove images or select a vision model."));
         if (info.Capabilities.SupportsTools == false && tools?.Count > 0)
-            throw new OllamaException("所选模型不支持工具调用，请使用兼容的联网模式或切换模型。");
+            throw new OllamaException(L.T("所选模型不支持工具调用，请使用兼容的联网模式或切换模型。", "The selected model does not support tool calls. Use a compatible web mode or change models."));
         var payload = new
         {
             model,
@@ -311,7 +311,7 @@ internal sealed class OllamaClient : IOllamaClient
                         if (final.Done) yield break;
                     }
                 }
-                throw new OllamaException("Ollama 的回复中途断开，内容可能不完整。请重新发送。");
+                throw new OllamaException(L.T("Ollama 的回复中途断开，内容可能不完整。请重新发送。", "The Ollama reply was interrupted and may be incomplete. Please resend."));
             }
             for (int index = 0; index < count; index++)
             {
@@ -330,7 +330,7 @@ internal sealed class OllamaClient : IOllamaClient
                 }
                 else
                 {
-                    if (line.Length >= MaxStreamLineChars) throw new OllamaException("Ollama 返回了过大的单段回复，请重新发送。");
+                    if (line.Length >= MaxStreamLineChars) throw new OllamaException(L.T("Ollama 返回了过大的单段回复，请重新发送。", "Ollama returned an excessively large reply segment. Please resend."));
                     line.Append(value);
                 }
             }
@@ -343,7 +343,7 @@ internal sealed class OllamaClient : IOllamaClient
         ct.ThrowIfCancellationRequested();
         await RequireInstalledModelAsync(model, ct).ConfigureAwait(false);
         var info = await ReadModelInfoAsync(model, ct).ConfigureAwait(false);
-        if (info.Capabilities.SupportsChat == false) throw new OllamaException("当前模型不支持聊天，请选择其他模型。");
+        if (info.Capabilities.SupportsChat == false) throw new OllamaException(L.T("当前模型不支持聊天，请选择其他模型。", "This model does not support chat. Please choose another."));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(3));
         // Empty prompt is Ollama's explicit load operation. Do not override its
@@ -356,7 +356,7 @@ internal sealed class OllamaClient : IOllamaClient
         using var document = ParseDocument(body);
         ThrowResponseError(document.RootElement);
         if (!document.RootElement.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True)
-            throw new OllamaException("Ollama 未确认加载完成，请稍后重试。");
+            throw new OllamaException(L.T("Ollama 未确认加载完成，请稍后重试。", "Ollama did not confirm that loading finished. Please retry shortly."));
     }
 
     public async Task UnloadAsync(string model, CancellationToken ct)
@@ -381,24 +381,24 @@ internal sealed class OllamaClient : IOllamaClient
         using var document = ParseDocument(body);
         ThrowResponseError(document.RootElement);
         if (!document.RootElement.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True)
-            throw new OllamaException("Ollama 未确认释放模型，请稍后重试。");
+            throw new OllamaException(L.T("Ollama 未确认释放模型，请稍后重试。", "Ollama did not confirm that the model was released. Please retry shortly."));
     }
 
     private static void RequireSupportedModel(string? model)
     {
-        if (!OllamaModels.IsSupported(model)) throw new OllamaException("模型名称无效，不能使用 URL、路径跳转或云端模型。请从已安装的模型列表选择。");
+        if (!OllamaModels.IsSupported(model)) throw new OllamaException(L.T("模型名称无效，不能使用 URL、路径跳转或云端模型。请从已安装的模型列表选择。", "Invalid model name. URLs, path traversal, and cloud models are not allowed. Choose from the installed model list."));
     }
 
     private static void ValidateMessages(IReadOnlyList<OllamaMessage> messages)
     {
-        if (messages == null || messages.Count == 0 || messages.Count > 256) throw new OllamaException("聊天内容为空或过长，请新建对话后重试。");
+        if (messages == null || messages.Count == 0 || messages.Count > 256) throw new OllamaException(L.T("聊天内容为空或过长，请新建对话后重试。", "The conversation is empty or too long. Start a new conversation and retry."));
         long textChars = 0;
         foreach (var message in messages)
         {
             if (message == null || message.Role is not ("user" or "assistant" or "system" or "tool") || message.Content == null)
-                throw new OllamaException("聊天消息格式无效，请新建对话后重试。");
+                throw new OllamaException(L.T("聊天消息格式无效，请新建对话后重试。", "Invalid chat message format. Start a new conversation and retry."));
             if (message.Content.Length > 256 * 1024 || message.Thinking?.Length > MaxReplyChars)
-                throw new OllamaException("聊天内容过长，请新建对话后重试。");
+                throw new OllamaException(L.T("聊天内容过长，请新建对话后重试。", "The conversation is too long. Start a new conversation and retry."));
             textChars += message.Content.Length + (message.Thinking?.Length ?? 0);
             if (message.Role == "tool")
             {
@@ -416,13 +416,13 @@ internal sealed class OllamaClient : IOllamaClient
                     textChars += call.ArgumentsJson.Length;
                 }
             }
-            if (textChars > 2 * 1024 * 1024) throw new OllamaException("聊天内容过长，请新建对话后重试。");
+            if (textChars > 2 * 1024 * 1024) throw new OllamaException(L.T("聊天内容过长，请新建对话后重试。", "The conversation is too long. Start a new conversation and retry."));
             if (message.Images == null) continue;
             foreach (string image in message.Images)
             {
                 // API image values are base64 bytes, never paths or URLs that could be followed.
                 if (string.IsNullOrWhiteSpace(image) || image.Length > 32 * 1024 * 1024 || image.Length % 4 != 0 || image.Any(value => !(char.IsAsciiLetterOrDigit(value) || value is '+' or '/' or '=')))
-                    throw new OllamaException("图片数据无效或过大，请重新选择图片。");
+                    throw new OllamaException(L.T("图片数据无效或过大，请重新选择图片。", "Image data is invalid or too large. Select the image again."));
             }
         }
     }
@@ -465,7 +465,7 @@ internal sealed class OllamaClient : IOllamaClient
             foreach (var call in delta.ToolCalls) replyChars += call.ArgumentsJson.Length;
         }
         if (replyChars > MaxReplyChars || toolCalls > MaxToolCalls)
-            throw new OllamaException("Ollama 返回的回复或工具调用过多，已停止接收。请简化问题后重试。");
+            throw new OllamaException(L.T("Ollama 返回的回复或工具调用过多，已停止接收。请简化问题后重试。", "Ollama returned too many replies or tool calls. Reception stopped. Simplify the question and retry."));
     }
 
     private static HttpRequestMessage JsonRequest(string path, object payload) => new(HttpMethod.Post, path)
@@ -477,24 +477,24 @@ internal sealed class OllamaClient : IOllamaClient
     {
         try { return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, active).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested) { throw TimeoutFailure(); }
-        catch (HttpRequestException) { throw new OllamaException("无法连接 Ollama。请确认服务已启动、地址和端口正确，并检查网络及 HTTPS 证书后重试。"); }
-        catch (IOException) { throw new OllamaException("与 Ollama 的连接已中断，请重试。"); }
+        catch (HttpRequestException) { throw new OllamaException(L.T("无法连接 Ollama。请确认服务已启动、地址和端口正确，并检查网络及 HTTPS 证书后重试。", "Cannot connect to Ollama. Check that the service is running, the address and port are correct, and network/HTTPS certificates are valid, then retry.")); }
+        catch (IOException) { throw new OllamaException(L.T("与 Ollama 的连接已中断，请重试。", "The Ollama connection was interrupted. Please retry.")); }
     }
 
     private static async Task<Stream> OpenStreamAsync(HttpResponseMessage response, CancellationToken active, CancellationToken caller)
     {
         try { return await response.Content.ReadAsStreamAsync(active).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested) { throw TimeoutFailure(); }
-        catch (HttpRequestException) { throw new OllamaException("与 Ollama 的连接已中断，请重试。"); }
-        catch (IOException) { throw new OllamaException("与 Ollama 的连接已中断，请重试。"); }
+        catch (HttpRequestException) { throw new OllamaException(L.T("与 Ollama 的连接已中断，请重试。", "The Ollama connection was interrupted. Please retry.")); }
+        catch (IOException) { throw new OllamaException(L.T("与 Ollama 的连接已中断，请重试。", "The Ollama connection was interrupted. Please retry.")); }
     }
 
     private static async Task<int> ReadAsync(StreamReader reader, Memory<char> buffer, CancellationToken active, CancellationToken caller)
     {
         try { return await reader.ReadAsync(buffer, active).ConfigureAwait(false); }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested) { throw TimeoutFailure(); }
-        catch (HttpRequestException) { throw new OllamaException("Ollama 的回复连接已中断，内容可能不完整。请重试。"); }
-        catch (IOException) { throw new OllamaException("Ollama 的回复连接已中断，内容可能不完整。请重试。"); }
+        catch (HttpRequestException) { throw new OllamaException(L.T("Ollama 的回复连接已中断，内容可能不完整。请重试。", "The Ollama reply connection was interrupted; content may be incomplete. Please retry.")); }
+        catch (IOException) { throw new OllamaException(L.T("Ollama 的回复连接已中断，内容可能不完整。请重试。", "The Ollama reply connection was interrupted; content may be incomplete. Please retry.")); }
     }
 
     private static async Task<string> ReadBodyAsync(HttpResponseMessage response, int limit, bool truncate, CancellationToken active, CancellationToken caller)
@@ -511,7 +511,7 @@ internal sealed class OllamaClient : IOllamaClient
             if (result.Length < limit) continue;
             if (truncate) return result.ToString();
             if (await ReadAsync(reader, buffer.AsMemory(0, 1), active, caller).ConfigureAwait(false) != 0)
-                throw new OllamaException("Ollama 返回的数据过大，请检查本机服务后重试。");
+                throw new OllamaException(L.T("Ollama 返回的数据过大，请检查本机服务后重试。", "Ollama returned too much data. Check the service and retry."));
             return result.ToString();
         }
     }
@@ -590,20 +590,20 @@ internal sealed class OllamaClient : IOllamaClient
     private static OllamaException DescribeServerError(string diagnostic, HttpStatusCode? status)
     {
         if (status == HttpStatusCode.NotFound || diagnostic.Contains("not found", StringComparison.OrdinalIgnoreCase) || diagnostic.Contains("pull model", StringComparison.OrdinalIgnoreCase))
-            return new OllamaException("当前 Ollama 服务器尚未安装所选模型。请刷新模型列表，或安装对应模型后重试。");
+            return new OllamaException(L.T("当前 Ollama 服务器尚未安装所选模型。请刷新模型列表，或安装对应模型后重试。", "The selected model is not installed on this Ollama server. Refresh the model list or install it, then retry."));
         if (diagnostic.Contains("memory", StringComparison.OrdinalIgnoreCase) || diagnostic.Contains("out of vram", StringComparison.OrdinalIgnoreCase))
-            return new OllamaException("Ollama 服务器可用内存或显存不足。请释放资源，或切换到较小的模型后重试。");
+            return new OllamaException(L.T("Ollama 服务器可用内存或显存不足。请释放资源，或切换到较小的模型后重试。", "The Ollama server has insufficient RAM or GPU memory. Free resources or choose a smaller model."));
         if (diagnostic.Contains("image", StringComparison.OrdinalIgnoreCase) || diagnostic.Contains("vision", StringComparison.OrdinalIgnoreCase))
-            return new OllamaException("Ollama 无法处理这张图片。请尝试较小的 PNG/JPEG 图片，并确认模型支持图片理解。");
+            return new OllamaException(L.T("Ollama 无法处理这张图片。请尝试较小的 PNG/JPEG 图片，并确认模型支持图片理解。", "Ollama could not process this image. Try a smaller PNG/JPEG and confirm the model supports images."));
         if (diagnostic.Contains("does not support tools", StringComparison.OrdinalIgnoreCase) || diagnostic.Contains("tools not supported", StringComparison.OrdinalIgnoreCase))
-            return new OllamaException("所选模型不支持工具调用，请使用兼容的联网模式或切换模型。");
+            return new OllamaException(L.T("所选模型不支持工具调用，请使用兼容的联网模式或切换模型。", "The selected model does not support tool calls. Use a compatible web mode or change models."));
         if (status.HasValue && (int)status.Value >= 300 && (int)status.Value < 400)
-            return new OllamaException("Ollama 返回了重定向，已阻止转发聊天内容。请填写最终服务器地址。");
-        return new OllamaException(status.HasValue ? $"Ollama 请求失败（HTTP {(int)status.Value}），请稍后重试。" : "Ollama 生成回复时发生错误，请稍后重试。");
+            return new OllamaException(L.T("Ollama 返回了重定向，已阻止转发聊天内容。请填写最终服务器地址。", "Ollama returned a redirect. Forwarding chat content was blocked. Enter the final server address."));
+        return new OllamaException(status.HasValue ? L.T($"Ollama 请求失败（HTTP {(int)status.Value}），请稍后重试。", $"Ollama request failed (HTTP {(int)status.Value}). Please retry shortly.") : L.T("Ollama 生成回复时发生错误，请稍后重试。", "Ollama encountered an error while generating the reply. Please retry shortly."));
     }
 
-    private static OllamaException TimeoutFailure() => new("等待 Ollama 超时。首次加载模型可能较慢，请确认服务地址和运行状态后重试。");
-    private static OllamaException ProtocolFailure() => new("Ollama 返回了无法识别的数据，请检查服务版本后重试。");
+    private static OllamaException TimeoutFailure() => new(L.T("等待 Ollama 超时。首次加载模型可能较慢，请确认服务地址和运行状态后重试。", "Timed out waiting for Ollama. The first model load may be slow. Check the service address and status, then retry."));
+    private static OllamaException ProtocolFailure() => new(L.T("Ollama 返回了无法识别的数据，请检查服务版本后重试。", "Ollama returned unrecognized data. Check the service version and retry."));
     public void Dispose() => http.Dispose();
 }
 

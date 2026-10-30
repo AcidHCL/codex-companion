@@ -41,7 +41,7 @@ internal sealed class PetSpeechService : IDisposable
     private PetVoiceProfile? _selectedProfile;
     private string? _profileSkin;
     public event Action? Changed;
-    public string StatusText { get; private set; } = "本地参考音色待命";
+    public string StatusText { get; private set; } = L.T("本地参考音色待命", "Local reference voice ready");
     public bool IsSpeaking { get; private set; }
 
     internal Task<PetVoiceHealth?> ReadModelHealthAsync(CancellationToken cancellationToken)
@@ -72,11 +72,11 @@ internal sealed class PetSpeechService : IDisposable
     private bool ModelAllowed => !_disposed && !_studioBusy && _enabledForProcess && _settings.SpeechEnabled &&
         PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId));
 
-    private string IdleStatus => !_settings.SpeechEnabled ? "语音已关闭" :
-        !PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) ? "当前角色未选择语音模型" :
-        _suspended ? "语音已暂停" : !_enabledForProcess ? "测试模式：不播放声音" :
-        _manualUnload ? "语音模型已卸载，下次朗读时加载" :
-        _modelReady && _chatSessionActive ? "语音模型已加载，待命" : "本地语音待命，按需加载";
+    private string IdleStatus => !_settings.SpeechEnabled ? L.T("语音已关闭", "Speech is off") :
+        !PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) ? L.T("当前角色未选择语音模型", "No speech model selected for this character") :
+        _suspended ? L.T("语音已暂停", "Speech paused") : !_enabledForProcess ? L.T("测试模式：不播放声音", "Test mode: audio playback disabled") :
+        _manualUnload ? L.T("语音模型已卸载，下次朗读时加载", "Speech model unloaded; the next readout will load it") :
+        _modelReady && _chatSessionActive ? L.T("语音模型已加载，待命", "Speech model loaded and ready") : L.T("本地语音待命，按需加载", "Local speech ready; model loads on demand");
 
     private void SetStatus(string value, bool speaking = false)
     {
@@ -91,7 +91,7 @@ internal sealed class PetSpeechService : IDisposable
         if (!Allowed) return;
         string normalized;
         try { normalized = PetSpeechText.Normalize(text); }
-        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { SetStatus("这段文本过于复杂，暂未朗读。"); return; }
+        catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { SetStatus(L.T("这段文本过于复杂，暂未朗读。", "This text is too complex to read aloud.")); return; }
         if (normalized.Length == 0) return;
         // Only callers that identify the same underlying notice opt into
         // deduplication. Separate clicks can legitimately say the same words.
@@ -134,7 +134,7 @@ internal sealed class PetSpeechService : IDisposable
         if (text.Length == 0) return;
         if (finalizedProse.TrimEnd().EndsWith('。') && !text.EndsWith('。')) text += "。";
         if ((_chatInputCharacters += text.Length) > 16000)
-        { _chatInput.Writer.TryComplete(new InvalidOperationException("这条语音回复过长，已保留文字。")); return; }
+        { _chatInput.Writer.TryComplete(new InvalidOperationException(L.T("这条语音回复过长，已保留文字。", "This reply is too long for speech. The text has been kept."))); return; }
         _chatInput.Writer.TryWrite(text);
     }
 
@@ -169,12 +169,12 @@ internal sealed class PetSpeechService : IDisposable
                     cancellation.Token.ThrowIfCancellationRequested();
                     if (_synthesizer is IPetStreamingSpeechSynthesizer { SupportsStreaming: true } streaming && _streamPlayer != null)
                     {
-                        SetStatus("正在准备连续语音…");
+                        SetStatus(L.T("正在准备连续语音…", "Preparing streamed speech…"));
                         await _streamPlayer.PlayAsync(StreamUtteranceAsync(item, streaming, cancellation.Token), _settings.SpeechVolume,
                             speaking => _dispatcher.BeginInvoke(() =>
                             {
                                 if (Allowed && item.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    SetStatus(speaking ? "正在说话…" : "正在缓冲连续语音…", speaking);
+                                    SetStatus(speaking ? L.T("正在说话…", "Speaking…") : L.T("正在缓冲连续语音…", "Buffering speech…"), speaking);
                             }), cancellation.Token);
                         if (item.Epoch == _epoch) SetStatus(IdleStatus);
                         continue;
@@ -194,7 +194,7 @@ internal sealed class PetSpeechService : IDisposable
                         {
                             if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
                             cancellation.Token.ThrowIfCancellationRequested();
-                            SetStatus($"正在准备连续语音（{index}/{parts.Count}）…");
+                            SetStatus(L.T($"正在准备连续语音（{index}/{parts.Count}）…", $"Preparing speech ({index}/{parts.Count})…"));
                             byte[] wave = await GenerateChunkAsync(parts[index], item.Source, cancellation.Token);
                             cancellation.Token.ThrowIfCancellationRequested();
                             if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
@@ -204,7 +204,7 @@ internal sealed class PetSpeechService : IDisposable
                     }
                     cancellation.Token.ThrowIfCancellationRequested();
                     if (!Allowed || item.Epoch != _epoch) throw new OperationCanceledException();
-                    SetStatus("正在说话…", true);
+                    SetStatus(L.T("正在说话…", "Speaking…"), true);
                     await _player.PlayAsync(completeWave, _settings.SpeechVolume, cancellation.Token);
                     if (item.Epoch == _epoch) SetStatus(IdleStatus);
                 }
@@ -212,7 +212,7 @@ internal sealed class PetSpeechService : IDisposable
                 catch (Exception ex)
                 {
                     if (Allowed && item.Epoch == _epoch)
-                        SetStatus(ex is InvalidOperationException ? ex.Message : "语音暂不可用，请稍后点击试听重试。");
+                        SetStatus(ex is InvalidOperationException ? ex.Message : L.T("语音暂不可用，请稍后点击试听重试。", "Speech is unavailable. Click Audition to try again shortly."));
                 }
                 finally
                 {
@@ -406,7 +406,7 @@ internal sealed class PetSpeechService : IDisposable
         {
             await _pendingRelease;
             cancellation.Token.ThrowIfCancellationRequested();
-            if (!_pumping && !IsSpeaking) SetStatus("正在预加载语音模型…");
+            if (!_pumping && !IsSpeaking) SetStatus(L.T("正在预加载语音模型…", "Preloading speech model…"));
             await ((IPetVoiceLifecycle)_synthesizer).PreloadAsync(id, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             _modelReady = true;
@@ -415,7 +415,7 @@ internal sealed class PetSpeechService : IDisposable
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
-        { if (!_disposed && !_pumping && !IsSpeaking) SetStatus(ex is InvalidOperationException ? ex.Message : "语音模型预加载失败，请重试。"); throw; }
+        { if (!_disposed && !_pumping && !IsSpeaking) SetStatus(ex is InvalidOperationException ? ex.Message : L.T("语音模型预加载失败，请重试。", "Speech model preload failed. Please try again.")); throw; }
         finally
         {
             if (ReferenceEquals(_preloadCancellation, cancellation)) { _preloadCancellation = null; _preloadId = null; }
@@ -429,7 +429,7 @@ internal sealed class PetSpeechService : IDisposable
         if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         _manualUnload = true; StopCore(); CancelPreload();
         if (!_enabledForProcess) return;
-        SetStatus("正在卸载语音模型…");
+        SetStatus(L.T("正在卸载语音模型…", "Unloading speech model…"));
         try
         {
             Task previous = _pendingRelease;
@@ -439,7 +439,7 @@ internal sealed class PetSpeechService : IDisposable
             if (!_disposed) SetStatus(IdleStatus);
         }
         catch (Exception ex)
-        { if (!_disposed) SetStatus(ex is InvalidOperationException ? ex.Message : "语音模型卸载未完成，请重试。"); throw; }
+        { if (!_disposed) SetStatus(ex is InvalidOperationException ? ex.Message : L.T("语音模型卸载未完成，请重试。", "The speech model has not finished unloading. Please try again.")); throw; }
         // Keep a failed configuration/release barrier visible. The next explicit
         // request retries selection before speaking instead of reusing an old voice.
     }

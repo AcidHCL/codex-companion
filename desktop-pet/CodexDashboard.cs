@@ -18,37 +18,37 @@ internal sealed partial class CodexDashboard : Window
     private readonly CodexMonitor _monitor;
     private readonly DesktopSettings _settings;
     private readonly Grid _root = new();
-    private readonly TextBlock _connection = Ui.Text("正在连接", 12, "#42644A", true);
+    private readonly TextBlock _connection = Ui.Text(L.T("正在连接", "Connecting"), 12, "#42644A", true);
     private readonly Border _connectionBadge = new();
-    private readonly TextBlock _updated = Ui.Text("等待第一次刷新", 11, "#81917F");
+    private readonly TextBlock _updated = Ui.Text(L.T("等待第一次刷新", "Waiting for the first refresh"), 11, "#81917F");
     private readonly Button _refresh = new();
     private readonly Button _forget = new();
     private readonly CheckBox _messagesAccess = new();
     private readonly ComboBox _buckets = new();
-    private readonly TextBlock _bucketHint = Ui.Text("额度概览", 12, "#71826D");
+    private readonly TextBlock _bucketHint = Ui.Text(L.T("额度概览", "Usage overview"), 12, "#71826D");
     private readonly TextBlock _balance = Ui.Text("—", 30, "#244A34", true);
-    private readonly TextBlock _balanceDetail = Ui.Text("等待连接 Codex", 11, "#82917C");
+    private readonly TextBlock _balanceDetail = Ui.Text(L.T("等待连接 Codex", "Waiting to connect to Codex"), 11, "#82917C");
     private readonly TextBlock _resetCredits = Ui.Text("", 10, "#82917C");
-    private readonly MeterCard _weekly = new("本周剩余");
-    private readonly MeterCard _fiveHours = new("5 小时剩余");
+    private readonly MeterCard _weekly = new(L.T("本周剩余", "Weekly remaining"));
+    private readonly MeterCard _fiveHours = new(L.T("5 小时剩余", "5-hour remaining"));
     private readonly Border _notice = new();
     private readonly TextBlock _noticeText = Ui.Text("", 12, "#78623D");
     private readonly TextBox _search = new();
     private readonly ComboBox _filter = new();
     private readonly ComboBox _sourceFilter = new() { Name = "TaskSourceFilter" };
     private readonly TextBlock _sourceHint = Ui.Text("", 10, "#7D8C75");
-    private readonly TextBlock _taskCount = Ui.Text("0 项", 11, "#869280");
+    private readonly TextBlock _taskCount = Ui.Text(L.T("0 项", "0 tasks"), 11, "#869280");
     private readonly StackPanel _taskList = new();
     private readonly ScrollViewer _taskScroll = new();
-    private readonly TextBlock _conversationTitle = Ui.Text("选一项任务，看看进展", 18, "#264934", true);
-    private readonly TextBlock _conversationMeta = Ui.Text("只显示用户与助手消息", 11, "#85917D");
+    private readonly TextBlock _conversationTitle = Ui.Text(L.T("选一项任务，看看进展", "Select a task to see its progress"), 18, "#264934", true);
+    private readonly TextBlock _conversationMeta = Ui.Text(L.T("只显示用户与助手消息", "Only user and assistant messages are shown"), 11, "#85917D");
     private readonly StackPanel _messages = new();
     private readonly ScrollViewer _messageScroll = new();
     private readonly TextBlock _conversationError = Ui.Text("", 12, "#9A6840");
     private readonly Button _older = new();
     private readonly CheckBox _notifications = new();
     private readonly ComboBox _interval = new();
-    private readonly Button _settingsButton = new() { Name = "DashboardSettings", Content = "设置" };
+    private readonly Button _settingsButton = new() { Name = "DashboardSettings", Content = L.T("设置", "Settings") };
     private readonly Action? _openSettings;
     private bool _rendering, _closed, _loadingOlder;
     private string? _bucketId, _uiError, _lastConversationTask;
@@ -58,7 +58,7 @@ internal sealed partial class CodexDashboard : Window
         Action? openSettings = null)
     {
         _monitor = monitor; _settings = settings; _openSettings = openSettings;
-        Title = AppVersion.WindowTitle("Codex 工作看板");
+        Title = AppVersion.WindowTitle(L.T("Codex 工作看板", "Codex work dashboard"));
         Width = 1180; Height = 850; MinWidth = 1000; MinHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = Ui.Brush("#F4F6F0");
@@ -91,26 +91,26 @@ internal sealed partial class CodexDashboard : Window
         var eyebrow = Ui.Text("AI PET  /  CODEX  ·  " + AppVersion.Label, 10, "#61715D", true);
         eyebrow.Name = "AppVersionLabel";
         eyebrow.ToolTip = AppVersion.ProductLabel;
-        AutomationProperties.SetName(eyebrow, "AI Pet 版本 " + AppVersion.Number);
+        AutomationProperties.SetName(eyebrow, L.T("AI Pet 版本 ", "AI Pet version ") + AppVersion.Number);
         eyebrow.Margin = new Thickness(1, 0, 0, 5); heading.Children.Add(eyebrow);
-        heading.Children.Add(Ui.Text("工作看板", 28, "#203E2C", true));
-        var intro = Ui.Text("小伙伴陪你工作，进展随时看见。", 12, "#84917C");
+        heading.Children.Add(Ui.Text(L.T("工作看板", "Work dashboard"), 28, "#203E2C", true));
+        var intro = Ui.Text(L.T("小伙伴陪你工作，进展随时看见。", "A companion by your side, with progress in view."), 12, "#84917C");
         intro.Margin = new Thickness(1, 7, 0, 0); heading.Children.Add(intro); header.Children.Add(heading);
         var actions = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         _settingsButton.Margin = new Thickness(0, 0, 8, 0);
         _settingsButton.IsEnabled = _openSettings != null;
         _settingsButton.Click += (_, _) => _openSettings?.Invoke();
-        AutomationProperties.SetName(_settingsButton, "设置");
+        AutomationProperties.SetName(_settingsButton, L.T("设置", "Settings"));
         buttons.Children.Add(_settingsButton);
-        var skins = Ui.Button("给桌宠换装", (_, _) => openSkins());
+        var skins = Ui.Button(L.T("给桌宠换装", "Change character skin"), (_, _) => openSkins());
         skins.Margin = new Thickness(0, 0, 8, 0); buttons.Children.Add(skins);
-        _refresh.Content = "立即刷新"; _refresh.Background = Ui.Brush("#28563C"); _refresh.Foreground = Brushes.White;
-        _refresh.BorderThickness = new Thickness(0); _refresh.MinWidth = 105; _refresh.ToolTip = "刷新连接、额度与任务（F5）";
+        _refresh.Content = L.T("立即刷新", "Refresh now"); _refresh.Background = Ui.Brush("#28563C"); _refresh.Foreground = Brushes.White;
+        _refresh.BorderThickness = new Thickness(0); _refresh.MinWidth = 105; _refresh.ToolTip = L.T("刷新连接、额度与任务（F5）", "Refresh connection, usage, and tasks (F5)");
         _refresh.Click += async (_, _) => await RunActionAsync(() => _monitor.ConnectionEnabled ? _monitor.RefreshAsync(true) : _monitor.ResumeConnectionAsync());
         buttons.Children.Add(_refresh); actions.Children.Add(buttons);
-        _forget.Content = "断开并清除连接"; _forget.Margin = new Thickness(8, 0, 0, 0);
-        _forget.ToolTip = "停止读取并清除本机连接记录；再次连接需要重新配对";
+        _forget.Content = L.T("断开并清除连接", "Disconnect and forget"); _forget.Margin = new Thickness(8, 0, 0, 0);
+        _forget.ToolTip = L.T("停止读取并清除本机连接记录；再次连接需要重新配对", "Stop reading and clear the local connection record; reconnecting requires pairing again");
         _forget.Click += async (_, _) => await RunActionAsync(() => _monitor.ForgetConnectionAsync());
         buttons.Children.Add(_forget);
         var status = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
@@ -131,7 +131,7 @@ internal sealed partial class CodexDashboard : Window
         caption.Children.Add(_buckets); area.Children.Add(caption);
         var cards = new Grid();
         for (int i = 0; i < 3; i++) cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var body = new StackPanel(); body.Children.Add(Ui.Text("Credits 余额", 12, "#6C8264", true));
+        var body = new StackPanel(); body.Children.Add(Ui.Text(L.T("Credits 余额", "Credits balance"), 12, "#6C8264", true));
         _balance.Margin = new Thickness(0, 8, 0, 5); _balance.TextTrimming = TextTrimming.CharacterEllipsis; body.Children.Add(_balance);
         body.Children.Add(_balanceDetail); _resetCredits.Margin = new Thickness(0, 7, 0, 0); body.Children.Add(_resetCredits);
         var balanceCard = Card(body, "#E8F0E2"); balanceCard.Margin = new Thickness(0, 0, 10, 0); balanceCard.MinHeight = 142; cards.Children.Add(balanceCard);
@@ -160,7 +160,7 @@ internal sealed partial class CodexDashboard : Window
         left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         left.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var title = new Grid { Margin = new Thickness(0, 0, 0, 12) };
-        title.Children.Add(Ui.Text("最近任务", 17, "#284B35", true));
+        title.Children.Add(Ui.Text(L.T("最近任务", "Recent tasks"), 17, "#284B35", true));
         _taskCount.HorizontalAlignment = HorizontalAlignment.Right; _taskCount.VerticalAlignment = VerticalAlignment.Center; title.Children.Add(_taskCount); left.Children.Add(title);
         var filters = new StackPanel { Margin = new Thickness(0, 0, 0, 10) };
         var selectors = new Grid();
@@ -173,10 +173,10 @@ internal sealed partial class CodexDashboard : Window
         foreach (var option in new[] {
             new TaskSourceOption(DashboardTaskFilter.Codex, "Codex"),
             new TaskSourceOption(DashboardTaskFilter.Dot, "Dot"),
-            new TaskSourceOption(DashboardTaskFilter.All, "全部") }) _sourceFilter.Items.Add(option);
+            new TaskSourceOption(DashboardTaskFilter.All, L.T("全部", "All")) }) _sourceFilter.Items.Add(option);
         _sourceFilter.SelectedValue = _monitor.DashboardFilter;
-        _sourceFilter.ToolTip = "筛选看板任务；桌宠与气泡始终只跟随 Codex";
-        AutomationProperties.SetName(_sourceFilter, "任务来源：Codex / Dot / 全部");
+        _sourceFilter.ToolTip = L.T("筛选看板任务；桌宠与气泡始终只跟随 Codex", "Filter dashboard tasks; the pet and bubbles always follow Codex only");
+        AutomationProperties.SetName(_sourceFilter, L.T("任务来源：Codex / Dot / 全部", "Task source: Codex / Dot / All"));
         _sourceFilter.SelectionChanged += (_, _) =>
         {
             if (_rendering || _sourceFilter.SelectedItem is not TaskSourceOption option) return;
@@ -184,7 +184,7 @@ internal sealed partial class CodexDashboard : Window
         };
         selectors.Children.Add(_sourceFilter);
         ConfigureCombo(_filter);
-        foreach (string value in new[] { "所有状态", "运行中", "需要关注", "已空闲" }) _filter.Items.Add(value);
+        foreach (string value in new[] { L.T("所有状态", "All states"), L.T("运行中", "Running"), L.T("需要关注", "Needs attention"), L.T("已空闲", "Idle") }) _filter.Items.Add(value);
         _filter.SelectedIndex = 0; _filter.SelectionChanged += (_, _) => { if (!_rendering) RenderTasks(); };
         Grid.SetColumn(_filter, 2); selectors.Children.Add(_filter);
         filters.Children.Add(selectors);
@@ -192,10 +192,10 @@ internal sealed partial class CodexDashboard : Window
         _sourceHint.TextWrapping = TextWrapping.Wrap;
         _sourceHint.Margin = new Thickness(0, 7, 0, 10);
         filters.Children.Add(_sourceHint);
-        var label = Ui.Text("最近 50 条记录及置顶任务 · 搜索", 10, "#86947F"); label.Margin = new Thickness(0, 0, 0, 5); filters.Children.Add(label);
+        var label = Ui.Text(L.T("最近 50 条记录及置顶任务 · 搜索", "Latest 50 records and pinned tasks · Search"), 10, "#86947F"); label.Margin = new Thickness(0, 0, 0, 5); filters.Children.Add(label);
         _search.FontFamily = new FontFamily("Microsoft YaHei UI"); _search.FontSize = 12; _search.Padding = new Thickness(9, 7, 9, 7);
         _search.BorderBrush = Ui.Brush("#DDE5D6"); _search.Foreground = Ui.Brush("#38523B"); _search.Background = Ui.Brush("#FAFBF7");
-        _search.ToolTip = "按任务标题或项目名搜索"; AutomationProperties.SetName(_search, "搜索任务标题或项目名");
+        _search.ToolTip = L.T("按任务标题或项目名搜索", "Search by task title or project"); AutomationProperties.SetName(_search, L.T("搜索任务标题或项目名", "Search task titles or project names"));
         _search.TextChanged += (_, _) => { if (!_rendering) RenderTasks(); }; filters.Children.Add(_search);
         Grid.SetRow(filters, 1); left.Children.Add(filters);
         _taskScroll.Content = _taskList; _taskScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; _taskScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -210,7 +210,7 @@ internal sealed partial class CodexDashboard : Window
         Grid.SetRow(_conversationError, 1); right.Children.Add(_conversationError);
         _messageScroll.Content = _messages; _messageScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; _messageScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         _messageScroll.Padding = new Thickness(0, 0, 8, 0); Grid.SetRow(_messageScroll, 2); right.Children.Add(_messageScroll);
-        _older.Content = "加载更早的消息"; _older.Margin = new Thickness(0, 12, 0, 0); _older.HorizontalAlignment = HorizontalAlignment.Center; _older.Padding = new Thickness(20, 7, 20, 7);
+        _older.Content = L.T("加载更早的消息", "Load older messages"); _older.Margin = new Thickness(0, 12, 0, 0); _older.HorizontalAlignment = HorizontalAlignment.Center; _older.Padding = new Thickness(20, 7, 20, 7);
         _older.Click += async (_, _) =>
         {
             if (_loadingOlder) return;
@@ -229,29 +229,29 @@ internal sealed partial class CodexDashboard : Window
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(245) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(235) });
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _notifications.Content = "Codex 任务完成时提醒"; _notifications.Margin = new Thickness(0, 0, 28, 0); _notifications.VerticalAlignment = VerticalAlignment.Center;
+        _notifications.Content = L.T("Codex 任务完成时提醒", "Task notifications"); _notifications.Margin = new Thickness(0, 0, 28, 0); _notifications.VerticalAlignment = VerticalAlignment.Center;
         _notifications.Checked += (_, _) => ChangeNotifications(true); _notifications.Unchecked += (_, _) => ChangeNotifications(false); footer.Children.Add(_notifications);
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        var label = Ui.Text("任务刷新", 12, "#647A5C"); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new Thickness(0, 0, 9, 0); row.Children.Add(label);
+        var label = Ui.Text(L.T("任务刷新", "Task refresh"), 12, "#647A5C"); label.VerticalAlignment = VerticalAlignment.Center; label.Margin = new Thickness(0, 0, 9, 0); row.Children.Add(label);
         ConfigureCombo(_interval); _interval.MinWidth = 90;
         foreach (int seconds in new[] { 5, 10, 15, 30, 60, 120 }) _interval.Items.Add(new IntervalOption(seconds));
         _interval.SelectionChanged += (_, _) =>
         {
             if (_rendering || _interval.SelectedItem is not IntervalOption option) return;
             try { _monitor.SetRefreshSeconds(option.Seconds); }
-            catch (Exception ex) { _uiError = "暂时无法保存刷新设置：" + ex.Message; Render(); }
+            catch (Exception ex) { _uiError = L.T("暂时无法保存刷新设置：", "Could not save refresh settings: ") + ex.Message; Render(); }
         };
         row.Children.Add(_interval); Grid.SetColumn(row, 1); footer.Children.Add(row);
-        var note = Ui.Text("额度每 60 秒刷新 · F5 立即刷新\n关闭看板后，桌宠继续留意任务进展", 10, "#8B9783");
+        var note = Ui.Text(L.T("额度每 60 秒刷新 · F5 立即刷新\n关闭看板后，桌宠继续留意任务进展", "Usage refreshes every 60 seconds · F5 to refresh now\nThe pet keeps following tasks after you close this dashboard"), 10, "#8B9783");
         note.TextAlignment = TextAlignment.Right; note.VerticalAlignment = VerticalAlignment.Center; note.LineHeight = 17;
         Grid.SetColumn(note, 2); footer.Children.Add(note);
         var preferences = new StackPanel(); preferences.Children.Add(footer);
         var privacy = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        _messagesAccess.Content = "读取对话内容"; _messagesAccess.VerticalAlignment = VerticalAlignment.Center;
+        _messagesAccess.Content = L.T("读取对话内容", "Read conversation content"); _messagesAccess.VerticalAlignment = VerticalAlignment.Center;
         _messagesAccess.Checked += (_, _) => ChangeMessageAccess(true);
         _messagesAccess.Unchecked += (_, _) => ChangeMessageAccess(false);
         privacy.Children.Add(_messagesAccess);
-        var privacyHint = Ui.Text("默认关闭；开启后可查看消息并核验完成提醒。关闭时仅查询额度和任务列表。", 10, "#71826D");
+        var privacyHint = Ui.Text(L.T("默认关闭；开启后可查看消息并核验完成提醒。关闭时仅查询额度和任务列表。", "Off by default. Enable to view messages and verify completion notices. When off, only usage and task lists are queried."), 10, "#71826D");
         privacyHint.Margin = new Thickness(14, 0, 0, 0); privacyHint.VerticalAlignment = VerticalAlignment.Center;
         privacyHint.TextWrapping = TextWrapping.Wrap; privacy.Children.Add(privacyHint); preferences.Children.Add(privacy);
         Grid.SetRow(preferences, 4); _root.Children.Add(preferences);
@@ -267,7 +267,7 @@ internal sealed partial class CodexDashboard : Window
     {
         if (_rendering) return;
         try { _monitor.SetNotifications(enabled); }
-        catch (Exception ex) { _uiError = "暂时无法保存提醒设置：" + ex.Message; Render(); }
+        catch (Exception ex) { _uiError = L.T("暂时无法保存提醒设置：", "Could not save notification settings: ") + ex.Message; Render(); }
     }
 
     private async Task RunActionAsync(Func<Task> action)
@@ -294,15 +294,15 @@ internal sealed partial class CodexDashboard : Window
         try
         {
             var state = _monitor.Snapshot;
-            _connection.Text = !_monitor.ConnectionEnabled ? "○ 连接已关闭" : state.Connected ? "● 已连接 Codex" : state.Refreshing ? "◌ 正在连接" : "○ 等待 Codex";
+            _connection.Text = !_monitor.ConnectionEnabled ? L.T("○ 连接已关闭", "○ Connection off") : state.Connected ? L.T("● 已连接 Codex", "● Connected to Codex") : state.Refreshing ? L.T("◌ 正在连接", "◌ Connecting") : L.T("○ 等待 Codex", "○ Waiting for Codex");
             _connection.Foreground = Ui.Brush(state.Connected ? "#3D6948" : "#8B795A");
             _connectionBadge.Background = Ui.Brush(state.Connected ? "#E3EDDC" : "#ECEADF"); _connectionBadge.ToolTip = state.StatusText;
-            _updated.Text = state.LastUpdated is { } at ? "最近刷新 " + at.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture) : "等待第一次刷新";
-            _refresh.IsEnabled = !state.Refreshing; _refresh.Content = !_monitor.ConnectionEnabled ? "重新连接" : state.Refreshing ? "刷新中…" : "立即刷新";
+            _updated.Text = state.LastUpdated is { } at ? L.T("最近刷新 ", "Last refreshed ") + at.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture) : L.T("等待第一次刷新", "Waiting for the first refresh");
+            _refresh.IsEnabled = !state.Refreshing; _refresh.Content = !_monitor.ConnectionEnabled ? L.T("重新连接", "Reconnect") : state.Refreshing ? L.T("刷新中…", "Refreshing…") : L.T("立即刷新", "Refresh now");
             _forget.IsEnabled = _monitor.ConnectionEnabled || state.Connected;
             _messagesAccess.IsChecked = _monitor.MessagesEnabled; _messagesAccess.IsEnabled = _monitor.ConnectionEnabled;
             _notifications.IsEnabled = _monitor.MessagesEnabled;
-            _notifications.ToolTip = _monitor.MessagesEnabled ? "依据实际任务结果提醒" : "开启对话读取后才能核验任务完成；当前不会读取详情";
+            _notifications.ToolTip = _monitor.MessagesEnabled ? L.T("依据实际任务结果提醒", "Notify based on actual task results") : L.T("开启对话读取后才能核验任务完成；当前不会读取详情", "Enable message reading to verify completion; details are not currently read");
             _notifications.IsChecked = _settings.NotificationsEnabled;
             _interval.SelectedItem = _interval.Items.Cast<IntervalOption>().FirstOrDefault(x => x.Seconds == _settings.RefreshSeconds);
             _sourceFilter.SelectedValue = _monitor.DashboardFilter;
@@ -314,7 +314,7 @@ internal sealed partial class CodexDashboard : Window
                 if (!string.IsNullOrWhiteSpace(state.StatusText)) notice += "  " + state.StatusText;
             }
             else if (string.IsNullOrWhiteSpace(notice) && !string.IsNullOrWhiteSpace(state.Error))
-                notice = "部分信息暂未刷新，已保留最近内容。";
+                notice = L.T("部分信息暂未刷新，已保留最近内容。", "Some information has not refreshed. The latest available content is retained.");
             _noticeText.Text = notice ?? ""; _notice.ToolTip = state.Error;
             _notice.Visibility = string.IsNullOrWhiteSpace(notice) ? Visibility.Collapsed : Visibility.Visible;
             RenderTasks(); RenderConversation();
@@ -326,17 +326,17 @@ internal sealed partial class CodexDashboard : Window
     {
         return _monitor.PairingState switch
         {
-            CodexPairingState.Revoked => "连接已清除。请在 Codex 中重新配对，然后点击「重新连接」。",
-            CodexPairingState.Missing => "未找到配对记录。请按 Codex首次连接.txt 完成首次配对。",
-            CodexPairingState.Expired => "连接记录已过期。请按 Codex首次连接.txt 主动重新配对。",
+            CodexPairingState.Revoked => L.T("连接已清除。请在 Codex 中重新配对，然后点击「重新连接」。", "Connection record cleared. Pair again in Codex, then click Reconnect."),
+            CodexPairingState.Missing => L.T("未找到配对记录。请按 Codex首次连接.txt 完成首次配对。", "No pairing record found. Follow Codex首次连接.txt to pair for the first time."),
+            CodexPairingState.Expired => L.T("连接记录已过期。请按 Codex首次连接.txt 主动重新配对。", "The connection record has expired. Follow Codex首次连接.txt to pair again explicitly."),
             CodexPairingState.Unavailable => _monitor.ConnectionRequested
-                ? "连接记录暂时无法读取，已暂停请求，将自动重试；无需重新配对。"
-                : "连接记录暂时无法读取，请稍后点击「重新连接」。",
-            CodexPairingState.Invalid => "连接记录未通过安全校验，已暂停请求。请检查文件权限及记录有效期；不会绕过保护。",
-            _ when !_monitor.ConnectionRequested => "连接已关闭。点击「重新连接」可尝试使用已有配对。",
-            _ when state.Connected => "这次操作没有完成，请稍后重试。",
-            _ when state.LastUpdated is null => "正在连接 Codex。请确认 App 已打开并联网，已有配对会自动重试。",
-            _ => "连接暂时中断，当前保留上次读取的内容。正在自动重试，也可点击「立即刷新」。"
+                ? L.T("连接记录暂时无法读取，已暂停请求，将自动重试；无需重新配对。", "The connection record is temporarily unreadable. Requests are paused and will retry automatically; no new pairing is needed.")
+                : L.T("连接记录暂时无法读取，请稍后点击「重新连接」。", "The connection record is temporarily unreadable. Click Reconnect later."),
+            CodexPairingState.Invalid => L.T("连接记录未通过安全校验，已暂停请求。请检查文件权限及记录有效期；不会绕过保护。", "The connection record failed security checks. Requests are paused. Check file permissions and expiration; protection will not be bypassed."),
+            _ when !_monitor.ConnectionRequested => L.T("连接已关闭。点击「重新连接」可尝试使用已有配对。", "Connection is off. Click Reconnect to try using the existing pairing."),
+            _ when state.Connected => L.T("这次操作没有完成，请稍后重试。", "This operation did not finish. Please retry shortly."),
+            _ when state.LastUpdated is null => L.T("正在连接 Codex。请确认 App 已打开并联网，已有配对会自动重试。", "Connecting to Codex. Make sure the app is open and online; existing pairing will retry automatically."),
+            _ => L.T("连接暂时中断，当前保留上次读取的内容。正在自动重试，也可点击「立即刷新」。", "Connection temporarily interrupted. Last-read data is retained. Retrying automatically; you can also click Refresh now.")
         };
     }
 
@@ -353,15 +353,15 @@ internal sealed partial class CodexDashboard : Window
             _buckets.Tag = options; _buckets.SelectedValue = _bucketId; _rendering = previous;
         }
         _buckets.Visibility = state.Buckets.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
-        _bucketHint.Text = "额度概览" + (string.IsNullOrWhiteSpace(chosen?.Plan) ? "" : "  ·  " + chosen.Plan);
-        _bucketHint.ToolTip = state.UsageUpdatedAt is { } usageAt ? "额度更新时间：" + usageAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture) : "等待额度数据";
-        string credits = "暂不可用";
-        if (chosen?.Unlimited == true) credits = "不限额";
+        _bucketHint.Text = L.T("额度概览", "Usage overview") + (string.IsNullOrWhiteSpace(chosen?.Plan) ? "" : "  ·  " + chosen.Plan);
+        _bucketHint.ToolTip = state.UsageUpdatedAt is { } usageAt ? L.T("额度更新时间：", "Usage updated: ") + usageAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture) : L.T("等待额度数据", "Waiting for usage data");
+        string credits = L.T("暂不可用", "Unavailable");
+        if (chosen?.Unlimited == true) credits = L.T("不限额", "Unlimited");
         else if (double.TryParse(chosen?.CreditBalance, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) && double.IsFinite(value))
             credits = Math.Max(0, Math.Ceiling(value)).ToString("N0", CultureInfo.InvariantCulture) + " credits";
         _balance.Text = credits; _balance.FontSize = credits.Length > 16 ? 23 : 30; _balance.ToolTip = chosen?.CreditBalance;
-        _balanceDetail.Text = chosen is null ? "连接后显示当前余额" : chosen.HasCredits == false ? "当前无可用 Credits" : "可用 credits";
-        _resetCredits.Text = state.ResetCreditsAvailable is { } resets ? "可用额度重置  " + resets + " 次" : "额度重置次数暂未提供";
+        _balanceDetail.Text = chosen is null ? L.T("连接后显示当前余额", "Connect to view the current balance") : chosen.HasCredits == false ? L.T("当前无可用 Credits", "No credits currently available") : L.T("可用 credits", "Available credits");
+        _resetCredits.Text = state.ResetCreditsAvailable is { } resets ? L.T("可用额度重置  ", "Available usage resets: ") + resets + L.T(" 次", " remaining") : L.T("额度重置次数暂未提供", "Usage reset count not provided");
         _weekly.Set(chosen?.Windows.FirstOrDefault(x => x.DurationMinutes == 10080));
         _fiveHours.Set(chosen?.Windows.FirstOrDefault(x => x.DurationMinutes == 300));
     }
@@ -373,13 +373,13 @@ internal sealed partial class CodexDashboard : Window
         var sourceTasks = _monitor.DashboardTasks;
         string query = _search.Text.Trim();
         int unknown = state.UnknownTasks.Count;
-        _sourceHint.Text = "桌宠与气泡仅跟随 Codex。" + (unknown > 0
-            ? $"还有 {unknown} 项来源待确认，可切换到「全部」，右键任务归类。"
-            : "右键任务可调整来源归类。");
+        _sourceHint.Text = L.T("桌宠与气泡仅跟随 Codex。", "The pet and bubbles follow Codex only. ") + (unknown > 0
+            ? L.T($"还有 {unknown} 项来源待确认，可切换到「全部」，右键任务归类。", $"The source of {unknown} task(s) is unconfirmed. Switch to All, then right-click a task to classify it.")
+            : L.T("右键任务可调整来源归类。", "Right-click a task to change its source classification."));
         var filtered = sourceTasks.Where(task =>
             (query.Length == 0 || task.Title.Contains(query, StringComparison.OrdinalIgnoreCase) || (task.ProjectName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)) &&
             (_filter.SelectedIndex switch { 1 => task.IsRunning, 2 => task.NeedsAttention, 3 => task.Status is "idle" or "completed", _ => true })).ToList();
-        _taskCount.Text = query.Length > 0 || _filter.SelectedIndex > 0 ? filtered.Count + " / " + sourceTasks.Count + " 项" : filtered.Count + " 项";
+        _taskCount.Text = query.Length > 0 || _filter.SelectedIndex > 0 ? filtered.Count + " / " + sourceTasks.Count + L.T(" 项", " tasks") : filtered.Count + L.T(" 项", " tasks");
         string selected = _monitor.SelectedTask?.Key ?? "";
         string key = selected + "|" + query + "|" + _filter.SelectedIndex + "|" + _monitor.DashboardFilter + "|" + state.Connected + "|" +
             string.Join("\n", filtered.Select(x => x.Key + "|" + x.Title + "|" + x.Status + "|" + x.ProjectName + "|" + x.Pinned + "|" + x.Source + "|" + x.SourceIsManual));
@@ -389,10 +389,10 @@ internal sealed partial class CodexDashboard : Window
         _taskList.Children.Clear();
         if (filtered.Count == 0)
         {
-            _taskList.Children.Add(EmptyState(query.Length > 0 || _filter.SelectedIndex > 0 ? "没有匹配的任务" : "此来源暂无任务",
-                query.Length > 0 || _filter.SelectedIndex > 0 ? "试试其它关键词，或切换到所有状态。" : unknown > 0
-                    ? "切换到「全部」可查看来源待确认的任务，右键可归入 Codex 或 Dot。"
-                    : state.Connected ? "可以切换任务来源查看其它记录。" : "连接 Codex 后，最近的任务会显示在这里。"));
+            _taskList.Children.Add(EmptyState(query.Length > 0 || _filter.SelectedIndex > 0 ? L.T("没有匹配的任务", "No matching tasks") : L.T("此来源暂无任务", "No tasks from this source"),
+                query.Length > 0 || _filter.SelectedIndex > 0 ? L.T("试试其它关键词，或切换到所有状态。", "Try different keywords or switch to All states.") : unknown > 0
+                    ? L.T("切换到「全部」可查看来源待确认的任务，右键可归入 Codex 或 Dot。", "Switch to All to see tasks with unconfirmed sources. Right-click to classify them as Codex or Dot.")
+                    : state.Connected ? L.T("可以切换任务来源查看其它记录。", "Switch the task source to see other records.") : L.T("连接 Codex 后，最近的任务会显示在这里。", "Recent tasks will appear here after connecting to Codex.")));
             return;
         }
         foreach (var task in filtered)
@@ -404,7 +404,7 @@ internal sealed partial class CodexDashboard : Window
             top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             top.Children.Add(Ui.Text((task.IsRunning ? "●  " : task.NeedsAttention ? "!  " : "○  ") + task.StatusLabel, 10,
                 task.NeedsAttention ? "#A2793C" : task.IsRunning ? "#497447" : "#8B9681", true));
-            var sourceLabel = Ui.Text(TaskSourcePolicy.SourceLabel(task) + (task.Pinned ? " · 置顶" : ""), 9, "#8B9A80");
+            var sourceLabel = Ui.Text(TaskSourcePolicy.SourceLabel(task) + (task.Pinned ? L.T(" · 置顶", " · Pinned") : ""), 9, "#8B9A80");
             sourceLabel.HorizontalAlignment = HorizontalAlignment.Right; sourceLabel.Margin = new Thickness(7, 0, 0, 0);
             Grid.SetColumn(sourceLabel, 1); top.Children.Add(sourceLabel);
             body.Children.Add(top);
@@ -441,14 +441,14 @@ internal sealed partial class CodexDashboard : Window
             item.Click += (_, _) =>
             {
                 try { _uiError = null; _monitor.SetTaskSourceOverride(task, source); }
-                catch (Exception ex) { _uiError = "任务归类暂未保存，请稍后重试。"; Program.Log(ex); Render(); }
+                catch (Exception ex) { _uiError = L.T("任务归类暂未保存，请稍后重试。", "Could not save task classification. Please retry shortly."); Program.Log(ex); Render(); }
             };
             menu.Items.Add(item);
         }
-        Add("归入 Codex", TaskSource.Codex, task.SourceIsManual && task.Source == TaskSource.Codex);
-        Add("归入 Dot", TaskSource.Dot, task.SourceIsManual && task.Source == TaskSource.Dot);
+        Add(L.T("归入 Codex", "Mark as Codex"), TaskSource.Codex, task.SourceIsManual && task.Source == TaskSource.Codex);
+        Add(L.T("归入 Dot", "Mark as Dot"), TaskSource.Dot, task.SourceIsManual && task.Source == TaskSource.Dot);
         menu.Items.Add(new Separator());
-        Add("自动识别来源", null, !task.SourceIsManual);
+        Add(L.T("自动识别来源", "Detect source automatically"), null, !task.SourceIsManual);
         return menu;
     }
 
@@ -457,14 +457,14 @@ internal sealed partial class CodexDashboard : Window
         var task = _monitor.SelectedTask;
         var page = _monitor.Conversation;
         bool pageMatches = task is not null && page?.TaskKey == task.Key;
-        _conversationTitle.Text = task?.Title ?? "选一项任务，看看进展"; _conversationTitle.ToolTip = task?.Title;
-        _conversationMeta.Text = !_monitor.MessagesEnabled ? "对话读取已关闭" : task is null ? "只显示用户与助手消息" : task.StatusLabel + "  ·  " + (_monitor.IsReading ? "正在读取…" : "用户与助手消息");
+        _conversationTitle.Text = task?.Title ?? L.T("选一项任务，看看进展", "Select a task to see its progress"); _conversationTitle.ToolTip = task?.Title;
+        _conversationMeta.Text = !_monitor.MessagesEnabled ? L.T("对话读取已关闭", "Message reading is off") : task is null ? L.T("只显示用户与助手消息", "Only user and assistant messages are shown") : task.StatusLabel + "  ·  " + (_monitor.IsReading ? L.T("正在读取…", "Reading…") : L.T("用户与助手消息", "User and assistant messages"));
         string? error = _monitor.ConversationError;
-        _conversationError.Text = string.IsNullOrWhiteSpace(error) ? "" : "消息暂未读取成功，可再次点击任务重试。";
+        _conversationError.Text = string.IsNullOrWhiteSpace(error) ? "" : L.T("消息暂未读取成功，可再次点击任务重试。", "Could not read messages. Click the task again to retry.");
         _conversationError.ToolTip = error; _conversationError.Visibility = string.IsNullOrWhiteSpace(error) ? Visibility.Collapsed : Visibility.Visible;
         _older.Visibility = pageMatches && page!.HasMore ? Visibility.Visible : Visibility.Collapsed;
         _older.IsEnabled = _monitor.Snapshot.Connected && !_monitor.IsReading && !_loadingOlder;
-        _older.Content = _loadingOlder ? "正在加载…" : "加载更早的消息";
+        _older.Content = _loadingOlder ? L.T("正在加载…", "Loading…") : L.T("加载更早的消息", "Load older messages");
         string selectedKey = task?.Key ?? "";
         string renderKey = _monitor.MessagesEnabled + "|" + selectedKey + "|" + pageMatches + "|" + error + "|" +
             (pageMatches ? string.Join("\n\u001f", page!.Messages.Select(x => x.Id + "|" + x.Role + "|" + x.Phase + "|" + x.Text)) : _monitor.IsReading.ToString());
@@ -475,18 +475,18 @@ internal sealed partial class CodexDashboard : Window
         bool wasAtBottom = _messageScroll.ScrollableHeight - oldOffset < 40, loadingOlder = _loadingOlder;
         _messages.Children.Clear();
         if (!_monitor.MessagesEnabled)
-            _messages.Children.Add(EmptyState("消息读取默认关闭", "需要查看对话时，可在下方开启「读取对话内容」。关闭后会清除已显示的消息。"));
+            _messages.Children.Add(EmptyState(L.T("消息读取默认关闭", "Message reading is off by default"), L.T("需要查看对话时，可在下方开启「读取对话内容」。关闭后会清除已显示的消息。", "To view conversations, enable Read conversation content below. Turning it off clears displayed messages.")));
         else if (task is null)
-            _messages.Children.Add(EmptyState("让进展慢慢展开", "在左侧选一项任务，查看你与助手的对话。"));
+            _messages.Children.Add(EmptyState(L.T("让进展慢慢展开", "Follow the progress"), L.T("在左侧选一项任务，查看你与助手的对话。", "Select a task on the left to view your conversation with the assistant.")));
         else if (!pageMatches || page!.Messages.Count == 0)
-            _messages.Children.Add(EmptyState(_monitor.IsReading ? "正在读取消息…" : "最近几轮暂无公开消息",
-                _monitor.IsReading ? "稍等片刻，对话很快就到。" : "可加载更早内容，查看此前的对话。"));
+            _messages.Children.Add(EmptyState(_monitor.IsReading ? L.T("正在读取消息…", "Reading messages…") : L.T("最近几轮暂无公开消息", "No visible messages in recent turns"),
+                _monitor.IsReading ? L.T("稍等片刻，对话很快就到。", "Just a moment; the conversation is loading.") : L.T("可加载更早内容，查看此前的对话。", "Load older messages to see the earlier conversation.")));
         else
             foreach (var message in page!.Messages)
             {
                 if (message.Role != "user" && message.Role != "assistant") continue;
                 var body = new StackPanel(); bool isUser = message.Role == "user";
-                var label = Ui.Text(isUser ? "你" : message.Phase == "commentary" ? "助手 · 进展" : "助手", 10, isUser ? "#708768" : "#7C8D74", true);
+                var label = Ui.Text(isUser ? L.T("你", "You") : message.Phase == "commentary" ? L.T("助手 · 进展", "Assistant · Progress") : L.T("助手", "Assistant"), 10, isUser ? "#708768" : "#7C8D74", true);
                 label.Margin = new Thickness(0, 0, 0, 8); body.Children.Add(label);
                 var text = new TextBox
                 {
@@ -505,7 +505,7 @@ internal sealed partial class CodexDashboard : Window
                     _messageScroll.ScrollToVerticalOffset(_messageScroll.VerticalOffset - movement);
                     e.Handled = true;
                 };
-                AutomationProperties.SetName(text, isUser ? "用户消息" : "助手消息"); body.Children.Add(text);
+                AutomationProperties.SetName(text, isUser ? L.T("用户消息", "User message") : L.T("助手消息", "Assistant message")); body.Children.Add(text);
                 _messages.Children.Add(new Border
                 {
                     Background = Ui.Brush(isUser ? "#EDF3E7" : "#F7F8F2"), BorderBrush = Ui.Brush(isUser ? "#E4EDDC" : "#EEF0E8"),
@@ -563,14 +563,14 @@ internal sealed partial class CodexDashboard : Window
     private sealed record BucketOption(string Id, string Label);
     private sealed record IntervalOption(int Seconds)
     {
-        public override string ToString() => Seconds >= 60 ? (Seconds / 60) + " 分钟" : Seconds + " 秒";
+        public override string ToString() => Seconds >= 60 ? (Seconds / 60) + L.T(" 分钟", " min") : Seconds + L.T(" 秒", " s");
     }
 
     private sealed class MeterCard
     {
         public Border Container { get; }
         private readonly TextBlock _value = Ui.Text("—", 31, "#355437", true);
-        private readonly TextBlock _detail = Ui.Text("暂未提供此额度窗口", 10, "#83917B");
+        private readonly TextBlock _detail = Ui.Text(L.T("暂未提供此额度窗口", "This usage window is not provided"), 10, "#83917B");
         private readonly ProgressBar _bar = new() { Minimum = 0, Maximum = 100, Height = 6, BorderThickness = new Thickness(0), Background = Ui.Brush("#E9EEE4"), Foreground = Ui.Brush("#7C9B68") };
         public MeterCard(string label)
         {
@@ -583,14 +583,14 @@ internal sealed partial class CodexDashboard : Window
         {
             double? remaining = window?.RemainingPercent;
             bool valid = remaining is { } n && double.IsFinite(n);
-            _value.Text = valid ? remaining!.Value.ToString("0.#", CultureInfo.CurrentCulture) + "%" : "未提供";
+            _value.Text = valid ? remaining!.Value.ToString("0.#", CultureInfo.CurrentCulture) + "%" : L.T("未提供", "Not provided");
             _value.FontSize = valid ? 31 : 25; _bar.Value = valid ? Math.Clamp(remaining!.Value, 0, 100) : 0;
             _bar.Foreground = Ui.Brush(valid && remaining < 10 ? "#B58158" : "#739566");
             _value.Foreground = Ui.Brush(valid && remaining < 10 ? "#9B7446" : "#355437");
-            _detail.Text = window is null ? "当前账户未提供此额度窗口" : window.ResetsAt is { } at
-                ? "重置于 " + at.ToLocalTime().ToString("M/d HH:mm", CultureInfo.CurrentCulture) : "重置时间暂未提供";
-            Container.ToolTip = window is null ? "缺失值不表示额度为零" : "窗口长度 " + window.DurationMinutes + " 分钟" +
-                (window.UsedPercent is { } used ? " · 已用 " + used.ToString("0.#", CultureInfo.CurrentCulture) + "%" : "");
+            _detail.Text = window is null ? L.T("当前账户未提供此额度窗口", "The current account does not provide this usage window") : window.ResetsAt is { } at
+                ? L.T("重置于 ", "Resets at ") + at.ToLocalTime().ToString("M/d HH:mm", CultureInfo.CurrentCulture) : L.T("重置时间暂未提供", "Reset time not provided");
+            Container.ToolTip = window is null ? L.T("缺失值不表示额度为零", "Missing data does not mean zero allowance") : L.T("窗口长度 ", "Window length: ") + window.DurationMinutes + L.T(" 分钟", " min") +
+                (window.UsedPercent is { } used ? L.T(" · 已用 ", " · Used ") + used.ToString("0.#", CultureInfo.CurrentCulture) + "%" : "");
         }
     }
 }

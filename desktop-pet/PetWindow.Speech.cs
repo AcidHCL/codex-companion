@@ -13,7 +13,7 @@ internal sealed partial class PetWindow
     private bool _voiceStudioActive;
     internal bool VoiceStudioActive => _voiceStudioActive;
     public string SpeechStatusText => !PetVoiceProfiles.IsEnabled(Settings.GetVoiceProfile(CurrentSkin.Id))
-        ? "当前角色尚未选择语音模型" : _voice?.StatusText ?? "语音尚未初始化";
+        ? L.T("当前角色尚未选择语音模型", "No speech model selected for this character") : _voice?.StatusText ?? L.T("语音尚未初始化", "Speech is not initialized");
     public bool IsSpeaking => _voice?.IsSpeaking == true;
 
     private void InitializeSpeech()
@@ -99,7 +99,7 @@ internal sealed partial class PetWindow
     {
         Dispatcher.VerifyAccess();
         if (!PetVoiceProfiles.IsReferenceId(referenceId))
-            throw new ArgumentException("只能删除自行保存的音色，内置默认音色不可删除。", nameof(referenceId));
+            throw new ArgumentException(L.T("只能删除自行保存的音色，内置默认音色不可删除。", "Only your saved custom voices can be deleted. Built-in defaults are protected."), nameof(referenceId));
         ArgumentNullException.ThrowIfNull(deleteReference);
         var previous = new Dictionary<string, PetVoiceProfile>(Settings.CharacterVoices, StringComparer.OrdinalIgnoreCase);
         var affected = PetVoiceProfiles.Characters.Where(character =>
@@ -124,7 +124,7 @@ internal sealed partial class PetWindow
                 // agreement instead of reintroducing a potentially broken selection.
                 Settings.CharacterVoices = fallback;
                 RefreshVoiceSelectionAfterDelete(affected);
-                throw new InvalidOperationException("音色未删除，恢复原声音设置失败；受影响角色已保持默认音色。", new AggregateException(deleteError, restoreError));
+                throw new InvalidOperationException(L.T("音色未删除，恢复原声音设置失败；受影响角色已保持默认音色。", "The voice was not deleted, but restoring the previous settings failed. Affected characters retain their default voices."), new AggregateException(deleteError, restoreError));
             }
             RefreshVoiceSelectionAfterDelete(affected);
             throw;
@@ -144,21 +144,21 @@ internal sealed partial class PetWindow
 
     public void PreviewSpeech() => SpeakText(CurrentSkin.Id.ToLowerInvariant() switch
     {
-        "deepseek" => "哼，本鲸已经准备好啦！任务完成后记得请我吃一碗白米饭。",
-        "gpt" => "宝库先锁好了。有什么事，交给小龙娘看看。放心，认真帮忙可不收金币。",
-        _ => "你好，我是" + CurrentSkin.Name + "。声音已经准备好了，我们开始聊天吧。"
+        "deepseek" => L.T("哼，本鲸已经准备好啦！任务完成后记得请我吃一碗白米饭。", "Hmph, this whale is ready! When the work is done, remember to treat me to a bowl of rice."),
+        "gpt" => L.T("宝库先锁好了。有什么事，交给小龙娘看看。放心，认真帮忙可不收金币。", "The treasure vault is locked. Tell your little dragon what's on your mind. Don't worry, helping you costs no gold."),
+        _ => L.T("你好，我是", "Hello, I'm ") + CurrentSkin.Name + L.T("。声音已经准备好了，我们开始聊天吧。", ". My voice is ready. Let's have a chat.")
     }, PetSpeechSource.Preview);
     public void StopSpeech() => _voice?.Stop();
 
     public Task PreloadSpeechModelAsync() => _voiceStudioActive
-        ? Task.FromException(new InvalidOperationException("音色工坊正在工作，请先结束生成或试听。")) : _voice?.PreloadAsync() ?? Task.CompletedTask;
+        ? Task.FromException(new InvalidOperationException(L.T("音色工坊正在工作，请先结束生成或试听。", "Voice Studio is busy. Finish generation or audition first."))) : _voice?.PreloadAsync() ?? Task.CompletedTask;
     public Task UnloadSpeechModelAsync() => _voiceStudioActive
-        ? Task.FromException(new InvalidOperationException("音色工坊正在工作，请使用工坊的取消或停止按钮。")) : _voice?.UnloadAsync() ?? Task.CompletedTask;
+        ? Task.FromException(new InvalidOperationException(L.T("音色工坊正在工作，请使用工坊的取消或停止按钮。", "Voice Studio is busy. Use its Cancel or Stop button."))) : _voice?.UnloadAsync() ?? Task.CompletedTask;
     internal async Task BeginVoiceStudioAsync(CancellationToken token)
     {
         Dispatcher.VerifyAccess();
-        if (!_persist || _closed) throw new InvalidOperationException("请从桌宠打开设置使用音色工坊。");
-        if (_voiceStudioActive) throw new InvalidOperationException("音色工坊已有操作正在进行。");
+        if (!_persist || _closed) throw new InvalidOperationException(L.T("请从桌宠打开设置使用音色工坊。", "Open Settings from the pet to use Voice Studio."));
+        if (_voiceStudioActive) throw new InvalidOperationException(L.T("音色工坊已有操作正在进行。", "Voice Studio already has an operation in progress."));
         token.ThrowIfCancellationRequested();
         _voiceStudioActive = true;
         _voice?.SetStudioBusy(true);

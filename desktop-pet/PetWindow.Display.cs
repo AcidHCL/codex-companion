@@ -59,8 +59,8 @@ internal sealed partial class PetWindow
         IsLive2DLoading = IsSceneLoading = false;
         _sceneActive = false;
         _image.Visibility = Visibility.Visible; _image.Opacity = 1;
-        SceneStatus = GraphicsRecovery.CompatibilityMode ? "图形兼容模式 · 静态待机" : "显示暂停 · 保留原动作设置";
-        if (!string.IsNullOrEmpty(Settings.Live2DModelId)) Live2DStatus = "显示恢复后重新载入原模型";
+        SceneStatus = GraphicsRecovery.CompatibilityMode ? L.T("图形兼容模式 · 静态待机", "Graphics compatibility mode · Static idle") : L.T("显示暂停 · 保留原动作设置", "Display paused · Animation settings preserved");
+        if (!string.IsNullOrEmpty(Settings.Live2DModelId)) Live2DStatus = L.T("显示恢复后重新载入原模型", "Reloading the original model when the display recovers");
     }
 
     private async Task<bool> RestoreDisplayRenderingAsync(CancellationToken token)
@@ -77,7 +77,7 @@ internal sealed partial class PetWindow
             {
                 var model = _displayResumeModel?.Id == modelId ? _displayResumeModel :
                     Live2DLibrary.Load(out _).FirstOrDefault(item => item.Id == modelId);
-                if (model == null) { Live2DStatus = "原模型暂不可用，已保留选择"; return false; }
+                if (model == null) { Live2DStatus = L.T("原模型暂不可用，已保留选择", "The original model is unavailable; selection preserved"); return false; }
                 if (!await SelectLive2DAsync(model)) return false;
             }
             if (_closed || token.IsCancellationRequested) return false;
@@ -86,7 +86,7 @@ internal sealed partial class PetWindow
             {
                 var pack = _displayResumePack?.Id == packId && _displayResumePack.SkinId == CurrentSkin.Id ? _displayResumePack :
                     SceneAnimationLibrary.Load(out _).FirstOrDefault(item => item.Id == packId && item.SkinId == CurrentSkin.Id);
-                if (pack == null) { SceneStatus = "原动作包暂不可用，已保留选择"; return false; }
+                if (pack == null) { SceneStatus = L.T("原动作包暂不可用，已保留选择", "The original animation pack is unavailable; selection preserved"); return false; }
                 if (!(CurrentLive2DModel != null && BundledSceneAnimations.IsBuiltIn(pack.Id)) && !await SelectScenePackAsync(pack)) return false;
             }
             else if (string.IsNullOrWhiteSpace(modelId))
@@ -111,7 +111,7 @@ internal sealed partial class PetWindow
         ApplyMotion();
         TopmostGuard?.Refresh();
         if (GraphicsRecovery.CompatibilityMode) return;
-        if (_scene == null && CurrentScenePack == null) SceneStatus = "显示已恢复 · 角色待机";
+        if (_scene == null && CurrentScenePack == null) SceneStatus = L.T("显示已恢复 · 角色待机", "Display recovered · Character idle");
         QueueFootGeometryRefresh();
         if (_displayManualAction is string action && CurrentScenePack is { } selectedPack && _displayManualPack == selectedPack.Id && selectedPack.Actions.ContainsKey(action))
             ObserveRendererOperation(PreviewSceneAsync(action));
@@ -123,13 +123,13 @@ internal sealed partial class PetWindow
     private void QueueRendererRecovery(string message)
     {
         if (_closed) return;
-        SceneStatus = message + " · 正在恢复，保留原设置";
+        SceneStatus = message + L.T(" · 正在恢复，保留原设置", " · Recovering; settings preserved");
         Live2DStatus = message;
         DisplayLifecycle?.RequestRecovery(rendererFailure: true);
         if (DisplayLifecycle?.RendererRetryExhausted == true)
         {
-            SceneStatus = "动画连续恢复失败 · 保留原设置，等待显示恢复或重新选择";
-            Live2DStatus = "模型连续恢复失败 · 保留原选择";
+            SceneStatus = L.T("动画连续恢复失败 · 保留原设置，等待显示恢复或重新选择", "Repeated animation recovery failures · Settings preserved; waiting for display recovery or a new selection");
+            Live2DStatus = L.T("模型连续恢复失败 · 保留原选择", "Repeated model recovery failures · Selection preserved");
         }
         SettingsChanged?.Invoke();
     }
@@ -150,7 +150,7 @@ internal sealed partial class PetWindow
         Settings.ScenePackId = pack.Id;
         if (BundledSceneAnimations.IsDeepSeekBuiltIn(pack.Id)) Settings.DeepSeekAnimationPackId = pack.Id;
         if (BundledSceneAnimations.IsBuiltIn(pack.Id)) { Settings.Live2DModelId = null; CurrentLive2DModel = null; _displayResumeModel = null; }
-        SceneStatus = GraphicsRecovery.CompatibilityMode ? "图形兼容模式 · 已保留动作选择" : "显示恢复后载入所选动作";
+        SceneStatus = GraphicsRecovery.CompatibilityMode ? L.T("图形兼容模式 · 已保留动作选择", "Graphics compatibility mode · Animation selection preserved") : L.T("显示恢复后载入所选动作", "Loading the selected animation when the display recovers");
         Changed();
         if (!GraphicsRecovery.CompatibilityMode) DisplayLifecycle?.RequestRecovery(userInitiated: true);
         return true;
@@ -163,7 +163,7 @@ internal sealed partial class PetWindow
         CurrentLive2DModel = model;
         Settings.Live2DModelId = model.Id;
         if (BundledSceneAnimations.IsBuiltIn(Settings.ScenePackId)) { Settings.ScenePackId = null; CurrentScenePack = null; _displayResumePack = null; }
-        Live2DStatus = GraphicsRecovery.CompatibilityMode ? "图形兼容模式 · 已保留模型选择" : "显示恢复后载入所选模型";
+        Live2DStatus = GraphicsRecovery.CompatibilityMode ? L.T("图形兼容模式 · 已保留模型选择", "Graphics compatibility mode · Model selection preserved") : L.T("显示恢复后载入所选模型", "Loading the selected model when the display recovers");
         Changed();
         if (!GraphicsRecovery.CompatibilityMode) DisplayLifecycle?.RequestRecovery(userInitiated: true);
         return true;

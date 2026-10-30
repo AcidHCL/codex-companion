@@ -1,4 +1,4 @@
-# AI Pet 1.30.2
+# AI Pet 1.31.1
 
 [简体中文](README.md) | **English**
 
@@ -6,7 +6,7 @@ Bring AI characters to your Windows desktop: change their appearance, let them w
 
 AI Pet combines desktop character animation, **local chat through Ollama**, a **Codex task dashboard**, and **local speech**. Enable the connections you need; the pet and local animations also work without Codex or an AI model.
 
-This is the English documentation. The application interface is currently in Chinese; key UI labels are included below to help you find the controls.
+The application supports English and Simplified Chinese. Key Chinese labels are included below so you can also follow these instructions before switching languages.
 
 | Feature | Available now |
 | --- | --- |
@@ -17,12 +17,25 @@ This is the English documentation. The application interface is currently in Chi
 | Speech | Local voice input, separate voice settings for all 9 characters, Voice Studio generation / audition / named saves, a voice library with selection / renaming / deletion, streamed playback, and model loading controls |
 | Work dashboard | Codex usage allowances and tasks, optional message reading, and Codex / Dot / All filters |
 | Settings and models | A dedicated settings window for pet interaction and speech; model selection synchronized with chat, manual loading / unloading, and color-coded GPU memory usage |
+| English and Chinese | Switch the interface, built-in prompts, and speech set to follow the app language; restart directly from Settings |
 
 **This repository contains source code and assets. You must build the application yourself; prebuilt EXE / DLL files, Python environments, and model weights are not included.**
 
 **Settings:** Right-click the pet and select Settings (设置), or open it from the work dashboard, character wardrobe, or system tray. Pet & Interaction (桌宠与互动) manages display, walking, behavior, music, and performances. Models & Speech (模型与语音) manages chat and speech models, GPU memory, character voices, and Voice Studio. The wardrobe focuses on character selection and asset imports; the dashboard focuses on Codex work progress. Existing preferences and saved voices are preserved. Model status refreshes only while the corresponding settings page is visible.
 
 **Performances:** Under Pet & Interaction → Performances & Emotions (桌宠与互动 → 表演与情绪), select “Sing Let Me Go” (唱 Let Me Go), “保持 Q 弹 · 邦友的酒,” or another expression or dance, then use the shared play and stop controls. Music & Singing (音乐与唱歌) contains only the music toggle and volume control.
+
+## Language switching and one-click restart
+
+1. Right-click the pet, open **Settings → Pet & interaction** (设置 → 桌宠与互动), and find **Language / 语言**.
+2. Choose **English** or **简体中文**. Your choice is saved automatically; the current interface keeps its language until you restart.
+3. Click **Restart AI Pet / 重启桌宠** beside the language selector. The app saves settings, exits normally, and restarts with the selected language, opening Settings again.
+
+Selecting a language alone does not interrupt chat or discard an unsaved Voice Studio draft. Restarting stops active generation and playback, so save any new voice you want to keep first. Existing settings, chat history, Codex pairing, and saved voices are preserved. Ollama model settings are unchanged.
+
+The interface, pet notices, character personas, action-planning instructions, web and memory prompts, and new Voice Studio examples use the selected language. Replies default to that language, but you can explicitly request another language in chat. Existing conversations, custom voice names, reference recordings, and your own prompts are not translated.
+
+The DeepSeek and GPT defaults retain their original voice identities and follow the app language for speech. Under **Models & speech → Speech generation method → Speech language**, you can select a specific language instead. Existing language settings for custom voices are preserved. Microphone transcription still detects the language actually spoken; song recordings are not translated or regenerated.
 
 ## Character previews
 

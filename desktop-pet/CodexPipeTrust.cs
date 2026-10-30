@@ -28,14 +28,14 @@ internal static class CodexPipeTrust
             // A caller must never accidentally reuse an unauthenticated stream.
             pipe.Dispose();
             if (ex is UnauthorizedAccessException) throw;
-            throw new UnauthorizedAccessException("无法验证 Codex 本机接口身份；已拒绝连接。", ex);
+            throw new UnauthorizedAccessException(L.T("无法验证 Codex 本机接口身份；已拒绝连接。", "Could not verify the local Codex endpoint identity. Connection refused."), ex);
         }
     }
 
     private static void ValidateCore(NamedPipeClientStream pipe)
     {
         if (!OperatingSystem.IsWindows() || !pipe.IsConnected)
-            throw Denied("管道尚未连接");
+            throw Denied(L.T("管道尚未连接", "The pipe is not connected"));
         if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint serverPid) || serverPid == 0)
             throw NativeFailure();
         // Holding the process object avoids silently inspecting a reused PID.
@@ -48,25 +48,25 @@ internal static class CodexPipeTrust
             using var current = WindowsIdentity.GetCurrent(TokenAccessLevels.Query);
             string owner = ReadUserSid(token);
             if (current.User == null || !string.Equals(owner, current.User.Value, StringComparison.Ordinal))
-                throw Denied("接口不属于当前 Windows 用户");
+                throw Denied(L.T("接口不属于当前 Windows 用户", "The endpoint does not belong to the current Windows user"));
             uint session = ReadSessionId(token);
             using var self = Process.GetCurrentProcess();
-            if (session != (uint)self.SessionId) throw Denied("接口不属于当前 Windows 登录会话");
+            if (session != (uint)self.SessionId) throw Denied(L.T("接口不属于当前 Windows 登录会话", "The endpoint does not belong to the current Windows session"));
         }
         string imagePath = QueryImagePath(process);
-        if (!IsAllowedInstallPath(imagePath)) throw Denied("接口程序不在受支持的 Codex 安装位置");
+        if (!IsAllowedInstallPath(imagePath)) throw Denied(L.T("接口程序不在受支持的 Codex 安装位置", "The endpoint process is not in a supported Codex installation location"));
         if (IsWithin(imagePath, StoreRoot)) ValidateStorePackage(process);
         // Deny write/delete sharing while inspecting the exact file handle supplied
         // to WinVerifyTrust, rather than separately reopening the signer by path.
         using var file = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         string finalPath = FinalPath(file.SafeFileHandle);
         if (!string.Equals(imagePath, finalPath, StringComparison.OrdinalIgnoreCase) || !IsAllowedInstallPath(finalPath))
-            throw Denied("接口程序路径发生重定向");
+            throw Denied(L.T("接口程序路径发生重定向", "The endpoint executable path was redirected"));
         ValidateAuthenticode(file, finalPath);
         EnsureRunning(process);
         if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out uint finalPid) || finalPid != serverPid ||
             !string.Equals(QueryImagePath(process), imagePath, StringComparison.OrdinalIgnoreCase))
-            throw Denied("验证期间接口进程已变化");
+            throw Denied(L.T("验证期间接口进程已变化", "The endpoint process changed during verification"));
     }
 
     internal static bool IsAllowedInstallPath(string path)
@@ -97,11 +97,11 @@ internal static class CodexPipeTrust
         // Validate its OS package identity, not just a matching directory name.
         uint size = 0;
         if (GetPackageFamilyName(process, ref size, null) != 122 || size == 0 || size > 1024)
-            throw Denied("无法确认 Codex 商店应用包身份");
+            throw Denied(L.T("无法确认 Codex 商店应用包身份", "Could not verify the Codex Store package identity"));
         var family = new StringBuilder((int)size);
         if (GetPackageFamilyName(process, ref size, family) != 0 ||
             !string.Equals(family.ToString(), "OpenAI.Codex_2p2nqsd0c76g0", StringComparison.Ordinal))
-            throw Denied("接口程序不是受信任的 Codex 商店应用包");
+            throw Denied(L.T("接口程序不是受信任的 Codex 商店应用包", "The endpoint process is not a trusted Codex Store package"));
     }
 
     private static bool IsWithin(string path, string directory) =>
@@ -109,7 +109,7 @@ internal static class CodexPipeTrust
 
     private static void EnsureRunning(SafeProcessHandle process)
     {
-        if (WaitForSingleObject(process, 0) != WaitTimeout) throw Denied("接口进程已经退出");
+        if (WaitForSingleObject(process, 0) != WaitTimeout) throw Denied(L.T("接口进程已经退出", "The endpoint process has exited"));
     }
 
     private static string QueryImagePath(SafeProcessHandle process)
@@ -126,7 +126,7 @@ internal static class CodexPipeTrust
         uint length = GetFinalPathNameByHandle(file, buffer, (uint)buffer.Capacity, 0);
         if (length == 0 || length >= buffer.Capacity) throw NativeFailure();
         string result = buffer.ToString();
-        if (result.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) throw Denied("接口程序不是本地文件");
+        if (result.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)) throw Denied(L.T("接口程序不是本地文件", "The endpoint executable is not a local file"));
         if (result.StartsWith(@"\\?\", StringComparison.Ordinal)) result = result.Substring(4);
         return Path.GetFullPath(result);
     }
@@ -175,19 +175,19 @@ internal static class CodexPipeTrust
         {
             int status = WinVerifyTrust(new IntPtr(-1), ref action, ref data);
             // WinVerifyTrust returns a LONG, not an HRESULT. Only zero is success.
-            if (status != 0) throw Denied("接口程序的 Windows 代码签名或离线证书链验证失败（0x" + unchecked((uint)status).ToString("X8") + "）");
+            if (status != 0) throw Denied(L.T("接口程序的 Windows 代码签名或离线证书链验证失败（0x", "Windows code-signature or offline certificate-chain verification failed (0x") + unchecked((uint)status).ToString("X8") + "）");
             IntPtr provider = WTHelperProvDataFromStateData(data.StateData);
             IntPtr signer = provider == IntPtr.Zero ? IntPtr.Zero : WTHelperGetProvSignerFromChain(provider, 0, false, 0);
             IntPtr certificate = signer == IntPtr.Zero ? IntPtr.Zero : WTHelperGetProvCertFromChain(signer, 0);
             if (certificate == IntPtr.Zero || Marshal.ReadInt32(certificate) < Marshal.SizeOf<ProviderCertificateHeader>())
-                throw Denied("无法取得已验证签名的发布者");
+                throw Denied(L.T("无法取得已验证签名的发布者", "Could not obtain the verified signature publisher"));
             // Read the signer from the successful WinVerifyTrust state, not from
             // an unrelated embedded certificate / second path-based parse.
             var cert = Marshal.PtrToStructure<ProviderCertificateHeader>(certificate);
             if (cert.Certificate == IntPtr.Zero ||
                 !string.Equals(CertificateAttribute(cert.Certificate, "2.5.4.10"), Publisher, StringComparison.Ordinal) ||
                 !string.Equals(CertificateAttribute(cert.Certificate, "2.5.4.3"), Publisher, StringComparison.Ordinal))
-                throw Denied("接口程序的已验证签名不属于 OpenAI 官方发布者");
+                throw Denied(L.T("接口程序的已验证签名不属于 OpenAI 官方发布者", "The verified executable signature does not belong to the official OpenAI publisher"));
         }
         finally
         {
@@ -212,7 +212,7 @@ internal static class CodexPipeTrust
         finally { Marshal.FreeCoTaskMem(oidPointer); }
     }
 
-    private static UnauthorizedAccessException Denied(string reason) => new("Codex 安全校验拒绝连接：" + reason + "。");
+    private static UnauthorizedAccessException Denied(string reason) => new(L.T("Codex 安全校验拒绝连接：", "Codex security checks refused the connection: ") + reason + "。");
     private static Win32Exception NativeFailure() => new(Marshal.GetLastWin32Error());
 
     [StructLayout(LayoutKind.Sequential)]

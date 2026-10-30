@@ -8,6 +8,7 @@ namespace DesktopPet;
 internal sealed class DesktopSettings
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true, PropertyNameCaseInsensitive = true };
+    public string Language { get; set; } = L.Chinese;
     public string SkinId { get; set; } = "deepseek";
     public string? Live2DModelId { get; set; }
     public string? ScenePackId { get; set; }
@@ -41,6 +42,22 @@ internal sealed class DesktopSettings
     public Dictionary<string, string> TaskSourceOverrides { get; set; } = new(StringComparer.Ordinal);
     public static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIPet", "settings.json");
 
+    // Called only after the process has entered the verified independent
+    // desktop context, before catalogs or localized static UI data are used.
+    internal static string ReadLanguage()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return L.Chinese;
+            using var data = JsonDocument.Parse(File.ReadAllText(FilePath));
+            foreach (var field in data.RootElement.EnumerateObject())
+                if (field.Name.Equals(nameof(Language), StringComparison.OrdinalIgnoreCase) && field.Value.ValueKind == JsonValueKind.String)
+                    return L.Normalize(field.Value.GetString());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException) { }
+        return L.Chinese;
+    }
+
     public static DesktopSettings Load()
     {
         try
@@ -59,6 +76,7 @@ internal sealed class DesktopSettings
 
     public void Normalize()
     {
+        Language = L.Normalize(Language);
         if (string.IsNullOrWhiteSpace(SkinId)) SkinId = "deepseek";
         if (!BundledSceneAnimations.IsDeepSeekBuiltIn(DeepSeekAnimationPackId)) DeepSeekAnimationPackId = BundledSceneAnimations.DeepSeekId;
         if (BundledSceneAnimations.IsDeepSeekBuiltIn(ScenePackId)) DeepSeekAnimationPackId = ScenePackId!;
@@ -101,7 +119,7 @@ internal sealed class DesktopSettings
 
     public void SetVoiceProfile(string skinId, PetVoiceProfile profile)
     {
-        if (!PetVoiceProfiles.KnownSkin(skinId)) throw new ArgumentException("未知的桌宠角色。", nameof(skinId));
+        if (!PetVoiceProfiles.KnownSkin(skinId)) throw new ArgumentException(L.T("未知的桌宠角色。", "Unknown pet character."), nameof(skinId));
         CharacterVoices ??= new(StringComparer.OrdinalIgnoreCase);
         CharacterVoices[skinId.ToLowerInvariant()] = PetVoiceProfiles.Normalize(profile, skinId);
     }

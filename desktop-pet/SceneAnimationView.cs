@@ -50,6 +50,11 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     public SceneAnimationView(SceneAnimationPack pack, string? profileDirectory = null)
     {
         _pack = pack;
+        // Selection revalidates the manifest, so localize the built-in overlay
+        // at the rendering boundary as well. Imported/user text is untouched.
+        if (L.IsEnglish && BundledSceneAnimations.IsBuiltIn(pack.Id) &&
+            pack.Actions.TryGetValue("sing", out var singing) && singing.Thoughts != null)
+            singing.Thoughts.Title = "DeepSeek is thinking…";
         // Scene audio needs application-controlled playback; keep its browser
         // options/profile separate from the always-muted Live2D renderer.
         _profileDirectory = Path.Combine(profileDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIPet", "WebView2"), "Scenes");
@@ -102,7 +107,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
             core.DownloadStarting += (_, e) => e.Cancel = true;
             core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
             core.ProcessFailed += (_, e) => HandleProcessFailure(e.ProcessFailedKind);
-            core.NavigationCompleted += (_, e) => { if (!e.IsSuccess) Fail("场景动画页面加载失败：" + e.WebErrorStatus); };
+            core.NavigationCompleted += (_, e) => { if (!e.IsSuccess) Fail(L.T("场景动画页面加载失败：", "The scene animation page failed to load: ") + e.WebErrorStatus); };
             core.WebMessageReceived += MessageReceived;
             core.Navigate(Entry);
             await _ready.Task.WaitAsync(TimeSpan.FromSeconds(25));
@@ -116,7 +121,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
-            Fail("场景动画加载失败。", ex);
+            Fail(L.T("场景动画加载失败。", "The scene animation failed to load."), ex);
             _ready.TrySetException(ex); _loaded.TrySetException(ex);
             throw;
         }
@@ -132,7 +137,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     private async Task StartAsync(string action, bool repeat, bool preserveFrame)
     {
         ThrowIfUnavailable();
-        if (!_pack.Actions.ContainsKey(action)) throw new ArgumentException("动作包不包含场景：" + action, nameof(action));
+        if (!_pack.Actions.ContainsKey(action)) throw new ArgumentException(L.T("动作包不包含场景：", "The animation pack does not contain this scene: ") + action, nameof(action));
         await LoadAsync();
         ThrowIfUnavailable();
         if (IsPlaying && !preserveFrame) await StopAsync(true);
@@ -149,7 +154,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
         try { await waiting.Task.WaitAsync(TimeSpan.FromSeconds(35)); }
         catch (TimeoutException)
         {
-            if (ReferenceEquals(_playing, waiting)) { Post(new { type = "stop", requestId = _requestId, immediate = true }); Fail("场景动画解码超时。"); }
+            if (ReferenceEquals(_playing, waiting)) { Post(new { type = "stop", requestId = _requestId, immediate = true }); Fail(L.T("场景动画解码超时。", "Scene animation decoding timed out.")); }
             throw;
         }
     }
@@ -182,7 +187,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     public void SetMotionFrame(string? action, int frame)
     {
         if (action != null && (!_pack.Actions.TryGetValue(action, out var clip) || clip.Loop.Type == "video"))
-            throw new ArgumentException("动作包不包含可逐帧控制的场景：" + action, nameof(action));
+            throw new ArgumentException(L.T("动作包不包含可逐帧控制的场景：", "The animation pack has no frame-controllable scene: ") + action, nameof(action));
         int lastFrame = action != null && _pack.Actions.TryGetValue(action, out var definition) && definition.Loop.Type == "frames"
             ? definition.Loop.Frames.Length - 1 : 299;
         frame = Math.Clamp(frame, 0, Math.Max(0, lastFrame));
@@ -217,26 +222,26 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     {
         if (_disposed || !_runtimeReady) return;
         try { _browser.CoreWebView2.IsMuted = muted; }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail("场景动画播放进程已停止。", ex); }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex); }
     }
 
     private void Post(object message)
     {
         if (_disposed || IsFailed || !_runtimeReady) return;
         try { _browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message, JsonOptions)); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail("场景动画播放进程已停止。", ex); }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex); }
     }
 
     private void ThrowIfUnavailable()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (IsFailed) throw new InvalidOperationException("场景动画播放进程已停止。");
+        if (IsFailed) throw new InvalidOperationException(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."));
     }
 
     internal void HandleProcessFailure(CoreWebView2ProcessFailedKind kind)
     {
         if (!_disposed && !IsFailed && WebViewFailurePolicy.RequiresRecreation(kind))
-            Fail("场景动画播放进程已停止：" + kind);
+            Fail(L.T("场景动画播放进程已停止：", "The scene animation process has stopped: ") + kind);
     }
     private static TaskCompletionSource<bool> NewCompletion() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -267,9 +272,9 @@ internal sealed class SceneAnimationView : Grid, IDisposable
                 _playing?.TrySetCanceled(); _completed?.TrySetResult(true);
                 Completed?.Invoke();
             }
-            else if (type == "error") Fail(root.TryGetProperty("message", out var msg) ? msg.GetString() ?? "场景动画加载失败。" : "场景动画加载失败。");
+            else if (type == "error") Fail(root.TryGetProperty("message", out var msg) ? msg.GetString() ?? L.T("场景动画加载失败。", "The scene animation failed to load.") : L.T("场景动画加载失败。", "The scene animation failed to load."));
         }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail("场景动画播放进程已停止。", ex); }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { Program.Log(ex); }
     }
 
@@ -326,8 +331,8 @@ internal sealed class SceneAnimationView : Grid, IDisposable
             }
             var input = SceneFileAccess.OpenChecked(file);
             stream = input;
-            if (input.Length <= 0 || input.Length > 96L * 1024 * 1024) throw new InvalidDataException("动画资源为空或超过 96 MiB。");
-            if (mime.StartsWith("audio/", StringComparison.Ordinal) && input.Length > 32L * 1024 * 1024) throw new InvalidDataException("音频资源超过 32 MiB。");
+            if (input.Length <= 0 || input.Length > 96L * 1024 * 1024) throw new InvalidDataException(L.T("动画资源为空或超过 96 MiB。", "The animation asset is empty or exceeds 96 MiB."));
+            if (mime.StartsWith("audio/", StringComparison.Ordinal) && input.Length > 32L * 1024 * 1024) throw new InvalidDataException(L.T("音频资源超过 32 MiB。", "The audio asset exceeds 32 MiB."));
             long length = input.Length, start = 0, end = length - 1;
             string? range = e.Request.Headers.Contains("Range") ? e.Request.Headers.GetHeader("Range") : null;
             if (range != null) RangeRequests++;
@@ -361,21 +366,21 @@ internal sealed class SceneAnimationView : Grid, IDisposable
         }
         catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex))
         {
-            stream?.Dispose(); Fail("场景动画播放进程已停止。", ex);
+            stream?.Dispose(); Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex);
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
             stream?.Dispose(); Program.Log(ex);
             // A failed response must not recursively touch an invalid Core.
             try { Respond(e, null, 404, "Not Found", ""); }
-            catch (Exception responseError) when (WebViewFailurePolicy.IsUnavailable(responseError)) { Fail("场景动画播放进程已停止。", responseError); }
+            catch (Exception responseError) when (WebViewFailurePolicy.IsUnavailable(responseError)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), responseError); }
         }
     }
 
     private void Respond(CoreWebView2WebResourceRequestedEventArgs e, Stream? content, int status, string reason, string headers)
     {
         if (_disposed || IsFailed) { content?.Dispose(); return; }
-        var environment = _environment ?? throw new InvalidOperationException("场景动画运行环境不可用。");
+        var environment = _environment ?? throw new InvalidOperationException(L.T("场景动画运行环境不可用。", "The scene animation runtime is unavailable."));
         e.Response = environment.CreateWebResourceResponse(content, status, reason, headers);
     }
 
@@ -398,13 +403,13 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     private static string ValidLocalPath(string root, string relative)
     {
         if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) || relative.Contains('\\') || relative.Contains(':')
-            || relative.Split('/').Any(x => x is "" or "." or "..")) throw new InvalidDataException("场景资源路径无效。");
+            || relative.Split('/').Any(x => x is "" or "." or "..")) throw new InvalidDataException(L.T("场景资源路径无效。", "Invalid scene asset path."));
         string fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
         string full = Path.GetFullPath(Path.Combine(fullRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
         if (!full.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
-            throw new FileNotFoundException("场景资源不存在。", full);
+            throw new FileNotFoundException(L.T("场景资源不存在。", "The scene asset does not exist."), full);
         for (string? cursor = full; cursor != null && !string.Equals(cursor, fullRoot, StringComparison.OrdinalIgnoreCase); cursor = Path.GetDirectoryName(cursor))
-            if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("场景资源不允许链接或重解析点。");
+            if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException(L.T("场景资源不允许链接或重解析点。", "Scene assets cannot use links or reparse points."));
         return full;
     }
 
@@ -412,7 +417,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     {
         ThrowIfUnavailable();
         try { return await _browser.ExecuteScriptAsync("JSON.stringify(window.sceneDiagnostics())"); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail("场景动画播放进程已停止。", ex); throw; }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex); throw; }
     }
     internal async Task<CharacterGeometry> CaptureContactGeometryAsync()
     {
@@ -442,7 +447,7 @@ internal sealed class SceneAnimationView : Grid, IDisposable
     {
         ThrowIfUnavailable();
         try { await _browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail("场景动画播放进程已停止。", ex); throw; }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { Fail(L.T("场景动画播放进程已停止。", "The scene animation process has stopped."), ex); throw; }
     }
     private void ReleaseVideoSources()
     {

@@ -29,13 +29,16 @@ internal static class BundledSceneAnimations
             isGpt ? "gpt-small.petanim.json" : "deepseek-small.petanim.json");
         if (!File.Exists(manifest)) return null;
         var pack = new SceneAnimationCatalog().Validate(manifest, packId,
-            isGpt ? "GPT 小龙娘 · 经典状态动画" : packId == DeepSeekRedrawnId ? "DeepSeek 小版 · 24 FPS 重绘版" : "DeepSeek 小版 · 旧版动画（可回档）");
+            isGpt ? L.T("GPT 小龙娘 · 经典状态动画", "GPT Little Dragon · Classic animations") : packId == DeepSeekRedrawnId ? L.T("DeepSeek 小版 · 24 FPS 重绘版", "DeepSeek Small · 24 FPS redrawn animations") : L.T("DeepSeek 小版 · 旧版动画（可回档）", "DeepSeek Small · Classic animations (rollback available)"));
         string[] states = { "idle", "working", "walk-left", "walk-right", "fall", "land", "drag",
             "happy", "angry", "startled", "bashful", "jump-left", "jump-right", "climb-left", "climb-right", "climb-top-left", "climb-top-right" };
         if (isDeepSeek) states = states.Concat(new[] { "sing", "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks", "bangyou-dance" }).ToArray();
         if (!string.Equals(pack.SkinId, skinId, StringComparison.OrdinalIgnoreCase) ||
             pack.Actions.Count != states.Length || states.Any(state => !pack.Actions.ContainsKey(state)))
-            throw new InvalidDataException((isGpt ? "GPT" : "DeepSeek") + " 内置动画包的角色或状态不完整。");
+            throw new InvalidDataException((isGpt ? "GPT" : "DeepSeek") + L.T(" 内置动画包的角色或状态不完整。", " bundled animation pack has incomplete character or state data."));
+        // Localize only the built-in overlay, not imported/custom pack content.
+        if (L.IsEnglish && pack.Actions.TryGetValue("sing", out var singing) && singing.Thoughts != null)
+            singing.Thoughts.Title = "DeepSeek is thinking…";
         return pack;
     }
 }

@@ -9,7 +9,7 @@ internal static class AnimationPresetSelection
     {
         bool redrawn = args.Contains("--redrawn-animations", StringComparer.Ordinal);
         bool classic = args.Contains("--classic-animations", StringComparer.Ordinal);
-        if (redrawn && classic) throw new ArgumentException("一次只能选择一个动画版本。");
+        if (redrawn && classic) throw new ArgumentException(L.T("一次只能选择一个动画版本。", "Choose only one animation version at a time."));
         if (!redrawn && !classic) return;
         settings.SkinId = "deepseek";
         settings.Live2DModelId = null;

@@ -7,28 +7,28 @@ using System.Text.Json;
 namespace DesktopPet;
 
 // Saved per skin. This is an immutable selection, never a model path or a URL.
-internal sealed record PetVoiceProfile(string ModelId, string Speaker, string Language, string Instruct, string? ReferenceId = null);
+internal sealed record PetVoiceProfile(string ModelId, string Speaker, string Language, string Instruct, string? ReferenceId = null, bool? FollowAppLanguage = null);
 internal sealed record PetVoiceChoice(string Id, string Label);
 
 internal static class PetVoiceProfiles
 {
-    internal static readonly PetVoiceChoice[] Characters = {
+    internal static PetVoiceChoice[] Characters => new PetVoiceChoice[] {
         new("deepseek", "DeepSeek"), new("gemini", "Gemini"), new("claude", "Claude"),
-        new("gpt", "GPT 小龙娘"), new("grok", "Grok"), new("glm", "GLM"),
+        new("gpt", L.T("GPT 小龙娘", "GPT Little Dragon")), new("grok", "Grok"), new("glm", "GLM"),
         new("kimi", "Kimi"), new("minimax", "MiniMax"), new("qwen", "Qwen")
     };
-    internal static readonly PetVoiceChoice[] Models = {
-        new("disabled", "不启用此角色语音"), new("base", "Base 1.7B · Let Me Go 参考音色"),
-        new("custom-voice", "CustomVoice 1.7B · 预置音色"), new("voice-design", "VoiceDesign 1.7B · 文字设计音色"),
-        new("gpt-fixed", "Base 1.7B · GPT 龙娘固定音色"),
-        new("saved-voice", "Base 1.7B · 我的固定音色")
+    internal static PetVoiceChoice[] Models => new PetVoiceChoice[] {
+        new("disabled", L.T("不启用此角色语音", "Disable speech for this character")), new("base", L.T("Base 1.7B · Let Me Go 参考音色", "Base 1.7B · Let Me Go reference voice")),
+        new("custom-voice", L.T("CustomVoice 1.7B · 预置音色", "CustomVoice 1.7B · Preset speakers")), new("voice-design", L.T("VoiceDesign 1.7B · 文字设计音色", "VoiceDesign 1.7B · Voice from a description")),
+        new("gpt-fixed", L.T("Base 1.7B · GPT 龙娘固定音色", "Base 1.7B · GPT Dragon saved voice")),
+        new("saved-voice", L.T("Base 1.7B · 我的固定音色", "Base 1.7B · My saved voice"))
     };
-    internal static readonly PetVoiceChoice[] Speakers = {
-        new("Vivian", "Vivian · 明亮女声 / 中文"), new("Serena", "Serena · 温柔女声 / 中文"),
-        new("Uncle_Fu", "Uncle Fu · 浑厚男声 / 中文"), new("Dylan", "Dylan · 北京男声"),
-        new("Eric", "Eric · 四川男声"), new("Ryan", "Ryan · 男声 / 英语"),
-        new("Aiden", "Aiden · 清朗男声 / 英语"), new("Ono_Anna", "Ono Anna · 轻快女声 / 日语"),
-        new("Sohee", "Sohee · 温暖女声 / 韩语")
+    internal static PetVoiceChoice[] Speakers => new PetVoiceChoice[] {
+        new("Vivian", L.T("Vivian · 明亮女声 / 中文", "Vivian · Bright female / Chinese")), new("Serena", L.T("Serena · 温柔女声 / 中文", "Serena · Gentle female / Chinese")),
+        new("Uncle_Fu", L.T("Uncle Fu · 浑厚男声 / 中文", "Uncle Fu · Rich male / Chinese")), new("Dylan", L.T("Dylan · 北京男声", "Dylan · Male / Beijing Mandarin")),
+        new("Eric", L.T("Eric · 四川男声", "Eric · Male / Sichuan dialect")), new("Ryan", L.T("Ryan · 男声 / 英语", "Ryan · Male / English")),
+        new("Aiden", L.T("Aiden · 清朗男声 / 英语", "Aiden · Clear male / English")), new("Ono_Anna", L.T("Ono Anna · 轻快女声 / 日语", "Ono Anna · Lively female / Japanese")),
+        new("Sohee", L.T("Sohee · 温暖女声 / 韩语", "Sohee · Warm female / Korean"))
     };
     internal static readonly string[] Languages = { "Chinese", "English", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian" };
     internal static bool KnownSkin(string? skinId) => Characters.Any(x => string.Equals(x.Id, skinId, StringComparison.OrdinalIgnoreCase));
@@ -38,10 +38,30 @@ internal static class PetVoiceProfiles
         (profile?.ModelId == "saved-voice" && IsReferenceId(profile.ReferenceId));
     internal static bool IsReferenceId(string? value) => value is { Length: 32 } && value.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
     internal static PetVoiceProfile DefaultForSkin(string skinId) => new(
-        skinId?.ToLowerInvariant() switch { "deepseek" => "base", "gpt" => "gpt-fixed", _ => "disabled" }, "Vivian", "Chinese", "");
-    internal static string DefaultInstruction(string skinId) => string.Equals(skinId, "gpt", StringComparison.OrdinalIgnoreCase)
-        ? "清亮但不尖锐的年轻成年女声，普通话清晰，带一点优雅、自信和小骄傲。平时轻快俏皮，认真时温柔可靠，避免过度幼态和夸张夹音。"
-        : "自然清晰的中文女声，亲切、轻快，语速适中，适合日常陪伴对话。";
+        skinId?.ToLowerInvariant() switch { "deepseek" => "base", "gpt" => "gpt-fixed", _ => "disabled" }, "Vivian", "Chinese", "", FollowAppLanguage: true);
+    internal static string DefaultInstruction(string skinId) => DefaultInstructionForLanguage(skinId, L.IsEnglish);
+
+    private static string DefaultInstructionForLanguage(string skinId, bool english) => string.Equals(skinId, "gpt", StringComparison.OrdinalIgnoreCase)
+        ? english ? "A clear, warm young adult female voice, elegant, confident and slightly proud. Speak natural, clearly articulated English, playful in casual conversation and gentle when serious. Avoid shrill, childish or exaggerated delivery."
+            : "清亮但不尖锐的年轻成年女声，普通话清晰，带一点优雅、自信和小骄傲。平时轻快俏皮，认真时温柔可靠，避免过度幼态和夸张夹音。"
+        : english ? "A natural, clear female voice, warm and lively, speaking conversational English at a moderate pace for everyday companionship."
+            : "自然清晰的中文女声，亲切、轻快，语速适中，适合日常陪伴对话。";
+
+    // Legacy built-in references follow the application language. Explicit
+    // custom language settings and all saved reference audio remain untouched.
+    internal static bool FollowsAppLanguage(PetVoiceProfile profile) =>
+        profile.FollowAppLanguage ?? ((profile.ModelId is "base" or "gpt-fixed") &&
+            string.Equals(profile.Language, "Chinese", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(profile.Instruct));
+
+    internal static PetVoiceProfile ResolveForPlayback(PetVoiceProfile profile)
+    {
+        if (!FollowsAppLanguage(profile)) return profile;
+        string instruction = profile.Instruct;
+        foreach (string role in new[] { "gpt", "deepseek" })
+            if (instruction == DefaultInstructionForLanguage(role, false) || instruction == DefaultInstructionForLanguage(role, true))
+            { instruction = DefaultInstructionForLanguage(role, L.IsEnglish); break; }
+        return profile with { Language = L.IsEnglish ? "English" : "Chinese", Instruct = instruction };
+    }
 
     internal static PetVoiceProfile Normalize(PetVoiceProfile? profile, string skinId)
     {
@@ -59,7 +79,7 @@ internal static class PetVoiceProfiles
         string? referenceId = model == "saved-voice" && IsReferenceId(profile.ReferenceId) ? profile.ReferenceId : null;
         // A broken saved reference must never silently become the DeepSeek voice.
         if (model == "saved-voice" && referenceId == null) model = "disabled";
-        return new(model, speaker, language, instruct, referenceId);
+        return new(model, speaker, language, instruct, referenceId, profile.FollowAppLanguage);
     }
 
     internal static Dictionary<string, PetVoiceProfile> NormalizeProfiles(Dictionary<string, PetVoiceProfile>? profiles)

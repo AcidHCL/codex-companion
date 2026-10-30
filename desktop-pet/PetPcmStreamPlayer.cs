@@ -33,7 +33,7 @@ internal sealed class PetPcmStreamPlayer : IPetPcmStreamPlayer
             lock (_guard)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (Volatile.Read(ref _cleanupFailed) != 0) throw new InvalidOperationException("声音设备未能释放，请重新启动桌宠后重试。");
+                if (Volatile.Read(ref _cleanupFailed) != 0) throw new InvalidOperationException(L.T("声音设备未能释放，请重新启动桌宠后重试。", "The audio device could not be released. Restart AI Pet and retry."));
                 _volume = ClampVolume(volume);
                 session = new Session(cancellationToken, playbackState);
                 _session = session;
@@ -76,7 +76,7 @@ internal sealed class PetPcmStreamPlayer : IPetPcmStreamPlayer
                 if ((format != null && format != chunk.Format) || chunk.Data.Length == 0 ||
                     chunk.Data.Length % (chunk.Format.Channels * 2) != 0 ||
                     (bytes += chunk.Data.Length) > PetPcmProtocol.MaximumAudioBytes)
-                    throw new InvalidOperationException("语音流格式改变或超过允许长度。");
+                    throw new InvalidOperationException(L.T("语音流格式改变或超过允许长度。", "The speech stream format changed or exceeded the duration limit."));
                 format = chunk.Format;
                 // 100 ms blocks allow quick volume changes and a bounded native queue.
                 int align = chunk.Format.Channels * 2;
@@ -158,7 +158,7 @@ internal sealed class PetPcmStreamPlayer : IPetPcmStreamPlayer
                 }
                 if (ended && pending.Count == 0) { successful = true; break; }
                 if (changed) stalled.Restart();
-                if (stalled.Elapsed > TimeSpan.FromMinutes(9)) throw new InvalidOperationException("语音流等待超时，请重试。");
+                if (stalled.Elapsed > TimeSpan.FromMinutes(9)) throw new InvalidOperationException(L.T("语音流等待超时，请重试。", "Waiting for speech audio timed out. Retry."));
                 session.Wake.WaitOne(25);
             }
         }
@@ -180,7 +180,7 @@ internal sealed class PetPcmStreamPlayer : IPetPcmStreamPlayer
                     session.RetainNativeState = true;
                     lock (FailedDevices) FailedDevices.Add(session);
                     Interlocked.Exchange(ref _cleanupFailed, 1);
-                    failure ??= new InvalidOperationException("声音设备未能释放，请重新启动桌宠后重试。");
+                    failure ??= new InvalidOperationException(L.T("声音设备未能释放，请重新启动桌宠后重试。", "The audio device could not be released. Restart AI Pet and retry."));
                 }
             }
             while (session.Audio.Reader.TryRead(out var chunk)) Array.Clear(chunk.Data);
@@ -195,7 +195,7 @@ internal sealed class PetPcmStreamPlayer : IPetPcmStreamPlayer
     public void Stop() { lock (_guard) _session?.Cancel(); }
     public void Dispose() { lock (_guard) { if (_disposed) return; _disposed = true; _session?.Cancel(); } }
     private static void Check(uint code)
-    { if (code != 0) throw new InvalidOperationException("无法播放连续声音，请检查 Windows 默认输出设备。"); }
+    { if (code != 0) throw new InvalidOperationException(L.T("无法播放连续声音，请检查 Windows 默认输出设备。", "Could not play continuous audio. Check the Windows default output device.")); }
 
     private sealed class Session : IDisposable
     {

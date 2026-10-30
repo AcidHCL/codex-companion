@@ -10,7 +10,7 @@ internal sealed partial class PetWindow
 {
     public event Action? OpenScenesRequested;
     public SceneAnimationPack? CurrentScenePack { get; private set; }
-    public string SceneStatus { get; private set; } = "导入动作包，为工作和移动选择动画";
+    public string SceneStatus { get; private set; } = L.T("导入动作包，为工作和移动选择动画", "Import animation packs for work and movement");
     public bool IsSceneLoading { get; private set; }
     public bool IsScenePlaying => _sceneActive;
     public bool UsesBuiltInScenes => BundledSceneAnimations.IsBuiltIn(CurrentScenePack?.Id);
@@ -44,7 +44,7 @@ internal sealed partial class PetWindow
             {
                 if (await SelectScenePackAsync(pack)) return;
             }
-            else { Settings.ScenePackId = null; SceneStatus = issues.FirstOrDefault() ?? "原动作包不可用，请重新导入。"; Changed(); }
+            else { Settings.ScenePackId = null; SceneStatus = issues.FirstOrDefault() ?? L.T("原动作包不可用，请重新导入。", "The previous animation pack is unavailable. Import it again."); Changed(); }
         }
         await RestoreDefaultSceneAsync();
     }
@@ -58,7 +58,7 @@ internal sealed partial class PetWindow
                 CurrentSkin.Id == "deepseek" ? Settings.DeepSeekAnimationPackId : null);
             if (pack != null) await SelectScenePackAsync(pack);
         }
-        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { SceneStatus = "默认动画不可用：" + ex.Message; Program.Log(ex); SettingsChanged?.Invoke(); }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { SceneStatus = L.T("默认动画不可用：", "Default animations unavailable: ") + ex.Message; Program.Log(ex); SettingsChanged?.Invoke(); }
     }
 
     public async Task<bool> SelectScenePackAsync(SceneAnimationPack pack)
@@ -68,20 +68,20 @@ internal sealed partial class PetWindow
         if (!_displayRestoreInProgress) DisplayLifecycle?.ResetRendererFailureBudget();
         if (!string.Equals(pack.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase))
         {
-            SceneStatus = "这个动作包属于 " + pack.SkinId + "，请先选择对应的 PNG 角色。";
+            SceneStatus = L.T("这个动作包属于 ", "This animation pack belongs to ") + pack.SkinId + L.T("，请先选择对应的 PNG 角色。", ". Select its matching PNG character first.");
             SettingsChanged?.Invoke(); return false;
         }
         if (DeferSceneSelection(pack)) return true;
         ReleaseScene();
         int generation = _sceneGeneration;
         IsSceneLoading = true;
-        SceneStatus = "正在载入 " + pack.Name + "…";
+        SceneStatus = L.T("正在载入 ", "Loading ") + pack.Name + "…";
         SettingsChanged?.Invoke();
         try
         {
             // Revalidate selection; files may have changed since the library was opened.
             var validated = new SceneAnimationCatalog().Validate(pack.ManifestPath, pack.Id, pack.Name);
-            if (!string.Equals(validated.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("动作包的适配角色已改变，请重新选择。");
+            if (!string.Equals(validated.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(L.T("动作包的适配角色已改变，请重新选择。", "The animation pack's character changed. Select it again."));
             if (BundledSceneAnimations.IsBuiltIn(validated.Id))
             {
                 _modelGeneration++;
@@ -97,12 +97,12 @@ internal sealed partial class PetWindow
             UpdateLayout();
             await renderer.LoadAsync();
             if (_closed || generation != _sceneGeneration) return false;
-            if (!string.Equals(validated.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("当前角色已改变，请重新选择动作包。");
+            if (!string.Equals(validated.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(L.T("当前角色已改变，请重新选择动作包。", "The current character changed. Select the animation pack again."));
             CurrentScenePack = validated;
             Settings.ScenePackId = validated.Id;
             if (BundledSceneAnimations.IsDeepSeekBuiltIn(validated.Id)) Settings.DeepSeekAnimationPackId = validated.Id;
             IsSceneLoading = false;
-            SceneStatus = "已选择 · " + validated.Name;
+            SceneStatus = L.T("已选择 · ", "Selected · ") + validated.Name;
             renderer.Completed += () =>
             {
                 if (_closed || generation != _sceneGeneration) return;
@@ -112,7 +112,7 @@ internal sealed partial class PetWindow
             {
                 if (_closed || generation != _sceneGeneration) return;
                 Program.Log(new InvalidOperationException(error));
-                QueueRendererRecovery("场景动画暂不可用");
+                QueueRendererRecovery(L.T("场景动画暂不可用", "Scene animations temporarily unavailable"));
             };
             UpdateActivityPause(); Changed(); RefreshAutomaticScene();
             return true;
@@ -121,9 +121,9 @@ internal sealed partial class PetWindow
         {
             if (_closed || generation != _sceneGeneration) return false;
             ReleaseScene();
-            SceneStatus = "动作包加载失败：" + ex.Message;
+            SceneStatus = L.T("动作包加载失败：", "Animation pack loading failed: ") + ex.Message;
             Program.Log(ex); Changed();
-            if (!_displayRestoreInProgress) QueueRendererRecovery("动作载入暂时失败");
+            if (!_displayRestoreInProgress) QueueRendererRecovery(L.T("动作载入暂时失败", "Animation loading temporarily failed"));
             return false;
         }
     }
@@ -131,7 +131,7 @@ internal sealed partial class PetWindow
     public async Task PreviewSceneAsync(string action)
     {
         if (_closed || !IsVisible || DisplayRenderingPaused || _scene == null || CurrentScenePack?.Actions.ContainsKey(action) != true) return;
-        if (PhysicalBehaviorBusy) { Say("等我落稳后再播放动画。"); return; }
+        if (PhysicalBehaviorBusy) { Say(L.T("等我落稳后再播放动画。", "Wait until I land before playing an animation.")); return; }
         InvalidateLlmBehavior();
         await PreviewSceneCoreAsync(action, llmOwned: false);
     }
@@ -218,7 +218,7 @@ internal sealed partial class PetWindow
     {
         InvalidateLlmBehavior();
         ReleaseScene(); Settings.ScenePackId = null;
-        SceneStatus = "已恢复角色默认状态"; Changed();
+        SceneStatus = L.T("已恢复角色默认状态", "Character default states restored"); Changed();
         ObserveRendererOperation(RestoreDefaultSceneAsync());
     }
 
@@ -334,7 +334,7 @@ internal sealed partial class PetWindow
         _sceneAction = null;
         ApplySceneThoughtLayout(false);
         ApplyMotion();
-        SceneStatus = "待机 · " + CurrentScenePack?.Name;
+        SceneStatus = L.T("待机 · ", "Idle · ") + CurrentScenePack?.Name;
         SettingsChanged?.Invoke();
         if (resume) { _desiredSceneKey = null; RefreshAutomaticScene(); }
         BehaviorStateChanged?.Invoke();
@@ -375,7 +375,7 @@ internal sealed partial class PetWindow
                 if (_closed || command != _sceneCommand || generation != _sceneGeneration) return;
                 _sceneActive = false;
                 ApplyMotion();
-                if (action == null) { _sceneAction = null; SceneStatus = "待机 · " + CurrentScenePack?.Name; SettingsChanged?.Invoke(); return; }
+                if (action == null) { _sceneAction = null; SceneStatus = L.T("待机 · ", "Idle · ") + CurrentScenePack?.Name; SettingsChanged?.Invoke(); return; }
                 await renderer.PlayAsync(action, repeat);
             }
             if (_closed || command != _sceneCommand || generation != _sceneGeneration) return;
@@ -386,10 +386,10 @@ internal sealed partial class PetWindow
             if (UsesBuiltInScenes) _movement?.ReconfigureGeometry();
             if (!UsesBuiltInScenes) _sceneGeometry = null;
             QueueFootGeometryRefresh();
-            SceneStatus = (_manualScene ? "预览 · " : "状态 · ") + (action switch
-            { "idle" => "待机", "working" => "工作", "walk-left" => "向左走", "walk-right" => "向右走", "drag" => "拎起与挣扎", "fall" => "下落", "land" => "落地",
-              "jump-left" => "向左跳跃", "jump-right" => "向右跳跃", "climb-left" => "向左攀爬", "climb-right" => "向右攀爬",
-              "climb-top-left" => "向左翻上窗沿", "climb-top-right" => "向右翻上窗沿", _ => PetPerformanceCatalog.Label(action ?? "") });
+            SceneStatus = (_manualScene ? L.T("预览 · ", "Preview · ") : L.T("状态 · ", "State · ")) + (action switch
+            { "idle" => L.T("待机", "Idle"), "working" => L.T("工作", "Working"), "walk-left" => L.T("向左走", "Walk left"), "walk-right" => L.T("向右走", "Walk right"), "drag" => L.T("拎起与挣扎", "Picked up & struggling"), "fall" => L.T("下落", "Falling"), "land" => L.T("落地", "Landing"),
+              "jump-left" => L.T("向左跳跃", "Jump left"), "jump-right" => L.T("向右跳跃", "Jump right"), "climb-left" => L.T("向左攀爬", "Climb left"), "climb-right" => L.T("向右攀爬", "Climb right"),
+              "climb-top-left" => L.T("向左翻上窗沿", "Pull onto ledge, left"), "climb-top-right" => L.T("向右翻上窗沿", "Pull onto ledge, right"), _ => PetPerformanceCatalog.Label(action ?? "") });
             ApplyMotion(); SettingsChanged?.Invoke();
         }
         catch (OperationCanceledException) { }
@@ -403,7 +403,7 @@ internal sealed partial class PetWindow
                 RefreshSpeechSuspension();
                 _landingScene.Complete();
                 ApplySceneThoughtLayout(false);
-                SceneStatus = "播放失败，已恢复待机：" + ex.Message;
+                SceneStatus = L.T("播放失败，已恢复待机：", "Playback failed; returned to idle: ") + ex.Message;
                 ApplyMotion(); SettingsChanged?.Invoke(); Program.Log(ex);
             }
         }

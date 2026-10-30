@@ -57,7 +57,7 @@ internal static class OllamaChatChecks
             catch (Exception ex) { passed = false; error = "cleanup_" + ex.GetType().Name; }
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, name + "-validation.json"), JsonSerializer.Serialize(new
             {
-                passed, version = AppVersion.Number, live, phase, error, assertions = checks.Count, checks, captures,
+                passed, version = AppVersion.Number, language = L.Language, live, phase, error, assertions = checks.Count, checks, captures,
                 evidence, modelMetadata, realAccountRequests = 0, userSettingsWrites = 0, syntheticMouseOrKeyboardInput = false,
                 realSessionChanged = false, localServiceOnly = true, selectedModelSaveCallbacks = savedCallbacks,
                 generationBusyEvents = busy, completedReplyBubbles = bubbles.Count,
@@ -99,7 +99,7 @@ internal static class OllamaChatChecks
                 var versionBounds = versions[0].TransformToAncestor(root).TransformBounds(new Rect(versions[0].RenderSize));
                 Require(versionBounds.Left >= 0 && versionBounds.Top >= 0 && versionBounds.Right <= root.ActualWidth + 1 && versionBounds.Bottom <= root.ActualHeight + 1, "version_fits_minimum_window");
                 Capture(window, Path.Combine(evidence, "minimum-window.png")); captures.Add("minimum-window.png");
-                window.Width = 410; window.Height = 550;
+                window.Width = L.IsEnglish ? 460 : 410; window.Height = 550;
                 string imagePath = Path.Combine(evidence, "test-shapes.png");
                 CreateImageFixture(imagePath);
 
@@ -109,14 +109,14 @@ internal static class OllamaChatChecks
                     int before = recording.Runs.Count;
                     await window.SendAsync();
                     Require(recording.Runs.Count == before + 1 && recording.Runs[^1].Completed && !string.IsNullOrWhiteSpace(recording.Runs[^1].Answer), label + "_complete_nonempty_reply");
-                    Require(Status(window).StartsWith("回复完成", StringComparison.Ordinal), label + "_ui_reports_completion");
+                    Require(Status(window).StartsWith(L.T("回复完成", "Reply complete"), StringComparison.Ordinal), label + "_ui_reports_completion");
                     Require(busy.Count > 1 && !busy[^1], label + "_busy_released");
                 }
 
                 if (live)
                 {
                     phase = "live_models";
-                    Require(Status(window).StartsWith("Ollama 已连接", StringComparison.Ordinal), "loopback_ollama_and_first_model_available");
+                    Require(Status(window).StartsWith(L.T("Ollama 已连接", "Ollama connected"), StringComparison.Ordinal), "loopback_ollama_and_first_model_available");
                     var available = await recording.ListModelsAsync(CancellationToken.None);
                     Require(OllamaModels.Supported.All(model => available.Contains(model.Id)), "both_requested_local_models_installed");
                     foreach (string installed in available)
@@ -135,9 +135,9 @@ internal static class OllamaChatChecks
                             await UntilAsync(() => models.IsEnabled && settings.OllamaModel == choice.Id, "model_switch", 45);
                         }
                         Click(Named<Button>(window, "OllamaNewConversation"));
-                        await UntilAsync(() => Status(window).StartsWith("新对话", StringComparison.Ordinal), "new_chat");
+                        await UntilAsync(() => Status(window).StartsWith(L.T("新对话", "New conversation"), StringComparison.Ordinal), "new_chat");
                         await SendComplete("这是本机桌宠的合成验收对话。请简短介绍你是谁、最爱吃什么，再记住我们的测试代号是松果。", choice.Id + "_chinese");
-                        Require(recording.Runs[^1].Answer.Contains('饭'), choice.Id + "_deepseek_persona_likes_rice");
+                        Require(recording.Runs[^1].Answer.Contains('饭') || recording.Runs[^1].Answer.Contains("rice", StringComparison.OrdinalIgnoreCase), choice.Id + "_deepseek_persona_likes_rice");
                         await window.AddImageFilesAsync(new[] { imagePath });
                         Require(previews.Children.Count == 1, choice.Id + "_image_preview_visible");
                         await SendComplete("请用一句中文说明图片左边和右边分别是什么颜色、什么形状。", choice.Id + "_vision");
@@ -158,7 +158,7 @@ internal static class OllamaChatChecks
                     fake!.Enqueue(FixturePlan.Complete("你好，松果。"));
                     await SendComplete("测试代号是松果，请记住。", "first_turn");
                     var personaSystem = LastChat(fake).Payload.GetProperty("messages")[0].GetProperty("content").GetString()!;
-                    Require(personaSystem.Contains("蓝色大肥鱼", StringComparison.Ordinal) && personaSystem.Contains("白米饭", StringComparison.Ordinal) && personaSystem.Contains("非官方", StringComparison.Ordinal), "deepseek_skin_sends_requested_fan_persona_in_system_role");
+                    Require(personaSystem.Contains(L.T("蓝色大肥鱼", "Blue Chubby Whale"), StringComparison.Ordinal) && personaSystem.Contains(L.T("白米饭", "white rice"), StringComparison.Ordinal) && personaSystem.Contains(L.T("非官方", "unofficial"), StringComparison.Ordinal), "deepseek_skin_sends_requested_fan_persona_in_system_role");
                     Require(personaSystem.Contains(OllamaModels.FastModel, StringComparison.Ordinal), "persona_distinguishes_actual_local_model_from_character");
                     fake.Enqueue(FixturePlan.Complete("代号是松果。"));
                     await SendComplete("刚才的代号是什么？", "second_turn");
@@ -196,7 +196,7 @@ internal static class OllamaChatChecks
                     fake.Enqueue(FixturePlan.Complete("换模型后我仍记得上下文。"));
                     await SendComplete("换模型后还记得对话吗？", "switched_turn");
                     Require(LastChat(fake).Payload.GetProperty("model").GetString() == OllamaModels.QualityModel && LastChat(fake).Payload.GetProperty("messages").GetArrayLength() == 8, "new_model_receives_retained_complete_history");
-                    Require(LastChat(fake).Payload.GetProperty("messages")[0].GetProperty("content").GetString()!.Contains("蓝色大肥鱼", StringComparison.Ordinal), "model_switch_keeps_deepseek_character");
+                    Require(LastChat(fake).Payload.GetProperty("messages")[0].GetProperty("content").GetString()!.Contains(L.T("蓝色大肥鱼", "Blue Chubby Whale"), StringComparison.Ordinal), "model_switch_keeps_deepseek_character");
                     fake.FailNextUnload = true;
                     models.SelectedValue = OllamaModels.FastModel;
                     await UntilAsync(() => models.IsEnabled, "failed_switch_settle");
@@ -224,7 +224,7 @@ internal static class OllamaChatChecks
                     Require(!recording.Runs[^1].Completed && recording.Runs[^1].ErrorType != null && previews.Children.Count == 1 && input.Text == "图片请求遇到错误。", "stream_error_restores_message_and_image");
                     fake.Enqueue(FixturePlan.Eof("断开前的残缺回答"));
                     await window.SendAsync();
-                    Require(!recording.Runs[^1].Completed && recording.Runs[^1].ErrorType != null && !Status(window).StartsWith("回复完成", StringComparison.Ordinal), "stream_without_done_is_failure");
+                    Require(!recording.Runs[^1].Completed && recording.Runs[^1].ErrorType != null && !Status(window).StartsWith(L.T("回复完成", "Reply complete"), StringComparison.Ordinal), "stream_without_done_is_failure");
                     fake.Enqueue(FixturePlan.Complete("现在回复完整了。"));
                     await SendComplete("失败后重试图片。", "after_failure");
                     var retry = WireMessageText(LastChat(fake));
@@ -238,7 +238,7 @@ internal static class OllamaChatChecks
                     await SendComplete("重新打开窗口后继续聊天。", "reopened_turn");
                     Require(LastChat(fake).Payload.GetProperty("messages").GetArrayLength() == 14, "reopening_retains_memory_history");
                     Click(Named<Button>(window, "OllamaNewConversation"));
-                    await UntilAsync(() => Status(window).StartsWith("新对话", StringComparison.Ordinal), "clear_conversation");
+                    await UntilAsync(() => Status(window).StartsWith(L.T("新对话", "New conversation"), StringComparison.Ordinal), "clear_conversation");
                     fake.Enqueue(FixturePlan.Complete("这是全新的对话。"));
                     await SendComplete("开始一个新对话。", "new_conversation");
                     Require(LastChat(fake).Payload.GetProperty("messages").GetArrayLength() == 2, "new_conversation_clears_previous_context");
@@ -248,21 +248,21 @@ internal static class OllamaChatChecks
                     fake.Enqueue(FixturePlan.Complete("这是另一位桌宠的对话。"));
                     await SendComplete("新角色的第一句话。", "other_skin");
                     var otherSkin = LastChat(fake).Payload.GetProperty("messages");
-                    Require(otherSkin.GetArrayLength() == 2 && !otherSkin[0].GetProperty("content").GetString()!.Contains("蓝色大肥鱼", StringComparison.Ordinal), "other_skin_has_no_deepseek_persona_or_prior_character_history");
+                    Require(otherSkin.GetArrayLength() == 2 && !otherSkin[0].GetProperty("content").GetString()!.Contains(L.T("蓝色大肥鱼", "Blue Chubby Whale"), StringComparison.Ordinal), "other_skin_has_no_deepseek_persona_or_prior_character_history");
                     settings.SkinId = "gpt"; window.RefreshCharacter();
                     fake.Enqueue(FixturePlan.Complete("宝库先锁好了，把问题给我看看。"));
                     await SendComplete("白龙娘，今天一起工作吧。", "gpt_skin");
                     var dragonMessages = LastChat(fake).Payload.GetProperty("messages");
                     string dragonSystem = dragonMessages[0].GetProperty("content").GetString()!;
-                    Require(dragonMessages.GetArrayLength() == 2 && dragonSystem.Contains("GPT 小龙娘", StringComparison.Ordinal) &&
-                        dragonSystem.Contains("白发紫眼", StringComparison.Ordinal) && dragonSystem.Contains("非官方", StringComparison.Ordinal) &&
-                        dragonSystem.Contains("角色名是GPT", StringComparison.Ordinal) &&
-                        !dragonSystem.Contains("白米饭", StringComparison.Ordinal) && !dragonSystem.Contains("蓝色大肥鱼", StringComparison.Ordinal),
+                    Require(dragonMessages.GetArrayLength() == 2 && dragonSystem.Contains(L.T("GPT 小龙娘", "GPT Little Dragon"), StringComparison.Ordinal) &&
+                        dragonSystem.Contains(L.T("白发紫眼", "white hair, violet eyes"), StringComparison.Ordinal) && dragonSystem.Contains(L.T("非官方", "unofficial"), StringComparison.Ordinal) &&
+                        dragonSystem.Contains(L.T("角色名是GPT", "named GPT."), StringComparison.Ordinal) &&
+                        !dragonSystem.Contains(L.T("白米饭", "white rice"), StringComparison.Ordinal) && !dragonSystem.Contains(L.T("蓝色大肥鱼", "Blue Chubby Whale"), StringComparison.Ordinal),
                         "gpt_skin_sends_its_dragon_persona_without_whale_identity_or_other_character_history");
                     Require(dragonSystem.Contains(settings.OllamaModel, StringComparison.Ordinal) &&
-                        dragonSystem.Contains("角色皮肤不代表后端模型", StringComparison.Ordinal) &&
-                        dragonSystem.Contains("不能索取真实付款", StringComparison.Ordinal) &&
-                        dragonSystem.Contains("本轮未启用联网", StringComparison.Ordinal),
+                        dragonSystem.Contains(L.T("角色皮肤不代表后端模型", "your character skin is not the backend model"), StringComparison.Ordinal) &&
+                        dragonSystem.Contains(L.T("不能索取真实付款", "never demand actual payment"), StringComparison.Ordinal) &&
+                        dragonSystem.Contains(L.T("本轮未启用联网", "Web access is disabled this turn"), StringComparison.Ordinal),
                         "gpt_persona_preserves_actual_model_identity_no_real_payment_and_web_capability_boundaries");
                     settings.SkinId = "deepseek"; window.RefreshCharacter();
                     fake.Enqueue(FixturePlan.Complete("本鲸回来了。"));
@@ -274,7 +274,7 @@ internal static class OllamaChatChecks
                     await window.AddImageFilesAsync(new[] { imagePath, imagePath });
                     int beforeOversize = recording.Runs.Count;
                     input.Text = new string('饭', 2000); await window.SendAsync();
-                    Require(recording.Runs.Count == beforeOversize && input.Text.Length == 2000 && previews.Children.Count == 2 && Status(window).Contains("缩短", StringComparison.Ordinal), "persona_and_two_images_reserve_context_before_sending_and_keep_draft");
+                    Require(recording.Runs.Count == beforeOversize && input.Text.Length == 2000 && previews.Children.Count == 2 && Status(window).Contains(L.T("缩短", "shorten"), StringComparison.Ordinal), "persona_and_two_images_reserve_context_before_sending_and_keep_draft");
                     fake.Enqueue(FixturePlan.Complete("两张图片都收到了。"));
                     await SendComplete("请比较两张图。", "two_images_with_persona");
                     int plannedTokens = recording.Runs[^1].Messages.Sum(message => PetPersona.EstimateTokens(message.Content, message.Images?.Count ?? 0));

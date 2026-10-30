@@ -43,20 +43,20 @@ internal sealed record DashboardModelServices(
 internal sealed partial class ModelSettingsView
 {
     private readonly DashboardModelServices _modelServices;
-    private readonly Button _modelRefresh = new() { Name = "ModelRefresh", Content = "刷新状态" };
-    private readonly Button _llmLoad = new() { Name = "DashboardLlmLoad", Content = "加载 LLM" };
-    private readonly Button _llmUnload = new() { Name = "DashboardLlmUnload", Content = "卸载 LLM" };
-    private readonly Button _voiceLoad = new() { Name = "DashboardVoiceLoad", Content = "加载语音" };
-    private readonly Button _voiceUnload = new() { Name = "DashboardVoiceUnload", Content = "卸载语音" };
-    private readonly TextBlock _modelUpdated = ModelText("打开此页后读取状态", "ModelUpdated");
+    private readonly Button _modelRefresh = new() { Name = "ModelRefresh", Content = L.T("刷新状态", "Refresh status") };
+    private readonly Button _llmLoad = new() { Name = "DashboardLlmLoad", Content = L.T("加载 LLM", "Load LLM") };
+    private readonly Button _llmUnload = new() { Name = "DashboardLlmUnload", Content = L.T("卸载 LLM", "Unload LLM") };
+    private readonly Button _voiceLoad = new() { Name = "DashboardVoiceLoad", Content = L.T("加载语音", "Load speech") };
+    private readonly Button _voiceUnload = new() { Name = "DashboardVoiceUnload", Content = L.T("卸载语音", "Unload speech") };
+    private readonly TextBlock _modelUpdated = ModelText(L.T("打开此页后读取状态", "Status is read when this page opens"), "ModelUpdated");
     private readonly ComboBox _llmSelector = new() { Name = "DashboardLlmSelector" };
-    private readonly TextBlock _llmListStatus = ModelText("正在读取已安装模型…", "DashboardLlmListStatus");
+    private readonly TextBlock _llmListStatus = ModelText(L.T("正在读取已安装模型…", "Reading installed models…"), "DashboardLlmListStatus");
     private readonly TextBlock _llmEndpoint = ModelText("", "DashboardLlmEndpoint");
-    private readonly TextBlock _llmState = ModelText("等待查询", "DashboardLlmState", 14, true);
+    private readonly TextBlock _llmState = ModelText(L.T("等待查询", "Waiting for status"), "DashboardLlmState", 14, true);
     private readonly TextBlock _llmMemory = ModelText("", "DashboardLlmMemory");
     private readonly TextBlock _llmOthers = ModelText("", "DashboardLlmOthers");
     private readonly TextBlock _llmModelAction = ModelText("", "DashboardLlmAction");
-    private readonly TextBlock _voiceState = ModelText("等待查询", "DashboardVoiceState", 14, true);
+    private readonly TextBlock _voiceState = ModelText(L.T("等待查询", "Waiting for status"), "DashboardVoiceState", 14, true);
     private readonly TextBlock _voiceName = ModelText("Qwen3-TTS · 1.7B", "DashboardVoiceName", 16, true);
     private readonly TextBlock _voiceBackend = ModelText("", "DashboardVoiceBackend");
     private readonly TextBlock _voiceMemory = ModelText("", "DashboardVoiceMemory");
@@ -64,23 +64,24 @@ internal sealed partial class ModelSettingsView
     private readonly ComboBox _voiceCharacter = new() { Name = "DashboardVoiceCharacter" };
     private readonly ComboBox _voiceModel = new() { Name = "DashboardVoiceModel" };
     private readonly ComboBox _voiceSpeaker = new() { Name = "DashboardVoiceSpeaker" };
+    private readonly ComboBox _voiceLanguage = new() { Name = "DashboardVoiceLanguage" };
     private readonly TextBox _voiceInstruction = new() { Name = "DashboardVoiceInstruction", MaxLength = 600, AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MinHeight = 76, MaxHeight = 110 };
-    private readonly Button _voiceProfileSave = new() { Name = "DashboardVoiceProfileSave", Content = "应用生成方式" };
+    private readonly Button _voiceProfileSave = new() { Name = "DashboardVoiceProfileSave", Content = L.T("应用生成方式", "Apply method") };
     private readonly TextBlock _voiceProfileStatus = ModelText("", "DashboardVoiceProfileStatus");
     private readonly TextBlock _voiceProfileHint = ModelText("", "DashboardVoiceProfileHint");
     private readonly TextBlock _voiceCurrentRole = ModelText("", "DashboardVoiceCurrentRole", 11, true);
-    private readonly TextBlock _voiceInstructionLabel = ModelText("音色与语气描述", "DashboardVoiceInstructionLabel", 11, true);
+    private readonly TextBlock _voiceInstructionLabel = ModelText(L.T("音色与语气描述", "Voice & delivery description"), "DashboardVoiceInstructionLabel", 11, true);
     private StackPanel? _voiceSpeakerField, _voiceInstructionField;
-    private bool _syncVoiceProfile, _voiceProfileDirty;
+    private bool _syncVoiceProfile, _voiceProfileDirty, _voiceLanguageDirty;
     private PetVoiceProfile? _voiceProfileLoaded;
     private PetVoiceProfile? _observedVoiceProfile;
     private string? _observedVoiceSkin;
     // These choices describe how speech is produced; persisted model IDs remain
     // unchanged so existing role profiles and saved references stay compatible.
-    private static readonly PetVoiceChoice[] VoiceGenerationModes = {
-        new("disabled", "不启用此角色语音"), new("fixed", "使用已保存音色（Base）"),
-        new("custom-voice", "使用预置说话人（CustomVoice）"), new("voice-design", "按文字即时生成（VoiceDesign）")
+    private static PetVoiceChoice[] VoiceGenerationModes => new PetVoiceChoice[] {
+        new("disabled", L.T("不启用此角色语音", "Disable speech for this character")), new("fixed", L.T("使用已保存音色（Base）", "Use a saved voice (Base)")),
+        new("custom-voice", L.T("使用预置说话人（CustomVoice）", "Use a preset speaker (CustomVoice)")), new("voice-design", L.T("按文字即时生成（VoiceDesign）", "Generate from a description (VoiceDesign)"))
     };
     private readonly StackPanel _gpuRows = new() { Name = "DashboardGpuRows" };
     private readonly DispatcherTimer _modelTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(5) };
@@ -109,34 +110,34 @@ internal sealed partial class ModelSettingsView
         var heading = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(_modelRefresh, Dock.Right); heading.Children.Add(_modelRefresh);
         var caption = new StackPanel();
-        caption.Children.Add(ModelText("模型与显存", "ModelPageTitle", 23, true));
+        caption.Children.Add(ModelText(L.T("模型与显存", "Models & GPU memory"), "ModelPageTitle", 23, true));
         caption.Children.Add(_modelUpdated); heading.Children.Add(caption); body.Children.Add(heading);
         body.Children.Add(BuildSpeechPreferences());
         var cards = new Grid();
         cards.ColumnDefinitions.Add(new ColumnDefinition()); cards.ColumnDefinitions.Add(new ColumnDefinition());
         var voice = new StackPanel();
-        voice.Children.Add(ModelText("当前角色 / 语音", "VoiceModelLabel", 11, true));
+        voice.Children.Add(ModelText(L.T("当前角色 / 语音", "CURRENT CHARACTER / SPEECH"), "VoiceModelLabel", 11, true));
         voice.Children.Add(_voiceCurrentRole);
         voice.Children.Add(_voiceName); voice.Children.Add(_voiceState); voice.Children.Add(_voiceBackend);
         voice.Children.Add(_voiceMemory);
-        voice.Children.Add(ModelText("显存按语音进程的 PyTorch 统计；“保留”包含可复用的缓存。", "VoiceMemoryHint"));
+        voice.Children.Add(ModelText(L.T("显存按语音进程的 PyTorch 统计；“保留”包含可复用的缓存。", "Speech GPU memory is reported by PyTorch. Reserved memory includes reusable cache."), "VoiceMemoryHint"));
         var voiceButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 10) };
         _voiceLoad.Margin = new Thickness(0, 0, 8, 0); voiceButtons.Children.Add(_voiceLoad); voiceButtons.Children.Add(_voiceUnload);
         voice.Children.Add(voiceButtons); voice.Children.Add(_voiceModelAction);
-        _voiceLoad.ToolTip = "加载当前桌宠角色保存的声音模型；需要开启语音播报";
-        _voiceUnload.ToolTip = "停止播报并释放语音显存；下次主动播报时可以重新加载";
+        _voiceLoad.ToolTip = L.T("加载当前桌宠角色保存的声音模型；需要开启语音播报", "Load the current pet's speech model; Pet speech must be enabled");
+        _voiceUnload.ToolTip = L.T("停止播报并释放语音显存；下次主动播报时可以重新加载", "Stop speech and release GPU memory; the next speech request can reload it");
         _voiceLoad.Click += async (_, _) => await ChangeSpeechModelLoadAsync(true);
         _voiceUnload.Click += async (_, _) => await ChangeSpeechModelLoadAsync(false);
         var voiceCard = Card(voice); voiceCard.Margin = new Thickness(0, 0, 7, 0); cards.Children.Add(voiceCard);
         var llm = new StackPanel();
-        llm.Children.Add(ModelText("OLLAMA / 聊天", "LlmModelLabel", 11, true));
+        llm.Children.Add(ModelText(L.T("OLLAMA / 聊天", "OLLAMA / CHAT"), "LlmModelLabel", 11, true));
         ConfigureCombo(_llmSelector);
         _llmSelector.FontSize = 13; _llmSelector.MinHeight = 36;
         _llmSelector.Margin = new Thickness(0, 0, 0, 7);
         _llmSelector.DisplayMemberPath = nameof(OllamaModelChoice.DisplayName);
         _llmSelector.SelectedValuePath = nameof(OllamaModelChoice.Id);
-        _llmSelector.ToolTip = "切换当前聊天模型，与对话窗口同步；需要时再点击加载";
-        AutomationProperties.SetName(_llmSelector, "当前聊天模型（与对话窗口同步）");
+        _llmSelector.ToolTip = L.T("切换当前聊天模型，与对话窗口同步；需要时再点击加载", "Switch the chat model in sync with the chat window; load it when needed");
+        AutomationProperties.SetName(_llmSelector, L.T("当前聊天模型（与对话窗口同步）", "Current chat model (synchronized with chat)"));
         _llmSelector.SelectionChanged += async (_, _) => await SelectDashboardLlmAsync();
         llm.Children.Add(_llmSelector); llm.Children.Add(_llmListStatus);
         llm.Children.Add(_llmState); llm.Children.Add(_llmEndpoint);
@@ -144,17 +145,17 @@ internal sealed partial class ModelSettingsView
         var llmButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 10) };
         _llmLoad.Margin = new Thickness(0, 0, 8, 0); llmButtons.Children.Add(_llmLoad); llmButtons.Children.Add(_llmUnload);
         llm.Children.Add(llmButtons); llm.Children.Add(_llmModelAction); llm.Children.Add(_llmOthers);
-        llm.Children.Add(ModelText("操作聊天中当前选中的模型。卸载不会删除文件；其他软件共用此模型时也会受影响。", "LlmMemoryHint"));
-        _llmLoad.ToolTip = "提前加载当前聊天模型；沿用 Ollama 原有保留时长，不发送消息";
-        _llmUnload.ToolTip = "仅卸载当前选中的模型，不删除模型文件";
+        llm.Children.Add(ModelText(L.T("操作聊天中当前选中的模型。卸载不会删除文件；其他软件共用此模型时也会受影响。", "Controls the selected chat model. Unloading keeps its files, but also affects other apps using the same model."), "LlmMemoryHint"));
+        _llmLoad.ToolTip = L.T("提前加载当前聊天模型；沿用 Ollama 原有保留时长，不发送消息", "Preload the chat model without sending a message; preserve Ollama's retention setting");
+        _llmUnload.ToolTip = L.T("仅卸载当前选中的模型，不删除模型文件", "Unload only the selected model without deleting its files");
         _llmLoad.Click += async (_, _) => await ChangeLlmModelLoadAsync(true);
         _llmUnload.Click += async (_, _) => await ChangeLlmModelLoadAsync(false);
         var llmCard = Card(llm); llmCard.Margin = new Thickness(7, 0, 0, 0); Grid.SetColumn(llmCard, 1); cards.Children.Add(llmCard);
         body.Children.Add(cards);
         BuildVoiceProfileEditor(body);
-        var gpu = new StackPanel(); gpu.Children.Add(ModelText("本机显卡", "GpuModelLabel", 16, true));
+        var gpu = new StackPanel(); gpu.Children.Add(ModelText(L.T("本机显卡", "Local GPUs"), "GpuModelLabel", 16, true));
         gpu.Children.Add(_gpuRows);
-        gpu.Children.Add(ModelText("模型颜色保持固定。语音使用 PyTorch 保留量（包含已分配量）；远程 Ollama 单独列出。", "GpuMemoryHint"));
+        gpu.Children.Add(ModelText(L.T("模型颜色保持固定。语音使用 PyTorch 保留量（包含已分配量）；远程 Ollama 单独列出。", "Model colors remain consistent. Speech uses PyTorch reserved memory (including allocated memory). Remote Ollama is listed separately."), "GpuMemoryHint"));
         var gpuCard = Card(gpu); gpuCard.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(gpuCard);
         _modelPage = new ScrollViewer { Name = "ModelPage", Content = body,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -179,12 +180,12 @@ internal sealed partial class ModelSettingsView
         if (blocked != null && !_llmModelOperation) _llmModelAction.Text = blocked;
         else if (_lastLlmBlockReason != null && _llmModelAction.Text == _lastLlmBlockReason) _llmModelAction.Text = "";
         _lastLlmBlockReason = blocked;
-        string? voiceBlocked = !_settings.SpeechEnabled ? "语音播报已关闭；在本页上方开启后可加载。" :
-            !voiceEnabled ? "当前角色尚未启用语音；可在下方选择并应用生成方式。" : null;
+        string? voiceBlocked = !_settings.SpeechEnabled ? L.T("语音播报已关闭；在本页上方开启后可加载。", "Pet speech is off. Enable it at the top of this page before loading.") :
+            !voiceEnabled ? L.T("当前角色尚未启用语音；可在下方选择并应用生成方式。", "Speech is disabled for this character. Choose and apply a generation method below.") : null;
         if (voiceBlocked != null) _voiceModelAction.Text = voiceBlocked;
         else if (_lastVoiceBlockReason != null && _voiceModelAction.Text == _lastVoiceBlockReason) _voiceModelAction.Text = "";
         _lastVoiceBlockReason = voiceBlocked;
-        _voiceCurrentRole.Text = "当前桌宠：" + PetVoiceProfiles.CharacterName(_settings.SkinId);
+        _voiceCurrentRole.Text = L.T("当前桌宠：", "Current pet: ") + PetVoiceProfiles.CharacterName(_settings.SkinId);
         SyncVoiceProfileEditor();
         RenderVoiceStudio();
     }
@@ -192,14 +193,14 @@ internal sealed partial class ModelSettingsView
     private void BuildVoiceProfileEditor(StackPanel body)
     {
         var content = new StackPanel();
-        content.Children.Add(ModelText("语音生成方式", "VoiceProfileTitle", 16, true));
-        content.Children.Add(ModelText("先选择角色和生成方式。使用已保存音色时，在下方音色库选择具体声音；配置按角色独立保存。", "VoiceProfileScopeHint"));
+        content.Children.Add(ModelText(L.T("语音生成方式", "Speech generation method"), "VoiceProfileTitle", 16, true));
+        content.Children.Add(ModelText(L.T("先选择角色和生成方式。使用已保存音色时，在下方音色库选择具体声音；配置按角色独立保存。", "Choose a character and generation method. For saved voices, select a voice in the library below. Settings are saved separately for each character."), "VoiceProfileScopeHint"));
         var columns = new Grid();
         columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition());
         var left = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
         var right = new StackPanel { Margin = new Thickness(12, 0, 0, 0) };
         Grid.SetColumn(right, 1); columns.Children.Add(left); columns.Children.Add(right);
-        foreach (var combo in new[] { _voiceCharacter, _voiceModel, _voiceSpeaker })
+        foreach (var combo in new[] { _voiceCharacter, _voiceModel, _voiceSpeaker, _voiceLanguage })
         {
             ConfigureCombo(combo); combo.HorizontalAlignment = HorizontalAlignment.Stretch; combo.MinHeight = 34;
             combo.Margin = new Thickness(0, 0, 0, 9); combo.DisplayMemberPath = nameof(PetVoiceChoice.Label);
@@ -208,11 +209,15 @@ internal sealed partial class ModelSettingsView
         _voiceCharacter.ItemsSource = PetVoiceProfiles.Characters;
         _voiceModel.ItemsSource = VoiceGenerationModes;
         _voiceSpeaker.ItemsSource = PetVoiceProfiles.Speakers;
-        left.Children.Add(ModelText("编辑角色", "VoiceProfileCharacterLabel", 11, true)); left.Children.Add(_voiceCharacter);
-        left.Children.Add(ModelText("生成方式", "VoiceProfileModelLabel", 11, true)); left.Children.Add(_voiceModel);
+        _voiceLanguage.ItemsSource = new[] { new PetVoiceChoice("auto", L.T("跟随软件语言", "Follow app language")) }
+            .Concat(PetVoiceProfiles.Languages.Select(value => new PetVoiceChoice(value, value))).ToArray();
+        left.Children.Add(ModelText(L.T("编辑角色", "Edit character"), "VoiceProfileCharacterLabel", 11, true)); left.Children.Add(_voiceCharacter);
+        left.Children.Add(ModelText(L.T("生成方式", "Generation method"), "VoiceProfileModelLabel", 11, true)); left.Children.Add(_voiceModel);
         _voiceSpeakerField = new StackPanel();
-        _voiceSpeakerField.Children.Add(ModelText("预置音色", "VoiceProfileSpeakerLabel", 11, true));
+        _voiceSpeakerField.Children.Add(ModelText(L.T("预置音色", "Preset speaker"), "VoiceProfileSpeakerLabel", 11, true));
         _voiceSpeakerField.Children.Add(_voiceSpeaker); left.Children.Add(_voiceSpeakerField);
+        left.Children.Add(ModelText(L.T("朗读语言", "Speech language"), "VoiceProfileLanguageLabel", 11, true));
+        left.Children.Add(_voiceLanguage);
         _voiceInstructionField = new StackPanel();
         _voiceInstructionField.Children.Add(_voiceInstructionLabel);
         _voiceInstruction.Padding = new Thickness(8); _voiceInstruction.FontSize = 12;
@@ -227,11 +232,12 @@ internal sealed partial class ModelSettingsView
         var card = Card(content); card.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(card);
         BuildVoiceLibrary(body);
         BuildVoiceStudio(body);
-        AutomationProperties.SetName(_voiceCharacter, "编辑声音的桌宠角色");
-        AutomationProperties.SetName(_voiceModel, "此角色的语音生成方式");
-        AutomationProperties.SetName(_voiceSpeaker, "预置说话人音色");
-        AutomationProperties.SetName(_voiceInstruction, "音色与语气描述，最多600字");
-        AutomationProperties.SetName(_voiceProfileSave, "应用生成方式");
+        AutomationProperties.SetName(_voiceCharacter, L.T("编辑声音的桌宠角色", "Character whose voice you are editing"));
+        AutomationProperties.SetName(_voiceModel, L.T("此角色的语音生成方式", "Speech generation method for this character"));
+        AutomationProperties.SetName(_voiceSpeaker, L.T("预置说话人音色", "Preset speaker voice"));
+        AutomationProperties.SetName(_voiceLanguage, L.T("此角色的朗读语言", "Speech language for this character"));
+        AutomationProperties.SetName(_voiceInstruction, L.T("音色与语气描述，最多600字", "Voice and delivery description, up to 600 characters"));
+        AutomationProperties.SetName(_voiceProfileSave, L.T("应用生成方式", "Apply method"));
         _voiceCharacter.SelectionChanged += (_, _) => { if (!_syncVoiceProfile) LoadVoiceProfileDraft(); };
         _voiceModel.SelectionChanged += (_, _) =>
         {
@@ -241,6 +247,7 @@ internal sealed partial class ModelSettingsView
             VoiceProfileDraftChanged();
         };
         _voiceSpeaker.SelectionChanged += (_, _) => { if (!_syncVoiceProfile) VoiceProfileDraftChanged(); };
+        _voiceLanguage.SelectionChanged += (_, _) => { if (!_syncVoiceProfile) { _voiceLanguageDirty = true; VoiceProfileDraftChanged(); } };
         _voiceInstruction.TextChanged += (_, _) => { if (!_syncVoiceProfile) VoiceProfileDraftChanged(); };
         _voiceProfileSave.Click += (_, _) => SaveVoiceProfileDraft();
         _voiceCharacter.SelectedValue = PetVoiceProfiles.KnownSkin(_settings.SkinId) ? _settings.SkinId.ToLowerInvariant() : "deepseek";
@@ -262,19 +269,20 @@ internal sealed partial class ModelSettingsView
         {
             var profile = _settings.GetVoiceProfile(skinId); _voiceProfileLoaded = profile;
             _voiceModel.SelectedValue = VoiceGenerationMode(profile); _voiceSpeaker.SelectedValue = profile.Speaker;
+            _voiceLanguage.SelectedValue = PetVoiceProfiles.FollowsAppLanguage(profile) ? "auto" : profile.Language;
             _voiceInstruction.Text = profile.Instruct;
-            _voiceProfileDirty = false;
+            _voiceProfileDirty = false; _voiceLanguageDirty = false;
         }
         finally { _syncVoiceProfile = false; }
         RefreshVoiceLibrary(VoiceLibraryKey(_voiceProfileLoaded!));
-        _voiceProfileStatus.Text = "当前使用：" + PetVoiceProfiles.CharacterName(skinId) + " · " + CurrentVoiceDescription(_voiceProfileLoaded!);
+        _voiceProfileStatus.Text = L.T("当前使用：", "Currently using: ") + PetVoiceProfiles.CharacterName(skinId) + " · " + CurrentVoiceDescription(_voiceProfileLoaded!);
         RenderVoiceProfileDraft();
         LoadVoiceStudioDraft();
     }
 
     private void VoiceProfileDraftChanged()
     {
-        _voiceProfileDirty = true; _voiceProfileStatus.Text = "尚未保存";
+        _voiceProfileDirty = true; _voiceProfileStatus.Text = L.T("尚未保存", "Not saved yet");
         RenderVoiceProfileDraft();
     }
 
@@ -284,28 +292,28 @@ internal sealed partial class ModelSettingsView
     private string CurrentVoiceDescription(PetVoiceProfile profile) => profile.ModelId switch
     {
         "base" => "Let Me Go",
-        "gpt-fixed" => "GPT 龙娘固定音色",
-        "saved-voice" => _voiceLibraryChoices.FirstOrDefault(x => x.Key == profile.ReferenceId)?.Name ?? "所选音色暂不可用",
+        "gpt-fixed" => L.T("GPT 龙娘固定音色", "GPT Dragon voice"),
+        "saved-voice" => _voiceLibraryChoices.FirstOrDefault(x => x.Key == profile.ReferenceId)?.Name ?? L.T("所选音色暂不可用", "The selected voice is unavailable"),
         "custom-voice" => PetVoiceProfiles.Speakers.FirstOrDefault(x => x.Id == profile.Speaker)?.Label ?? profile.Speaker,
-        "voice-design" => "按文字即时生成（VoiceDesign）",
-        _ => "未启用语音"
+        "voice-design" => L.T("按文字即时生成（VoiceDesign）", "Generate from a description (VoiceDesign)"),
+        _ => L.T("未启用语音", "Speech disabled")
     };
 
     private void RenderVoiceProfileDraft()
     {
         string model = _voiceModel.SelectedValue as string ?? "disabled";
-        _voiceModel.IsEnabled = _voiceSpeaker.IsEnabled = _voiceInstruction.IsEnabled = !_voiceStudioGenerating;
+        _voiceModel.IsEnabled = _voiceSpeaker.IsEnabled = _voiceInstruction.IsEnabled = _voiceLanguage.IsEnabled = !_voiceStudioGenerating;
         if (_voiceSpeakerField != null) _voiceSpeakerField.Visibility = model == "custom-voice" ? Visibility.Visible : Visibility.Collapsed;
         if (_voiceInstructionField != null) _voiceInstructionField.Visibility = model is "custom-voice" or "voice-design" ? Visibility.Visible : Visibility.Collapsed;
-        _voiceInstructionLabel.Text = model == "voice-design" ? "音色描述（必填，最多 600 字）" : "语气要求（可选，最多 600 字）";
+        _voiceInstructionLabel.Text = model == "voice-design" ? L.T("音色描述（必填，最多 600 字）", "Voice description (required, up to 600 characters)") : L.T("语气要求（可选，最多 600 字）", "Delivery instructions (optional, up to 600 characters)");
         string hint = model switch
         {
-            "fixed" => "用 Base 复用音色库中的声音，保持固定音色。请在下方选择具体音色；要制作新声音，可使用独立的音色工坊。",
-            "custom-voice" => "使用 CustomVoice 的预置说话人，可附加语气要求；无需参考音频。",
-            "voice-design" => "每次朗读都由 VoiceDesign 按文字描述即时生成，音色可能变化。想固定声音，请使用下方音色工坊生成并保存。",
-            _ => "此角色不朗读文字；其他角色的语音配置保持独立。"
+            "fixed" => L.T("用 Base 复用音色库中的声音，保持固定音色。请在下方选择具体音色；要制作新声音，可使用独立的音色工坊。", "Base reuses a library voice to keep its identity consistent. Select one below, or create a new voice in Voice Studio."),
+            "custom-voice" => L.T("使用 CustomVoice 的预置说话人，可附加语气要求；无需参考音频。", "Use a CustomVoice preset speaker with optional delivery instructions. No reference audio is needed."),
+            "voice-design" => L.T("每次朗读都由 VoiceDesign 按文字描述即时生成，音色可能变化。想固定声音，请使用下方音色工坊生成并保存。", "VoiceDesign generates speech from the description each time, so the voice may vary. To save a consistent voice, use Voice Studio below."),
+            _ => L.T("此角色不朗读文字；其他角色的语音配置保持独立。", "This character does not read text aloud. Other characters keep their own speech settings.")
         };
-        if (model != "disabled") hint += PetVoiceProfiles.IsModelInstalled(model == "fixed" ? "base" : model) ? "\n模型文件已安装；应用不会自动加载。" : "\n未检测到本地模型文件，使用前需完成下载。";
+        if (model != "disabled") hint += PetVoiceProfiles.IsModelInstalled(model == "fixed" ? "base" : model) ? L.T("\n模型文件已安装；应用不会自动加载。", "\nModel files are installed. Applying settings does not load the model.") : L.T("\n未检测到本地模型文件，使用前需完成下载。", "\nLocal model files were not found. Download them before use.");
         _voiceProfileHint.Text = hint;
         _voiceProfileSave.IsEnabled = _speechHost != null && !_speechModelOperation && !_voiceStudioGenerating && _voiceProfileDirty;
     }
@@ -315,40 +323,46 @@ internal sealed partial class ModelSettingsView
         if (_speechHost == null || _speechModelOperation || _voiceStudioGenerating || !_voiceProfileDirty || _voiceCharacter.SelectedValue is not string skinId ||
             _voiceModel.SelectedValue is not string model) return;
         if (model == "voice-design" && string.IsNullOrWhiteSpace(_voiceInstruction.Text))
-        { _voiceProfileStatus.Text = "请先填写希望生成的声音描述。"; return; }
+        { _voiceProfileStatus.Text = L.T("请先填写希望生成的声音描述。", "Enter a description of the voice you want to generate first."); return; }
         try
         {
             string? referenceId = null;
-            string language = _voiceProfileLoaded?.Language ?? "Chinese";
+            bool followLanguage = _voiceLanguage.SelectedValue as string == "auto";
+            string language = followLanguage ? (L.IsEnglish ? "English" : "Chinese") : _voiceLanguage.SelectedValue as string ?? _voiceProfileLoaded?.Language ?? (L.IsEnglish ? "English" : "Chinese");
             string speaker = _voiceSpeaker.SelectedValue as string ?? "Vivian", instruction = _voiceInstruction.Text;
             if (model == "fixed")
             {
                 if (_voiceLibraryRole != skinId || _voiceLibraryList.SelectedItem is not VoiceLibraryChoice selectedVoice)
                 {
-                    _voiceProfileStatus.Text = "请先在下方音色库选择要使用的声音。";
+                    _voiceProfileStatus.Text = L.T("请先在下方音色库选择要使用的声音。", "Select a voice from the library below first.");
                     return;
                 }
-                model = selectedVoice.ModelId; speaker = "Vivian"; instruction = ""; language = "Chinese";
+                model = selectedVoice.ModelId; speaker = "Vivian"; instruction = "";
                 if (model == "saved-voice")
                 {
                     var selectedReference = (_voiceStudio?.ListSavedVoices(skinId) ?? Array.Empty<PetSavedVoiceInfo>())
                         .FirstOrDefault(x => x.ReferenceId == selectedVoice.Key && string.Equals(x.SkinId, skinId, StringComparison.OrdinalIgnoreCase));
                     if (selectedReference == null)
-                    { _voiceProfileStatus.Text = "所选音色已不存在，请从音色库重新选择。"; return; }
-                    referenceId = selectedReference.ReferenceId; language = selectedReference.Language;
+                    { _voiceProfileStatus.Text = L.T("所选音色已不存在，请从音色库重新选择。", "The selected voice no longer exists. Choose another from the library."); return; }
+                    referenceId = selectedReference.ReferenceId;
+                    if (!_voiceLanguageDirty && _voiceProfileLoaded?.ReferenceId != referenceId)
+                    { language = selectedReference.Language; followLanguage = false; }
                 }
                 else if (!selectedVoice.IsBuiltIn || model is not ("base" or "gpt-fixed"))
-                { _voiceProfileStatus.Text = "请先在下方音色库选择要使用的声音。"; return; }
+                { _voiceProfileStatus.Text = L.T("请先在下方音色库选择要使用的声音。", "Select a voice from the library below first."); return; }
             }
-            var profile = PetVoiceProfiles.Normalize(new(model, speaker, language, instruction, referenceId), skinId);
+            var profile = PetVoiceProfiles.Normalize(new(model, speaker, language, instruction, referenceId, FollowAppLanguage: followLanguage), skinId);
             if (skinId.Equals(_settings.SkinId, StringComparison.OrdinalIgnoreCase)) InvalidateModelRead();
             _speechHost.SetCharacterVoiceProfile(skinId, profile);
-            _voiceProfileLoaded = profile; _voiceProfileDirty = false;
-            _voiceProfileStatus.Text = "当前使用：" + PetVoiceProfiles.CharacterName(skinId) + " · " + CurrentVoiceDescription(profile) + "；" +
-                (skinId.Equals(_settings.SkinId, StringComparison.OrdinalIgnoreCase) ? "下一次朗读使用新声音。" : "切换到该角色后使用。");
+            _voiceProfileLoaded = profile; _voiceProfileDirty = false; _voiceLanguageDirty = false;
+            _syncVoiceProfile = true;
+            try { _voiceLanguage.SelectedValue = followLanguage ? "auto" : language; }
+            finally { _syncVoiceProfile = false; }
+            _voiceProfileStatus.Text = L.T("当前使用：", "Currently using: ") + PetVoiceProfiles.CharacterName(skinId) + " · " + CurrentVoiceDescription(profile) + L.T("；", "; ") +
+                (skinId.Equals(_settings.SkinId, StringComparison.OrdinalIgnoreCase) ? L.T("下一次朗读使用新声音。", "The next readout will use the new voice.") : L.T("切换到该角色后使用。", "Used when you switch to that character."));
             RenderVoiceProfileDraft(); RenderSpeechControls(); RenderModelButtons();
         }
-        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _voiceProfileStatus.Text = "保存未完成：" + ex.Message; }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _voiceProfileStatus.Text = L.T("保存未完成：", "Could not save: ") + ex.Message; }
     }
 
     private void VoiceProfileSelectionChanged()
@@ -358,7 +372,7 @@ internal sealed partial class ModelSettingsView
         _observedVoiceSkin = _settings.SkinId; _observedVoiceProfile = profile;
         InvalidateModelRead();
         _voiceName.Text = PetVoiceProfiles.ModelDisplayName(profile.ModelId);
-        _voiceState.Text = "正在查询…"; _voiceMemory.Text = "";
+        _voiceState.Text = L.T("正在查询…", "Reading status…"); _voiceMemory.Text = "";
         if (_showModelPage) _ = RefreshModelPageAsync();
     }
 
@@ -370,10 +384,10 @@ internal sealed partial class ModelSettingsView
         if (_installedModelsEndpoint != _settings.OllamaAddress)
         {
             _dashboardInstalledModels = Array.Empty<string>(); _installedListAvailable = false;
-            _llmListStatus.Text = "连接已更换，正在读取已安装模型…";
+            _llmListStatus.Text = L.T("连接已更换，正在读取已安装模型…", "Connection changed. Reading installed models…");
         }
         SyncModelSelector(); RenderModelButtons();
-        _llmState.Text = "正在查询…"; _llmMemory.Text = ""; _llmOthers.Text = "";
+        _llmState.Text = L.T("正在查询…", "Reading status…"); _llmMemory.Text = ""; _llmOthers.Text = "";
         if (_showModelPage) _ = RefreshModelPageAsync();
     }
 
@@ -381,18 +395,18 @@ internal sealed partial class ModelSettingsView
     {
         if (_modelServices.ReadInstalledModels == null)
         {
-            _installedListAvailable = false; _llmListStatus.Text = "请从桌宠打开设置选择模型。";
+            _installedListAvailable = false; _llmListStatus.Text = L.T("请从桌宠打开设置选择模型。", "Open Settings from the pet to choose a model.");
         }
         else if (error != null || models == null)
         {
-            _installedListAvailable = false; _llmListStatus.Text = "模型列表暂不可用：" + error;
+            _installedListAvailable = false; _llmListStatus.Text = L.T("模型列表暂不可用：", "Model list unavailable: ") + error;
         }
         else
         {
             _installedListAvailable = true; _installedModelsEndpoint = endpoint;
             _dashboardInstalledModels = models;
-            _llmListStatus.Text = models.Count == 0 ? "此服务器尚无已安装模型。" :
-                models.Contains(_settings.OllamaModel, StringComparer.Ordinal) ? "与聊天窗口同步 · " + models.Count + " 个已安装模型" : "当前选择未安装，请选择其他模型。";
+            _llmListStatus.Text = models.Count == 0 ? L.T("此服务器尚无已安装模型。", "No models are installed on this server.") :
+                models.Contains(_settings.OllamaModel, StringComparer.Ordinal) ? L.T("与聊天窗口同步 · ", "Synchronized with chat · ") + models.Count + L.T(" 个已安装模型", " installed models") : L.T("当前选择未安装，请选择其他模型。", "The current model is not installed. Select another model.");
         }
         if (!_selectingLlm) SyncModelSelector();
     }
@@ -402,7 +416,7 @@ internal sealed partial class ModelSettingsView
         string selected = _settings.OllamaModel;
         var choices = _dashboardInstalledModels.Select(id => new OllamaModelChoice(id,
             OllamaModels.Supported.FirstOrDefault(m => m.Id == id)?.DisplayName ?? id)).ToList();
-        if (!choices.Any(x => x.Id == selected)) choices.Insert(0, new(selected, selected + (_installedListAvailable ? "（未安装）" : "（当前选择）")));
+        if (!choices.Any(x => x.Id == selected)) choices.Insert(0, new(selected, selected + (_installedListAvailable ? L.T("（未安装）", " (not installed)") : L.T("（当前选择）", " (current selection)"))));
         _syncModelSelector = true;
         try
         {
@@ -421,9 +435,9 @@ internal sealed partial class ModelSettingsView
             _modelServices.SelectLlmModel == null || _modelServices.LlmBlockedReason?.Invoke() != null)
         { SyncModelSelector(); return; }
         InvalidateModelRead(); _llmModelOperation = true; _selectingLlm = true;
-        _llmState.Text = "正在切换…"; _llmModelAction.Text = "正在切换聊天模型…"; RenderModelButtons();
+        _llmState.Text = L.T("正在切换…", "Switching…"); _llmModelAction.Text = L.T("正在切换聊天模型…", "Switching chat model…"); RenderModelButtons();
         try { _llmModelAction.Text = await _modelServices.SelectLlmModel(selected); }
-        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _llmModelAction.Text = "模型切换未完成：" + ex.Message; }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _llmModelAction.Text = L.T("模型切换未完成：", "Could not switch models: ") + ex.Message; }
         finally
         {
             _llmModelOperation = false; _selectingLlm = false;
@@ -436,10 +450,10 @@ internal sealed partial class ModelSettingsView
         if (_llmModelOperation || _modelServices.SetLlmLoaded == null) return;
         InvalidateModelRead();
         _llmModelOperation = true;
-        _llmModelAction.Text = load ? "正在加载聊天模型…" : "正在卸载聊天模型…";
-        _llmState.Text = load ? "加载中" : "卸载中"; RenderModelButtons();
+        _llmModelAction.Text = load ? L.T("正在加载聊天模型…", "Loading chat model…") : L.T("正在卸载聊天模型…", "Unloading chat model…");
+        _llmState.Text = load ? L.T("加载中", "Loading") : L.T("卸载中", "Unloading"); RenderModelButtons();
         try { _llmModelAction.Text = await _modelServices.SetLlmLoaded(load); }
-        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _llmModelAction.Text = "模型操作未完成：" + ex.Message; }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { _llmModelAction.Text = L.T("模型操作未完成：", "Model operation failed: ") + ex.Message; }
         finally
         {
             _llmModelOperation = false;
@@ -462,13 +476,13 @@ internal sealed partial class ModelSettingsView
         if (_modelSnapshotKey != snapshotKey)
         {
             _modelSnapshotKey = snapshotKey;
-            _llmState.Text = "正在查询…"; _llmMemory.Text = ""; _llmOthers.Text = "";
+            _llmState.Text = L.T("正在查询…", "Reading status…"); _llmMemory.Text = ""; _llmOthers.Text = "";
         }
         if (!_selectingLlm && !string.Equals(_llmSelector.SelectedValue as string, model, StringComparison.Ordinal)) SyncModelSelector();
         if (_installedModelsEndpoint != endpoint) _installedListAvailable = false;
         bool remote = true;
         try { remote = !OllamaEndpoint.Parse(endpoint).IsLoopback; } catch (ArgumentException) { }
-        _llmEndpoint.Text = (remote ? "服务器 · " : "本机服务 · ") + endpoint;
+        _llmEndpoint.Text = (remote ? L.T("服务器 · ", "Server · ") : L.T("本机服务 · ", "Local service · ")) + endpoint;
         RenderModelButtons();
         try
         {
@@ -486,7 +500,7 @@ internal sealed partial class ModelSettingsView
             _gpuRows.Children.Clear();
             _gpuRows.Children.Add(ModelVramBreakdown.Build(gpuTask.Result.Value, gpuTask.Result.Error,
                 llmTask.Result.Value, llmTask.Result.Error, voiceTask.Result.Value, voiceTask.Result.Error, !remote));
-            _modelUpdated.Text = "每 5 秒刷新 · 最近读取 " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) + " · 查看状态不会加载模型";
+            _modelUpdated.Text = L.T("每 5 秒刷新 · 最近读取 ", "Refreshes every 5 seconds · Last read ") + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) + L.T(" · 查看状态不会加载模型", " · Viewing status does not load models");
         }
         finally
         {
@@ -500,7 +514,7 @@ internal sealed partial class ModelSettingsView
     private static async Task<(T? Value, string? Error)> ReadSafely<T>(Func<Task<T>> read, CancellationToken ct)
     {
         try { return (await read().WaitAsync(ct), null); }
-        catch (OperationCanceledException) { return (default, "查询超时或已取消"); }
+        catch (OperationCanceledException) { return (default, L.T("查询超时或已取消", "Status request timed out or was canceled")); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { return (default, ex.Message); }
     }
 
@@ -508,42 +522,42 @@ internal sealed partial class ModelSettingsView
     {
         if (error != null || models == null)
         {
-            _llmState.Text = "状态不可用"; _llmMemory.Text = "无法读取 Ollama 模型状态：" + error;
-            _llmOthers.Text = "显存占用未提供"; return;
+            _llmState.Text = L.T("状态不可用", "Status unavailable"); _llmMemory.Text = L.T("无法读取 Ollama 模型状态：", "Could not read Ollama model status: ") + error;
+            _llmOthers.Text = L.T("显存占用未提供", "GPU memory usage not provided"); return;
         }
         var current = models.FirstOrDefault(m => m.Name.Equals(selected, StringComparison.Ordinal));
-        _llmState.Text = _modelServices.LlmOperation?.Invoke() ?? (_llmModelOperation ? "正在操作模型…" : current == null ? "未加载" : "已加载");
-        _llmMemory.Text = current == null ? "所选模型当前未驻留在 Ollama 中。" :
-            "显存 · " + MemorySize(current.VramBytes) + "    总驻留 · " + MemorySize(current.SizeBytes) +
-            "\n上下文 · " + (current.ContextLength?.ToString("N0", CultureInfo.CurrentCulture) ?? "未提供") +
-            "    保留至 · " + (current.ExpiresAt is { } at ? (at.Year > 2100 ? "持续保留" : at.ToLocalTime().ToString("HH:mm:ss")) : "未提供");
+        _llmState.Text = _modelServices.LlmOperation?.Invoke() ?? (_llmModelOperation ? L.T("正在操作模型…", "Model operation in progress…") : current == null ? L.T("未加载", "Not loaded") : L.T("已加载", "Loaded"));
+        _llmMemory.Text = current == null ? L.T("所选模型当前未驻留在 Ollama 中。", "The selected model is not currently loaded in Ollama.") :
+            L.T("显存 · ", "GPU memory · ") + MemorySize(current.VramBytes) + L.T("    总驻留 · ", "    Total resident · ") + MemorySize(current.SizeBytes) +
+            L.T("\n上下文 · ", "\nContext · ") + (current.ContextLength?.ToString("N0", CultureInfo.CurrentCulture) ?? L.T("未提供", "Not provided")) +
+            L.T("    保留至 · ", "    Keep until · ") + (current.ExpiresAt is { } at ? (at.Year > 2100 ? L.T("持续保留", "Indefinitely") : at.ToLocalTime().ToString("HH:mm:ss")) : L.T("未提供", "Not provided"));
         var others = models.Where(m => !m.Name.Equals(selected, StringComparison.Ordinal)).ToArray();
-        _llmOthers.Text = others.Length == 0 ? "没有其他已加载的 Ollama 模型。" :
-            "其他已加载模型：\n" + string.Join("\n", others.Take(8).Select(m => m.Name + " · 显存 " + MemorySize(m.VramBytes))) +
-            (others.Length > 8 ? "\n另有 " + (others.Length - 8) + " 个模型" : "");
+        _llmOthers.Text = others.Length == 0 ? L.T("没有其他已加载的 Ollama 模型。", "No other Ollama models are loaded.") :
+            L.T("其他已加载模型：\n", "Other loaded models:\n") + string.Join("\n", others.Take(8).Select(m => m.Name + L.T(" · 显存 ", " · GPU memory ") + MemorySize(m.VramBytes))) +
+            (others.Length > 8 ? L.T("\n另有 ", "\nAnd ") + (others.Length - 8) + L.T(" 个模型", " more models") : "");
     }
 
     private void RenderVoiceRuntime(PetVoiceHealth? health, string? error)
     {
         if (error != null)
         {
-            _voiceState.Text = "状态不可用"; _voiceBackend.Text = error; _voiceMemory.Text = "显存占用未提供"; return;
+            _voiceState.Text = L.T("状态不可用", "Status unavailable"); _voiceBackend.Text = error; _voiceMemory.Text = L.T("显存占用未提供", "GPU memory usage not provided"); return;
         }
         _voiceName.Text = string.IsNullOrWhiteSpace(health?.Model) ? PetVoiceProfiles.ModelDisplayName(_settings.GetVoiceProfile(_settings.SkinId).ModelId) : health.Model;
-        _voiceState.Text = _speechModelOperation ? "正在操作模型…" : health == null ? "未加载 · 语音服务未启动" :
-            health.Retiring ? "正在释放显存" : health.Status switch
+        _voiceState.Text = _speechModelOperation ? L.T("正在操作模型…", "Model operation in progress…") : health == null ? L.T("未加载 · 语音服务未启动", "Not loaded · Speech service is not running") :
+            health.Retiring ? L.T("正在释放显存", "Releasing GPU memory") : health.Status switch
             {
-                "loading" => "加载中", "unloading" => "卸载中", "error" => "引擎异常",
-                _ => health.Loaded ? "已加载" : "未加载"
+                "loading" => L.T("加载中", "Loading"), "unloading" => L.T("卸载中", "Unloading"), "error" => L.T("引擎异常", "Engine error"),
+                _ => health.Loaded ? L.T("已加载", "Loaded") : L.T("未加载", "Not loaded")
             };
-        _voiceBackend.Text = health == null ? (_speechHost?.SpeechStatusText ?? "语音服务未启动") :
-            "后端 · " + health.Backend + "    设备 · " + (health.Device ?? "未提供") +
-            (health.Retained ? "\n聊天期间保持加载" : "\n按原有空闲策略释放");
-        _voiceMemory.Text = health == null ? "语音工作进程未运行，无模型显存驻留。" :
-            "已分配 · " + MemorySize(health.AllocatedBytes) + "    已保留 · " + MemorySize(health.ReservedBytes);
+        _voiceBackend.Text = health == null ? (_speechHost?.SpeechStatusText ?? L.T("语音服务未启动", "Speech service is not running")) :
+            L.T("后端 · ", "Backend · ") + health.Backend + L.T("    设备 · ", "    Device · ") + (health.Device ?? L.T("未提供", "Not provided")) +
+            (health.Retained ? L.T("\n聊天期间保持加载", "\nKept loaded while chatting") : L.T("\n按原有空闲策略释放", "\nUnloaded according to the existing idle policy"));
+        _voiceMemory.Text = health == null ? L.T("语音工作进程未运行，无模型显存驻留。", "The speech worker is not running; no speech model occupies GPU memory.") :
+            L.T("已分配 · ", "Allocated · ") + MemorySize(health.AllocatedBytes) + L.T("    已保留 · ", "    Reserved · ") + MemorySize(health.ReservedBytes);
     }
 
-    internal static string MemorySize(long? bytes) => bytes is not { } value ? "未提供" :
+    internal static string MemorySize(long? bytes) => bytes is not { } value ? L.T("未提供", "Not provided") :
         value >= 1024L * 1024 * 1024 ? (value / (1024d * 1024 * 1024)).ToString("0.00", CultureInfo.CurrentCulture) + " GiB" :
         (value / (1024d * 1024)).ToString("0.0", CultureInfo.CurrentCulture) + " MiB";
 

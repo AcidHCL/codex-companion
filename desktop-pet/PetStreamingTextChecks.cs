@@ -10,6 +10,7 @@ internal static class PetStreamingTextChecks
 {
     internal static int Run()
     {
+        string originalLanguage = L.Language;
         var checks = new List<string>(); string? error = null;
         void Require(bool value, string name) { if (!value) throw new InvalidOperationException(name); checks.Add(name); }
         static string Parse(string value, int block)
@@ -21,6 +22,7 @@ internal static class PetStreamingTextChecks
         }
         try
         {
+            L.Initialize(L.Chinese);
             const string first = "哼，本鲸已经把今天的任务处理完成啦，你可以先检查一下结果。";
             const string last = "接下来我会陪你继续完成剩余工作，然后一起吃白米饭！";
             var parser = new PetSpeechIncrementalText();
@@ -51,8 +53,41 @@ internal static class PetStreamingTextChecks
             parser = new(); parser.Append(new string('鲸', 16000));
             bool bounded = false; try { parser.Append("鲸"); } catch (InvalidOperationException) { bounded = true; }
             Require(bounded, "stream_text_memory_is_bounded");
+            L.Initialize(L.English);
+            const string englishFirst = "The task is complete, and the results are ready.";
+            const string englishNext = "The next step will begin when you are ready.";
+            parser = new();
+            Require(parser.Append(englishFirst).Count == 0, "english_terminal_dot_waits_for_lookahead");
+            Require(string.Concat(parser.Append(" " + englishNext[..10])) == englishFirst, "english_complete_sentence_starts_speech_before_full_reply");
+            string englishTail = string.Concat(parser.Append(englishNext[10..])) + string.Concat(parser.Append(null, true));
+            Require(englishTail == englishNext, "english_stream_tail_is_spoken_once");
+            foreach (int block in new[] { 1, 2, 7, 1000 })
+            {
+                string result = Parse(englishFirst + " " + englishNext, block);
+                Require(string.Concat(result.Where(c => !char.IsWhiteSpace(c))) == string.Concat((englishFirst + englishNext).Where(c => !char.IsWhiteSpace(c))),
+                    "english_delta_boundaries_preserve_all_words_and_punctuation_" + block);
+                result = Parse("<think>Never read this private reasoning.</think>" + englishFirst, block);
+                Require(result == englishFirst, "english_periods_inside_think_tags_stay_silent_" + block);
+                result = Parse("```text\nNever read this code.\n```\n" + englishFirst, block);
+                Require(result == englishFirst, "english_periods_inside_code_stay_silent_" + block);
+            }
+            foreach (string prefix in new[] { "The person we are discussing is Dr.", "The person we are discussing is A.", "The country being discussed is U.S.", "Some examples can be listed, e.g.", "The measured value is 3." })
+            {
+                parser = new();
+                Require(parser.Append(prefix).Count == 0 && parser.Append(" ").Count == 0,
+                    "english_abbreviation_initial_or_number_does_not_end_a_chunk_" + checks.Count);
+            }
+            parser = new();
+            Require(parser.Append("The current measured value is 3.").Count == 0 && parser.Append("14 units").Count == 0,
+                "decimal_fraction_split_across_deltas_is_not_spoken_early");
+            Require(PetSpeechText.Normalize("First paragraph\nSecond paragraph.") == "First paragraph. Second paragraph." &&
+                PetSpeechText.Normalize("First paragraph.\nSecond paragraph.") == "First paragraph. Second paragraph." &&
+                PetSpeechText.Normalize("left|right") == "left, right", "english_paragraph_and_table_punctuation_is_natural");
+            Require(!PetSpeechText.IsSentencePeriod("Dr. Smith", 2) && !PetSpeechText.IsSentencePeriod("3.14 units", 1) &&
+                PetSpeechText.IsSentencePeriod("Ready. Next", 5), "period_boundary_distinguishes_prose_from_decimal_and_title");
         }
         catch (Exception ex) { error = ex.ToString(); }
+        finally { L.Initialize(originalLanguage); }
         File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "streaming-text-validation.json"), JsonSerializer.Serialize(new
         { passed = error == null, assertions = checks.Count, checks, error, realModelRequests = 0, userSettingsWrites = 0 }, new JsonSerializerOptions { WriteIndented = true }));
         return error == null ? 0 : 1;

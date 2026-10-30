@@ -16,9 +16,9 @@ internal static class OllamaEndpoint
         if (!explicitScheme) value = "http://" + value;
         var match = ServerRoot.Match(value);
         if (!match.Success || !Uri.TryCreate(value, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host) || uri.HostNameType == UriHostNameType.Unknown)
-            throw new ArgumentException("请输入 Ollama 服务器地址，例如 127.0.0.1:11434 或 https://ollama.example.com；不要填写用户名、密码、API 路径、查询参数或片段。", nameof(address));
+            throw new ArgumentException(L.T("请输入 Ollama 服务器地址，例如 127.0.0.1:11434 或 https://ollama.example.com；不要填写用户名、密码、API 路径、查询参数或片段。", "Enter an Ollama server address, such as 127.0.0.1:11434 or https://ollama.example.com. Do not include a username, password, API path, query, or fragment."), nameof(address));
         int port = match.Groups[3].Success ? int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture) : explicitScheme ? uri.Port : 11434;
-        if (port is < 1 or > 65535) throw new ArgumentException("Ollama 端口必须在 1–65535 之间。", nameof(address));
+        if (port is < 1 or > 65535) throw new ArgumentException(L.T("Ollama 端口必须在 1–65535 之间。", "The Ollama port must be between 1 and 65535."), nameof(address));
         return new UriBuilder(uri.Scheme, uri.Host, port) { Path = "/", Query = "", Fragment = "" }.Uri;
     }
 

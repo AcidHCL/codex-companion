@@ -12,7 +12,7 @@ internal static class StartupModePolicy
     // Keep this explicit list aligned with Main's returning test branches and
     // synthetic smoke modes. Unknown arguments may otherwise reach the real app.
     internal static bool IsIsolatedDiagnostic(string[] args) => !UsesRealConnection(args) && args.Any(value => value is
-        "--self-test" or "--speech-stream-live-test" or "--voice-worker-lifecycle-test" or "--speech-pcm-live-test" or "--streaming-text-test" or "--voice-input-test" or "--voice-input-ui-test" or "--voice-input-live-test" or "--microphone-test" or "--monitor-recovery-test" or "--lifecycle-log-test" or
+        "--localization-test" or "--localization-ui-test" or "--self-test" or "--speech-stream-live-test" or "--voice-worker-lifecycle-test" or "--speech-pcm-live-test" or "--streaming-text-test" or "--voice-input-test" or "--voice-input-ui-test" or "--voice-input-live-test" or "--microphone-test" or "--monitor-recovery-test" or "--lifecycle-log-test" or
         "--pairing-recovery-test" or "--pairing-migration-test" or "--version-ui-test" or
         "--topmost-test" or "--display-recovery-test" or "--remote-session-test" or
         "--task-source-test" or "--privacy-ui-test" or "--scene-audio-ui-test" or "--speech-test" or "--speech-ui-test" or "--model-dashboard-test" or "--speech-live-test" or "--security-test" or "--pipe-trust-test" or

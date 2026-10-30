@@ -20,7 +20,7 @@ internal static class Ui
         var label = Text(productName ? AppVersion.ProductLabel : AppVersion.Label, size, color);
         label.Name = "AppVersionLabel";
         label.ToolTip = AppVersion.ProductLabel;
-        System.Windows.Automation.AutomationProperties.SetName(label, "AI Pet 版本 " + AppVersion.Number);
+        System.Windows.Automation.AutomationProperties.SetName(label, L.T("AI Pet 版本 ", "AI Pet version ") + AppVersion.Number);
         return label;
     }
     public static Button Button(string text, RoutedEventHandler click)

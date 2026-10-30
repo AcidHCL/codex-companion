@@ -24,9 +24,17 @@ internal static class PetSpeechText
         text = Replace(text, @"\[\d+(?:[,，\-]\d+)*\]", "");
         text = Replace(text, @"(?m)^\s{0,4}(?:#{1,6}\s+|[-*+>]\s+|\d+[.)]\s+)", "");
         text = Replace(text, @"<[^>]+>", "");
-        text = text.Replace(new string((char)96, 1), "").Replace("**", "").Replace("__", "").Replace("|", "，");
+        text = text.Replace(new string((char)96, 1), "").Replace("**", "").Replace("__", "").Replace("|", L.IsEnglish ? ", " : "，");
         text = WebUtility.HtmlDecode(text);
-        text = Replace(text, @"[\r\n]+", "。");
+        if (L.IsEnglish)
+        {
+            // A paragraph ending in punctuation already supplies a pause.
+            // Preserve that punctuation without inserting another full stop.
+            text = text.Trim();
+            text = Replace(text, @"(?<=[.!?;:。！？；：])[ \t]*[\r\n]+", " ");
+            text = Replace(text, @"[\r\n]+", ". ");
+        }
+        else text = Replace(text, @"[\r\n]+", "。");
         text = Replace(text, @"[ \t\u00a0]+", " ");
         text = Replace(text, @"[。]{2,}", "。");
         return text.Trim(' ', '。', '\t', '\r', '\n');
@@ -37,11 +45,13 @@ internal static class PetSpeechText
         if (maximum < 16) throw new ArgumentOutOfRangeException(nameof(maximum));
         var chunks = new List<string>();
         var part = new StringBuilder();
-        int lastBoundary = 0;
+        int lastBoundary = 0, offset = 0;
         foreach (var rune in text.EnumerateRunes())
         {
             part.Append(rune.ToString());
-            if (rune.Value <= char.MaxValue && "。！？!?；;\n，,：: ".Contains((char)rune.Value)) lastBoundary = part.Length;
+            if (rune.Value <= char.MaxValue && ("。！？!?；;\n，,：: ".Contains((char)rune.Value) ||
+                rune.Value == '.' && IsSentencePeriod(text, offset))) lastBoundary = part.Length;
+            offset += rune.Utf16SequenceLength;
             // Keep adjacent short sentences together. A separate inference for
             // every sentence adds startup overhead and resets the voice prosody.
             if (part.Length >= maximum)
@@ -55,5 +65,31 @@ internal static class PetSpeechText
         }
         if (!string.IsNullOrWhiteSpace(part.ToString())) chunks.Add(part.ToString().Trim());
         return chunks;
+    }
+
+    // A stream ending in a dot is incomplete: the next delta could be a
+    // decimal fraction or an abbreviation. Require whitespace lookahead and
+    // conservatively keep initials and common abbreviations with their text.
+    internal static bool IsSentencePeriod(string text, int index)
+    {
+        if (index <= 0 || index + 1 >= text.Length || text[index] != '.' || !char.IsWhiteSpace(text[index + 1]) || text[index - 1] == '.') return false;
+        int start = index - 1;
+        while (start >= 0 && (char.IsLetterOrDigit(text[start]) || text[start] == '.')) start--;
+        string word = text[(start + 1)..index];
+        if (word.Length == 0 || word.Length == 1 && char.IsLetter(word[0])) return false;
+        bool numeric = true;
+        foreach (char value in word) if (!char.IsDigit(value)) { numeric = false; break; }
+        if (numeric) return false; // numbered lists and incomplete numeric tokens
+        string lower = word.ToLowerInvariant();
+        if (lower is "mr" or "mrs" or "ms" or "dr" or "prof" or "sr" or "jr" or "st" or "vs" or "etc" or
+            "e.g" or "i.e" or "a.m" or "p.m" or "no" or "fig" or "inc" or "ltd" or "ph.d") return false;
+        string[] initials = word.Split('.');
+        if (initials.Length > 1)
+        {
+            bool allInitials = true;
+            foreach (string initial in initials) if (initial.Length != 1 || !char.IsLetter(initial[0])) { allInitials = false; break; }
+            if (allInitials) return false;
+        }
+        return true;
     }
 }

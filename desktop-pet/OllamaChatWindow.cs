@@ -112,8 +112,8 @@ internal sealed partial class OllamaChatWindow : Window
         _draftTimer.Tick += (_, _) => { _draftTimer.Stop(); SaveCurrentDraft(); };
         _model = OllamaModels.Normalize(settings.OllamaModel);
         _personaKey = settings.SkinId.ToLowerInvariant();
-        Title = AppVersion.WindowTitle("和桌宠聊天");
-        Width = 410; Height = 550; MinWidth = 320; MinHeight = 360;
+        Title = AppVersion.WindowTitle(L.T("和桌宠聊天", "Chat with your pet"));
+        Width = L.IsEnglish ? 460 : 410; Height = 550; MinWidth = 320; MinHeight = 360;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true; Background = Brushes.Transparent;
         ShowInTaskbar = false; WindowStartupLocation = WindowStartupLocation.Manual;
@@ -124,10 +124,10 @@ internal sealed partial class OllamaChatWindow : Window
         var root = _layout = new Grid { Margin = new Thickness(14, 12, 14, 12) };
         for (var i = 0; i < 7; i++) root.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         var header = new DockPanel { LastChildFill = true, Height = 32 };
-        var close = IconButton("M 4,4 L 12,12 M 12,4 L 4,12", "收起聊天（Esc）", (_, _) => Close());
+        var close = IconButton("M 4,4 L 12,12 M 12,4 L 4,12", L.T("收起聊天（Esc）", "Close chat (Esc)"), (_, _) => Close());
         close.Name = "OllamaCloseChat"; close.Background = Brushes.Transparent; close.BorderThickness = new Thickness(0); DockPanel.SetDock(close, Dock.Right); header.Children.Add(close);
         var version = Ui.VersionLabel(false, "#83917D", 10); version.VerticalAlignment = VerticalAlignment.Center; version.Margin = new Thickness(6, 0, 9, 0); DockPanel.SetDock(version, Dock.Right); header.Children.Add(version);
-        var heading = Ui.Text("和桌宠聊一会儿", 18, "#214332", true); heading.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(heading);
+        var heading = Ui.Text(L.T("和桌宠聊一会儿", "Chat with your pet"), 18, "#214332", true); heading.VerticalAlignment = VerticalAlignment.Center; header.Children.Add(heading);
         root.Children.Add(header);
 
         var controls = new Grid { Margin = new Thickness(0, 9, 0, 9) };
@@ -140,23 +140,23 @@ internal sealed partial class OllamaChatWindow : Window
         var modelLabel = new FrameworkElementFactory(typeof(TextBlock));
         modelLabel.SetBinding(TextBlock.TextProperty, new Binding("DisplayName"));
         modelLabel.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
-        _models = new ComboBox { Name = "OllamaModelSelector", Style = (Style)Resources["OllamaModelComboStyle"], ItemsSource = Array.Empty<OllamaModelChoice>(), ItemTemplate = new DataTemplate { VisualTree = modelLabel }, SelectedValuePath = "Id", FontSize = 11, Height = 32, Padding = new Thickness(7, 3, 5, 3), VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Background = Brushes.White, BorderBrush = Ui.Brush("#DCE5D5"), ToolTip = "选择此 Ollama 服务器已安装的模型" };
+        _models = new ComboBox { Name = "OllamaModelSelector", Style = (Style)Resources["OllamaModelComboStyle"], ItemsSource = Array.Empty<OllamaModelChoice>(), ItemTemplate = new DataTemplate { VisualTree = modelLabel }, SelectedValuePath = "Id", FontSize = 11, Height = 32, Padding = new Thickness(7, 3, 5, 3), VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0), Background = Brushes.White, BorderBrush = Ui.Brush("#DCE5D5"), ToolTip = L.T("选择此 Ollama 服务器已安装的模型", "Choose a model installed on this Ollama server") };
         TextSearch.SetTextPath(_models, "DisplayName");
-        AutomationProperties.SetName(_models, "已安装的聊天模型");
+        AutomationProperties.SetName(_models, L.T("已安装的聊天模型", "Installed chat models"));
         controls.Children.Add(_models);
-        _refresh = IconButton("M 12.5,5 A 5,5 0 1 0 13,10 M 12.5,1.5 L 12.5,5.5 L 8.5,5.5", "检查 Ollama 连接", async (_, _) => await CheckConnectionAsync()); _refresh.Name = "OllamaCheckConnection"; Grid.SetColumn(_refresh, 1); controls.Children.Add(_refresh);
-        _newChat = IconButton("M 8,2.5 L 8,13.5 M 2.5,8 L 13.5,8", "开始新对话", async (_, _) => await NewConversationAsync()); _newChat.Name = "OllamaNewConversation"; _newChat.Margin = new Thickness(5, 0, 0, 0); Grid.SetColumn(_newChat, 2); controls.Children.Add(_newChat);
-        _connection = IconButton("M 2,4 L 14,4 M 5,2 L 5,6 M 2,8 L 14,8 M 11,6 L 11,10 M 2,12 L 14,12 M 7,10 L 7,14", "Ollama 地址与端口设置", (_, _) => OpenConnectionSettings()); _connection.Name = "OllamaConnectionSettings"; _connection.Margin = new Thickness(5, 0, 0, 0); Grid.SetColumn(_connection, 3); controls.Children.Add(_connection);
+        _refresh = IconButton("M 12.5,5 A 5,5 0 1 0 13,10 M 12.5,1.5 L 12.5,5.5 L 8.5,5.5", L.T("检查 Ollama 连接", "Check Ollama connection"), async (_, _) => await CheckConnectionAsync()); _refresh.Name = "OllamaCheckConnection"; Grid.SetColumn(_refresh, 1); controls.Children.Add(_refresh);
+        _newChat = IconButton("M 8,2.5 L 8,13.5 M 2.5,8 L 13.5,8", L.T("开始新对话", "Start a new conversation"), async (_, _) => await NewConversationAsync()); _newChat.Name = "OllamaNewConversation"; _newChat.Margin = new Thickness(5, 0, 0, 0); Grid.SetColumn(_newChat, 2); controls.Children.Add(_newChat);
+        _connection = IconButton("M 2,4 L 14,4 M 5,2 L 5,6 M 2,8 L 14,8 M 11,6 L 11,10 M 2,12 L 14,12 M 7,10 L 7,14", L.T("Ollama 地址与端口设置", "Ollama address and port"), (_, _) => OpenConnectionSettings()); _connection.Name = "OllamaConnectionSettings"; _connection.Margin = new Thickness(5, 0, 0, 0); Grid.SetColumn(_connection, 3); controls.Children.Add(_connection);
         AddModelMemoryControls(controls);
         Grid.SetRow(controls, 1); root.Children.Add(controls);
 
         var conversationBar = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 6) };
-        _memory = Ui.Button("记忆", (_, _) => OpenMemory()); _memory.Name = "OllamaSharedMemory";
+        _memory = Ui.Button(L.T("记忆", "Memory"), (_, _) => OpenMemory()); _memory.Name = "OllamaSharedMemory";
         _memory.FontSize = 11; _memory.Padding = new Thickness(8, 3, 8, 3); _memory.Margin = new Thickness(5, 0, 0, 0);
-        _memory.ToolTip = "管理此 Ollama 服务器所有对话可共享的记忆"; DockPanel.SetDock(_memory, Dock.Right); conversationBar.Children.Add(_memory);
-        _library = Ui.Button("历史", async (_, _) => await OpenLibraryAsync()); _library.Name = "OllamaConversationHistory";
+        _memory.ToolTip = L.T("管理此 Ollama 服务器所有对话可共享的记忆", "Manage memories shared across conversations on this Ollama server"); DockPanel.SetDock(_memory, Dock.Right); conversationBar.Children.Add(_memory);
+        _library = Ui.Button(L.T("历史", "History"), async (_, _) => await OpenLibraryAsync()); _library.Name = "OllamaConversationHistory";
         _library.FontSize = 11; _library.Padding = new Thickness(8, 3, 8, 3); DockPanel.SetDock(_library, Dock.Right); conversationBar.Children.Add(_library);
-        _conversationTitle = Ui.Text("新对话", 11, "#607456", true); _conversationTitle.Name = "OllamaConversationTitle";
+        _conversationTitle = Ui.Text(L.T("新对话", "New conversation"), 11, "#607456", true); _conversationTitle.Name = "OllamaConversationTitle";
         _conversationTitle.VerticalAlignment = VerticalAlignment.Center; _conversationTitle.TextTrimming = TextTrimming.CharacterEllipsis;
         _conversationTitle.Margin = new Thickness(2, 0, 7, 0); conversationBar.Children.Add(_conversationTitle);
         Grid.SetRow(conversationBar, 2); root.Children.Add(conversationBar);
@@ -165,15 +165,15 @@ internal sealed partial class OllamaChatWindow : Window
         _scroll = new ScrollViewer { Name = "OllamaMessages", Content = _messages, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         var stage = new Border { Background = Ui.Brush("#FFFFFF"), BorderBrush = Ui.Brush("#E0E7DA"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(0, 2, 0, 2), Child = _scroll, ClipToBounds = true };
         Grid.SetRow(stage, 3); root.Children.Add(stage);
-        _loadOlder = Ui.Button("加载更早的记录", (_, _) => LoadOlderMessages()); _loadOlder.Name = "OllamaLoadOlderMessages";
+        _loadOlder = Ui.Button(L.T("加载更早的记录", "Load older messages"), (_, _) => LoadOlderMessages()); _loadOlder.Name = "OllamaLoadOlderMessages";
         _loadOlder.FontSize = 11; _loadOlder.Padding = new Thickness(8, 5, 8, 5); _loadOlder.Visibility = Visibility.Collapsed;
         AddWelcome();
         _contextNote = Ui.Text(ConnectionNote(), 10, "#84907B"); _contextNote.TextTrimming = TextTrimming.CharacterEllipsis; _contextNote.Margin = new Thickness(1, 5, 0, 5); _contextNote.SetBinding(ToolTipProperty, new Binding("Text") { Source = _contextNote }); Grid.SetRow(_contextNote, 4); root.Children.Add(_contextNote);
 
         var composer = new StackPanel();
         _attachments = new WrapPanel { Name = "OllamaImagePreviews", Margin = new Thickness(0, 0, 0, 0) }; composer.Children.Add(_attachments);
-        _input = new TextBox { Name = "OllamaChatInput", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Height = 64, MinHeight = 44, FontSize = 13, Padding = new Thickness(9, 7, 9, 7), BorderThickness = new Thickness(0), Background = Brushes.Transparent, Foreground = Ui.Brush("#294635"), MaxLength = MaxInputCharacters, ToolTip = "说点什么，或把图片拖到这里。Enter 发送，Shift+Enter 换行；Ctrl+V 粘贴图片。" };
-        AutomationProperties.SetName(_input, "聊天输入；支持拖入和粘贴图片");
+        _input = new TextBox { Name = "OllamaChatInput", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Height = 64, MinHeight = 44, FontSize = 13, Padding = new Thickness(9, 7, 9, 7), BorderThickness = new Thickness(0), Background = Brushes.Transparent, Foreground = Ui.Brush("#294635"), MaxLength = MaxInputCharacters, ToolTip = L.T("说点什么，或把图片拖到这里。Enter 发送，Shift+Enter 换行；Ctrl+V 粘贴图片。", "Say something or drop an image here. Enter to send, Shift+Enter for a new line; Ctrl+V to paste an image.") };
+        AutomationProperties.SetName(_input, L.T("聊天输入；支持拖入和粘贴图片", "Chat input; supports image drag-and-drop and paste"));
         _input.PreviewKeyDown += InputKeyDown;
         TextCompositionManager.AddPreviewTextInputStartHandler(_input, (_, _) => _imeComposing = true);
         TextCompositionManager.AddPreviewTextInputUpdateHandler(_input, (_, _) => _imeComposing = true);
@@ -187,24 +187,24 @@ internal sealed partial class OllamaChatWindow : Window
         };
         _input.GotKeyboardFocus += (_, _) => CancelBehaviorReaction();
         var inputSurface = new Grid(); inputSurface.Children.Add(_input);
-        var placeholder = _placeholder = Ui.Text("说点什么，或拖入图片…", 12, "#94A08D"); placeholder.Margin = new Thickness(10, 8, 10, 0); placeholder.IsHitTestVisible = false;
+        var placeholder = _placeholder = Ui.Text(L.T("说点什么，或拖入图片…", "Say something, or drop an image…"), 12, "#94A08D"); placeholder.Margin = new Thickness(10, 8, 10, 0); placeholder.IsHitTestVisible = false;
         inputSurface.Children.Add(placeholder);
         _input.TextChanged += (_, _) => placeholder.Visibility = _input.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         composer.Children.Add(new Border { Background = Brushes.White, BorderBrush = Ui.Brush("#D9E2D2"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(11), Child = inputSurface });
         var actions = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 6, 0, 0) };
-        _send = IconButton("M 8,13 L 8,3 M 3.5,7.5 L 8,3 L 12.5,7.5", "发送消息（Enter）", async (_, _) => await SendAsync(), true); _send.Name = "OllamaSend"; DockPanel.SetDock(_send, Dock.Right); actions.Children.Add(_send);
-        _stop = IconButton("M 4,4 L 12,4 L 12,12 L 4,12 Z", "停止生成或模型加载", (_, _) => { _stopSpeech?.Invoke(); _generationCancellation?.Cancel(); CancelModelMemoryOperation(true); }); _stop.Name = "OllamaStop"; _stop.Margin = new Thickness(0, 0, 6, 0); DockPanel.SetDock(_stop, Dock.Right); actions.Children.Add(_stop);
-        _attach = IconButton("M 2.5,3 L 13.5,3 L 13.5,13 L 2.5,13 Z M 3,10 L 6,7 L 9,10 L 11,8 L 13,10 M 10,5.5 L 10.1,5.5", "添加图片（最多 2 张）", async (_, _) => await PickImagesAsync()); _attach.Name = "OllamaAttachImage"; actions.Children.Add(_attach);
-        _paste = IconButton("M 5,4 L 3,4 L 3,13.5 L 13,13.5 L 13,4 L 11,4 M 5.5,2.5 L 10.5,2.5 L 10.5,5 L 5.5,5 Z M 6,8 L 10,8 M 6,10.5 L 10,10.5", "粘贴剪贴板图片", async (_, _) => await PasteImageAsync()); _paste.Name = "OllamaPasteImage"; _paste.Margin = new Thickness(5, 0, 0, 0); actions.Children.Add(_paste);
+        _send = IconButton("M 8,13 L 8,3 M 3.5,7.5 L 8,3 L 12.5,7.5", L.T("发送消息（Enter）", "Send message (Enter)"), async (_, _) => await SendAsync(), true); _send.Name = "OllamaSend"; DockPanel.SetDock(_send, Dock.Right); actions.Children.Add(_send);
+        _stop = IconButton("M 4,4 L 12,4 L 12,12 L 4,12 Z", L.T("停止生成或模型加载", "Stop generation or model loading"), (_, _) => { _stopSpeech?.Invoke(); _generationCancellation?.Cancel(); CancelModelMemoryOperation(true); }); _stop.Name = "OllamaStop"; _stop.Margin = new Thickness(0, 0, 6, 0); DockPanel.SetDock(_stop, Dock.Right); actions.Children.Add(_stop);
+        _attach = IconButton("M 2.5,3 L 13.5,3 L 13.5,13 L 2.5,13 Z M 3,10 L 6,7 L 9,10 L 11,8 L 13,10 M 10,5.5 L 10.1,5.5", L.T("添加图片（最多 2 张）", "Add images (up to 2)"), async (_, _) => await PickImagesAsync()); _attach.Name = "OllamaAttachImage"; actions.Children.Add(_attach);
+        _paste = IconButton("M 5,4 L 3,4 L 3,13.5 L 13,13.5 L 13,4 L 11,4 M 5.5,2.5 L 10.5,2.5 L 10.5,5 L 5.5,5 Z M 6,8 L 10,8 M 6,10.5 L 10,10.5", L.T("粘贴剪贴板图片", "Paste an image from the clipboard"), async (_, _) => await PasteImageAsync()); _paste.Name = "OllamaPasteImage"; _paste.Margin = new Thickness(5, 0, 0, 0); actions.Children.Add(_paste);
         AddVoiceInputButton(actions);
-        _webEnabled = new CheckBox { Name = "OllamaWebEnabled", Content = "联网", IsChecked = settings.WebSearchEnabled, FontSize = 11, Foreground = Ui.Brush("#52734E"), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = "按需搜索公开网页、读取消息中的链接。搜索关键词会发往搜索服务，网页内容会交给所选模型；关闭后不发起网页请求。" };
-        AutomationProperties.SetName(_webEnabled, "允许联网搜索和读取网页"); actions.Children.Add(_webEnabled);
+        _webEnabled = new CheckBox { Name = "OllamaWebEnabled", Content = L.T("联网", "Web"), IsChecked = settings.WebSearchEnabled, FontSize = 11, Foreground = Ui.Brush("#52734E"), Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, ToolTip = L.T("按需搜索公开网页、读取消息中的链接。搜索关键词会发往搜索服务，网页内容会交给所选模型；关闭后不发起网页请求。", "Search public webpages and read links as needed. Search queries go to the search service; webpage content goes to the selected model. Turning this off stops new web requests.") };
+        AutomationProperties.SetName(_webEnabled, L.T("允许联网搜索和读取网页", "Allow web search and webpage reading")); actions.Children.Add(_webEnabled);
         var actionHint = _attachmentHint = Ui.Text("", 10, "#87937E"); actionHint.Visibility = Visibility.Collapsed;
         composer.Children.Add(actions);
         AddVoiceInputStatus(composer);
-        _inputHint = Ui.Text("Enter 发送 · Shift+Enter 换行", 10, "#87937E"); _inputHint.Margin = new Thickness(1, 4, 0, 0); composer.Children.Add(_inputHint);
+        _inputHint = Ui.Text(L.T("Enter 发送 · Shift+Enter 换行", "Enter to send · Shift+Enter for a new line"), 10, "#87937E"); _inputHint.Margin = new Thickness(1, 4, 0, 0); composer.Children.Add(_inputHint);
         Grid.SetRow(composer, 5); root.Children.Add(composer);
-        _status = Ui.Text("正在检查 Ollama 连接…", 10, "#718267"); _status.Name = "OllamaChatStatus"; _status.TextWrapping = TextWrapping.Wrap; _status.TextTrimming = TextTrimming.CharacterEllipsis; _status.MaxHeight = 29; _status.Margin = new Thickness(1, 7, 0, 0); _status.SetBinding(ToolTipProperty, new Binding("Text") { Source = _status }); Grid.SetRow(_status, 6); root.Children.Add(_status);
+        _status = Ui.Text(L.T("正在检查 Ollama 连接…", "Checking Ollama connection…"), 10, "#718267"); _status.Name = "OllamaChatStatus"; _status.TextWrapping = TextWrapping.Wrap; _status.TextTrimming = TextTrimming.CharacterEllipsis; _status.MaxHeight = 29; _status.Margin = new Thickness(1, 7, 0, 0); _status.SetBinding(ToolTipProperty, new Binding("Text") { Source = _status }); Grid.SetRow(_status, 6); root.Children.Add(_status);
         _panel = new Border { Name = "OllamaChatPanel", Background = Ui.Brush("#F7F9F2"), BorderBrush = Ui.Brush("#C9D6C0"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(20), Child = root };
         Content = _panel;
         _streamTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(40) };
@@ -385,9 +385,9 @@ internal sealed partial class OllamaChatWindow : Window
     private PetPersonaProfile CurrentPersona() => PetPersona.ForSkin(_settings.SkinId, _characterName(), _model, _client.Endpoint.IsLoopback, _capabilities.SupportsImages, _settings.WebSearchEnabled, _settings.LlmBehaviorEnabled && BehaviorServiceReady,
         explicitCommandsEnabled: _settings.LlmBehaviorEnabled && BehaviorCommandsReady);
 
-    private string ConnectionNote() => (_settings.WebSearchEnabled ? "按需联网 · " : "联网关闭 · ") + (_client.Endpoint.IsLoopback
-        ? "模型在本机运行"
-        : "模型位于 " + _client.Endpoint.GetLeftPart(UriPartial.Authority));
+    private string ConnectionNote() => (_settings.WebSearchEnabled ? L.T("按需联网 · ", "Web on demand · ") : L.T("联网关闭 · ", "Web off · ")) + (_client.Endpoint.IsLoopback
+        ? L.T("模型在本机运行", "Model runs on this computer")
+        : L.T("模型位于 ", "Model hosted at ") + _client.Endpoint.GetLeftPart(UriPartial.Authority));
 
     private void ChangeWebSetting()
     {
@@ -396,12 +396,12 @@ internal sealed partial class OllamaChatWindow : Window
         if (_generating || _switching || _configuring || _shutdown || ModelMemoryBusy) { _webEnabled.IsChecked = _settings.WebSearchEnabled; return; }
         bool previous = _settings.WebSearchEnabled;
         try { _settings.WebSearchEnabled = enabled; _saveSettings(); }
-        catch { _settings.WebSearchEnabled = previous; _webEnabled.IsChecked = previous; SetStatus("联网设置未能保存，请重试。", true); return; }
+        catch { _settings.WebSearchEnabled = previous; _webEnabled.IsChecked = previous; SetStatus(L.T("联网设置未能保存，请重试。", "Could not save web settings. Please try again."), true); return; }
         _contextNote.Text = ConnectionNote();
-        SetStatus(enabled ? "已开启按需联网，搜索词会发往搜索服务；可以直接发送网页链接。" : "已关闭联网，本轮只使用模型知识和已有对话。");
+        SetStatus(enabled ? L.T("已开启按需联网，搜索词会发往搜索服务；可以直接发送网页链接。", "Web access enabled. Search queries go to the search service; you can also send webpage links directly.") : L.T("已关闭联网，本轮只使用模型知识和已有对话。", "Web access disabled. This turn uses model knowledge and existing conversation only."));
     }
 
-    private string ConnectionTarget() => (_client.Endpoint.IsLoopback ? "本机 Ollama：" : "") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
+    private string ConnectionTarget() => (_client.Endpoint.IsLoopback ? L.T("本机 Ollama：", "Local Ollama: ") : "") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
 
     private void RefreshWelcome()
     {
@@ -559,7 +559,7 @@ internal sealed partial class OllamaChatWindow : Window
 
     private void ReportStorageFailure(Exception ex)
     {
-        _storageError = "本地记录未能保存或读取，输入仍保留。请检查磁盘空间和文件权限后重试。";
+        _storageError = L.T("本地记录未能保存或读取，输入仍保留。请检查磁盘空间和文件权限后重试。", "Could not save or read local history. Your input is preserved. Check disk space and file permissions, then retry.");
         SetStatus(_storageError, true);
         Debug.WriteLine("Chat storage operation failed: " + ex.GetType().Name);
     }
@@ -589,7 +589,7 @@ internal sealed partial class OllamaChatWindow : Window
 
     private void RenderStoredTurn(ChatStoredTurn turn, IReadOnlyList<OllamaChatImage> images)
     {
-        var userView = AddMessage("你", turn.User, true, images, out _);
+        var userView = AddMessage(L.T("你", "You"), turn.User, true, images, out _);
         var assistantView = AddMessage(_characterName(), turn.Assistant, false, Array.Empty<OllamaChatImage>(), out _);
         AddSources(assistantView, turn.Sources); AddWebWarning(assistantView, turn.WebWarning);
         _history.Add(new ChatTurn(new OllamaMessage("user", turn.User, images.Count == 0 ? null : images.Select(image => image.Base64).ToArray()),
@@ -614,7 +614,7 @@ internal sealed partial class OllamaChatWindow : Window
             }
             _history.AddRange(previous); _loadOlder.Visibility = turns.Count >= HistoryPageSize ? Visibility.Visible : Visibility.Collapsed;
             _scroll.UpdateLayout(); _scroll.ScrollToVerticalOffset(oldOffset + _scroll.ExtentHeight - oldHeight);
-            SetStatus(turns.Count == 0 ? "已经到最早的记录。" : $"已加载更早的 {turns.Count} 轮；发送时仍只按上下文容量选择最近记录。");
+            SetStatus(turns.Count == 0 ? L.T("已经到最早的记录。", "You have reached the earliest messages.") : L.T($"已加载更早的 {turns.Count} 轮；发送时仍只按上下文容量选择最近记录。", $"Loaded {turns.Count} earlier turns; requests still use recent history within the context limit."));
         }
         catch (Exception ex) { ReportStorageFailure(ex); }
     }
@@ -637,8 +637,8 @@ internal sealed partial class OllamaChatWindow : Window
             await StopGenerationAsync();
             if (_shutdown || !SaveCurrentDraft()) return;
             RestoreConversation(GetScopeConversation(_client.Endpoint, _settings.SkinId.ToLowerInvariant()));
-            _contextNote.Text = "已恢复此角色的最近对话 · 本地自动保存";
-            SetStatus("已切换角色，可从“历史”继续其他对话。");
+            _contextNote.Text = L.T("已恢复此角色的最近对话 · 本地自动保存", "Restored this character's latest conversation · Saved locally");
+            SetStatus(L.T("已切换角色，可从“历史”继续其他对话。", "Character changed. Open History to continue another conversation."));
         }
         catch (Exception ex) { if (!_shutdown) ReportStorageFailure(ex); }
         finally { _sessionSwitching = false; if (!_shutdown) { RefreshControls(); if (_storageError == null) RefreshCharacter(); } }
@@ -652,10 +652,10 @@ internal sealed partial class OllamaChatWindow : Window
         {
             await StopGenerationAsync();
             if (_shutdown || !SaveCurrentDraft()) return;
-            var conversation = _chatStore.GetConversation(conversationId) ?? throw new InvalidDataException("该对话已被删除。");
+            var conversation = _chatStore.GetConversation(conversationId) ?? throw new InvalidDataException(L.T("该对话已被删除。", "This conversation has been deleted."));
             if (conversation.Endpoint != EndpointScope(_client.Endpoint) || conversation.PersonaKey != _settings.SkinId.ToLowerInvariant())
-                throw new InvalidDataException("只能打开当前服务器与角色的对话。");
-            RestoreConversation(conversation); SetStatus("已恢复对话和草稿，可以继续聊天。");
+                throw new InvalidDataException(L.T("只能打开当前服务器与角色的对话。", "Only conversations for the current server and character can be opened."));
+            RestoreConversation(conversation); SetStatus(L.T("已恢复对话和草稿，可以继续聊天。", "Conversation and draft restored. You can continue chatting."));
         }
         catch (Exception ex) { if (!_shutdown) ReportStorageFailure(ex); }
         finally { _sessionSwitching = false; if (!_shutdown) { RefreshControls(); if (_storageError == null) RefreshCharacter(); } }
@@ -683,7 +683,7 @@ internal sealed partial class OllamaChatWindow : Window
                 if (current != null) { _conversation = current; _conversationTitle.Text = current.Title; _conversationTitle.ToolTip = current.Title; }
                 else RestoreConversation(GetScopeConversation(_client.Endpoint, _personaKey));
             }
-            SetStatus("对话记录保存在本机；不同角色和服务器的记录分开。");
+            SetStatus(L.T("对话记录保存在本机；不同角色和服务器的记录分开。", "Conversations are stored locally, separately for each character and server."));
         }
         catch (Exception ex) { if (!_shutdown) ReportStorageFailure(ex); }
         finally { _libraryWindow = null; _sessionSwitching = false; if (!_shutdown) { RefreshControls(); if (_storageError == null) RefreshCharacter(); } }
@@ -701,7 +701,7 @@ internal sealed partial class OllamaChatWindow : Window
                 catch { _settings.SharedMemoryEnabled = previous; throw; }
             }, initialContent) { Owner = this, Topmost = Topmost };
             _memoryWindow = window; window.ShowDialog(); _memoryWindow = null;
-            if (!_shutdown) SetStatus(_settings.SharedMemoryEnabled ? "共享记忆已开启：只取相关记忆用于回复，可随时编辑或删除。" : "共享记忆已关闭，已保存内容仍可在记忆库管理。");
+            if (!_shutdown) SetStatus(_settings.SharedMemoryEnabled ? L.T("共享记忆已开启：只取相关记忆用于回复，可随时编辑或删除。", "Shared memory enabled. Only relevant memories are used; you can edit or delete them at any time.") : L.T("共享记忆已关闭，已保存内容仍可在记忆库管理。", "Shared memory disabled. Saved entries are still available in the memory library."));
         }
         catch (Exception ex) { if (!_shutdown) ReportStorageFailure(ex); }
         finally { _memoryWindow = null; }
@@ -719,7 +719,7 @@ internal sealed partial class OllamaChatWindow : Window
                 content.Length > 40 ? content[..40] + "…" : content, content, existing?.Pinned ?? false, DateTimeOffset.UtcNow);
             _chatStore.UpsertMemory(memory); memorySaved = true;
             string prompt = _input.Text.Trim();
-            string answer = "已保存到共享记忆：" + content + (_settings.SharedMemoryEnabled ? "\n此服务器的其他对话也可使用；在“记忆”中可以修改或删除。" : "\n当前未启用共享记忆；可在“记忆”中开启、修改或删除。");
+            string answer = L.T("已保存到共享记忆：", "Saved to shared memory: ") + content + (_settings.SharedMemoryEnabled ? L.T("\n此服务器的其他对话也可使用；在“记忆”中可以修改或删除。", "\nOther conversations on this server can use it. Edit or delete it under Memory.") : L.T("\n当前未启用共享记忆；可在“记忆”中开启、修改或删除。", "\nShared memory is currently off. Enable, edit, or delete it under Memory."));
             var stored = new ChatStoredTurn(0, prompt, answer, StorageModel, Array.Empty<ChatStoredImage>(), Array.Empty<PetWebSource>(), null, DateTimeOffset.UtcNow);
             long sequence = _chatStore.AppendTurn(_conversation.Id, stored);
             RenderStoredTurn(stored with { Sequence = sequence }, Array.Empty<OllamaChatImage>());
@@ -727,12 +727,12 @@ internal sealed partial class OllamaChatWindow : Window
             _restoringConversation = true;
             try { _input.Clear(); } finally { _restoringConversation = false; }
             UpdateConversationTitle(); _scroll.ScrollToEnd(); _storageError = null;
-            SetStatus("记忆已保存在本机，不需要调用模型。可从其他对话使用。"); RefreshControls();
+            SetStatus(L.T("记忆已保存在本机，不需要调用模型。可从其他对话使用。", "Memory saved locally without calling a model. Other conversations can use it.")); RefreshControls();
         }
         catch (Exception ex)
         {
             ReportStorageFailure(ex);
-            if (memorySaved) SetStatus("共享记忆已保存，但本条对话记录未能保存；输入仍保留。", true);
+            if (memorySaved) SetStatus(L.T("共享记忆已保存，但本条对话记录未能保存；输入仍保留。", "Shared memory was saved, but this conversation entry could not be saved. Your input is preserved."), true);
         }
     }
 
@@ -759,7 +759,7 @@ internal sealed partial class OllamaChatWindow : Window
     private static void AddWebWarning(FrameworkElement view, string? warningText)
     {
         if (warningText == null || view is not Border { Child: StackPanel contents }) return;
-        var warning = Ui.Text("联网提示：" + warningText, 11, "#A44F39"); warning.Name = "OllamaWebWarning";
+        var warning = Ui.Text(L.T("联网提示：", "Web notice: ") + warningText, 11, "#A44F39"); warning.Name = "OllamaWebWarning";
         warning.TextWrapping = TextWrapping.Wrap; warning.Margin = new Thickness(0, 9, 0, 0); contents.Children.Add(warning);
     }
 
@@ -782,13 +782,13 @@ internal sealed partial class OllamaChatWindow : Window
         _refresh.IsEnabled = composing;
         _models.IsEnabled = _connected && !sendStarting && !_switching && !_preparingImage && !_shutdown && !_configuring && !_sessionSwitching && _installedModels.Count > 0 && !ModelMemoryBusy;
         _connection.IsEnabled = !sendStarting && !_switching && !_preparingImage && !_shutdown && !_configuring && !_sessionSwitching && !ModelMemoryBusy;
-        _connection.ToolTip = "Ollama 地址与端口设置\n当前：" + _client.Endpoint.GetLeftPart(UriPartial.Authority);
+        _connection.ToolTip = L.T("Ollama 地址与端口设置\n当前：", "Ollama address and port\nCurrent: ") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
         _attachments.IsEnabled = composing;
         _webEnabled.IsEnabled = composing;
         bool textOnly = _capabilities.SupportsImages == false;
-        _placeholder.Text = _capabilities.SupportsChat == false ? "请切换到支持聊天的模型…" : textOnly ? "说点什么，和我聊聊…" : "说点什么，或拖入图片…";
-        _attachmentHint.Text = _capabilities.SupportsChat == false ? "此模型不支持聊天" : textOnly ? "当前模型仅支持文字" : _capabilities.SupportsImages == null ? "可尝试发送图片" : "拖入图片也可以";
-        _input.ToolTip = (textOnly ? "当前模型仅支持文字。" : "支持拖入或 Ctrl+V 粘贴图片。") + "Enter 发送，Shift+Enter 换行。";
+        _placeholder.Text = _capabilities.SupportsChat == false ? L.T("请切换到支持聊天的模型…", "Please choose a model that supports chat…") : textOnly ? L.T("说点什么，和我聊聊…", "Say something, let's chat…") : L.T("说点什么，或拖入图片…", "Say something, or drop an image…");
+        _attachmentHint.Text = _capabilities.SupportsChat == false ? L.T("此模型不支持聊天", "This model does not support chat") : textOnly ? L.T("当前模型仅支持文字", "This model supports text only") : _capabilities.SupportsImages == null ? L.T("可尝试发送图片", "You can try sending an image") : L.T("拖入图片也可以", "You can also drop an image");
+        _input.ToolTip = (textOnly ? L.T("当前模型仅支持文字。", "This model supports text only.") : L.T("支持拖入或 Ctrl+V 粘贴图片。", "Drop an image here or paste with Ctrl+V.")) + L.T("Enter 发送，Shift+Enter 换行。", "Enter to send, Shift+Enter for a new line.");
         RefreshVoiceInputControls();
         RefreshModelMemoryControls();
     }
@@ -846,11 +846,11 @@ internal sealed partial class OllamaChatWindow : Window
 
     private string ModelReadyMessage(string prefix)
     {
-        if (_installedModels.Count == 0) return prefix + " · 还没有已安装模型，请先在 Ollama 下载模型，再刷新。";
-        if (_capabilities.SupportsChat == false) return prefix + " · 当前模型不支持聊天，请选择其他模型。";
+        if (_installedModels.Count == 0) return prefix + L.T(" · 还没有已安装模型，请先在 Ollama 下载模型，再刷新。", " · No models installed. Download one in Ollama, then refresh.");
+        if (_capabilities.SupportsChat == false) return prefix + L.T(" · 当前模型不支持聊天，请选择其他模型。", " · This model does not support chat. Please choose another.");
         if (_capabilities.SupportsImages == false)
-            return prefix + (_pendingImages.Count > 0 ? " · 当前模型仅支持文字，请先移除待发送图片。" : " · 当前模型仅支持文字；历史图片轮次不会发送给它。");
-        return prefix + (_capabilities.SupportsImages == true ? " · 支持图片，首次回复需加载模型。" : " · 模型能力未完整公布，可尝试聊天或图片。 ");
+            return prefix + (_pendingImages.Count > 0 ? L.T(" · 当前模型仅支持文字，请先移除待发送图片。", " · This model supports text only. Remove the pending images first.") : L.T(" · 当前模型仅支持文字；历史图片轮次不会发送给它。", " · This model supports text only; earlier image turns will not be sent."));
+        return prefix + (_capabilities.SupportsImages == true ? L.T(" · 支持图片，首次回复需加载模型。", " · Images supported. The first reply requires loading the model.") : L.T(" · 模型能力未完整公布，可尝试聊天或图片。 ", " · Model capabilities are not fully reported; you can try text or images. "));
     }
 
     internal async Task CheckConnectionAsync()
@@ -859,7 +859,7 @@ internal sealed partial class OllamaChatWindow : Window
         var (operation, revision) = BeginConfiguration();
         var client = _client;
         bool committed = false;
-        SetStatus("正在刷新 " + ConnectionTarget() + " 的模型列表…");
+        SetStatus(L.T("正在刷新 ", "Refreshing models on ") + ConnectionTarget() + L.T(" 的模型列表…", "…"));
         try
         {
             await StopBehaviorReactionAsync(); CheckConfiguration(operation, revision);
@@ -877,11 +877,11 @@ internal sealed partial class OllamaChatWindow : Window
             if (_model != selected) InvalidateBehaviorContext();
             SetModelList(installed, selected); _model = selected; _capabilities = capabilities; _connected = true; RefreshWelcome();
             _contextNote.Text = ConnectionNote();
-            SetStatus(ModelReadyMessage("Ollama 已连接 · " + installed.Count + " 个已安装模型 · " + client.Endpoint.GetLeftPart(UriPartial.Authority)), capabilities.SupportsChat == false || installed.Count == 0);
+            SetStatus(ModelReadyMessage(L.T("Ollama 已连接 · ", "Ollama connected · ") + installed.Count + L.T(" 个已安装模型 · ", " installed models · ") + client.Endpoint.GetLeftPart(UriPartial.Authority)), capabilities.SupportsChat == false || installed.Count == 0);
             committed = true;
         }
-        catch (OperationCanceledException) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetStatus("连接检查已取消或超时，请确认服务器地址后刷新。", true); } }
-        catch (Exception ex) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetModelList(Array.Empty<string>(), ""); SetStatus(ex is OllamaException ? ex.Message : "无法连接 " + ConnectionTarget() + "，请检查地址和端口后刷新。", true); } }
+        catch (OperationCanceledException) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetStatus(L.T("连接检查已取消或超时，请确认服务器地址后刷新。", "Connection check canceled or timed out. Confirm the server address, then refresh."), true); } }
+        catch (Exception ex) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetModelList(Array.Empty<string>(), ""); SetStatus(ex is OllamaException ? ex.Message : L.T("无法连接 ", "Cannot connect to ") + ConnectionTarget() + L.T("，请检查地址和端口后刷新。", ". Check the address and port, then refresh."), true); } }
         finally
         {
             FinishConfiguration(operation);
@@ -902,7 +902,7 @@ internal sealed partial class OllamaChatWindow : Window
     internal Task<string> SelectDashboardModelAsync(string selected)
     {
         if (DashboardModelControlBlockedReason is { } blocked) return Task.FromResult(blocked);
-        if (!OllamaModels.IsSupported(selected)) return Task.FromResult("请选择此 Ollama 服务器已安装的聊天模型。");
+        if (!OllamaModels.IsSupported(selected)) return Task.FromResult(L.T("请选择此 Ollama 服务器已安装的聊天模型。", "Choose a chat model installed on this Ollama server."));
         return SwitchModelAsync(selected);
     }
 
@@ -913,7 +913,7 @@ internal sealed partial class OllamaChatWindow : Window
         var previous = _model;
         var client = _client;
         bool entered = false, committed = false;
-        SetStatus("正在停止回复并释放旧模型显存…");
+        SetStatus(L.T("正在停止回复并释放旧模型显存…", "Stopping the reply and releasing the previous model's GPU memory…"));
         try
         {
             await StopGenerationAsync();
@@ -923,7 +923,7 @@ internal sealed partial class OllamaChatWindow : Window
             var installed = await client.ListModelsAsync(operation.Token);
             CheckConfiguration(operation, revision);
             if (!installed.Contains(selected, StringComparer.Ordinal))
-                throw new OllamaException("所选模型未安装在此 Ollama 服务器，请刷新模型列表后重试。");
+                throw new OllamaException(L.T("所选模型未安装在此 Ollama 服务器，请刷新模型列表后重试。", "The selected model is not installed on this Ollama server. Refresh the model list and retry."));
             var capabilities = await client.GetModelInfoAsync(selected, operation.Token);
             CheckConfiguration(operation, revision);
             if (selected != previous && _lastUsedModel == previous)
@@ -935,20 +935,20 @@ internal sealed partial class OllamaChatWindow : Window
             PersistModelChoice(selected);
             _model = selected; _capabilities = capabilities; _connected = true;
             SetModelList(installed, selected); RefreshWelcome();
-            string result = ModelReadyMessage(selected == previous ? "当前模型已确认，保留当前对话" : "模型已切换，保留当前对话");
+            string result = ModelReadyMessage(selected == previous ? L.T("当前模型已确认，保留当前对话", "Current model confirmed; conversation preserved") : L.T("模型已切换，保留当前对话", "Model switched; conversation preserved"));
             SetStatus(result, capabilities.SupportsChat == false || capabilities.SupportsImages == false && _pendingImages.Count > 0);
             committed = true;
             return result;
         }
         catch (OperationCanceledException)
         {
-            const string result = "切换已取消或超时，已保留原模型。请刷新后重试。";
+            string result = L.T("切换已取消或超时，已保留原模型。请刷新后重试。", "Switch canceled or timed out. The previous model is preserved. Refresh and retry.");
             if (!_shutdown && revision == _configurationRevision) SetStatus(result, true);
             return result;
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
-            string result = ex is OllamaException ? ex.Message + " 已保留原模型。" : "切换失败，已保留原模型。请检查连接后重试。";
+            string result = ex is OllamaException ? ex.Message + L.T(" 已保留原模型。", " The previous model is preserved.") : L.T("切换失败，已保留原模型。请检查连接后重试。", "Switch failed. The previous model is preserved. Check the connection and retry.");
             if (!_shutdown && revision == _configurationRevision) SetStatus(result, true);
             return result;
         }
@@ -987,7 +987,7 @@ internal sealed partial class OllamaChatWindow : Window
         try
         {
             await StopGenerationAsync(); CheckConfiguration(operation, revision);
-            if (!SaveCurrentDraft()) throw new InvalidDataException("无法保存当前草稿，尚未更换服务器。");
+            if (!SaveCurrentDraft()) throw new InvalidDataException(L.T("无法保存当前草稿，尚未更换服务器。", "Could not save the current draft. The server has not been changed."));
             var selected = ChooseModel(installed, _model);
             var capabilities = selected.Length == 0 ? new OllamaModelCapabilities(null, null, null) : await candidate.GetModelInfoAsync(selected, operation.Token);
             CheckConfiguration(operation, revision);
@@ -997,7 +997,7 @@ internal sealed partial class OllamaChatWindow : Window
                 unloadTimeout.CancelAfter(TimeSpan.FromSeconds(5));
                 try { await previousClient.UnloadAsync(_lastUsedModel, unloadTimeout.Token); }
                 catch (OperationCanceledException) when (operation.IsCancellationRequested) { throw; }
-                catch (Exception) { unloadWarning = "旧服务器模型未能主动释放，将按其保留时间自动卸载。"; }
+                catch (Exception) { unloadWarning = L.T("旧服务器模型未能主动释放，将按其保留时间自动卸载。", "The previous server's model could not be released; it will unload according to that server's retention setting."); }
                 CheckConfiguration(operation, revision);
             }
             CheckConfiguration(operation, revision);
@@ -1029,7 +1029,7 @@ internal sealed partial class OllamaChatWindow : Window
             else RefreshWelcome();
             _contextNote.Text = ConnectionNote();
             try { previousClient.Dispose(); } catch { /* The new connection is already committed. */ }
-            SetStatus(unloadWarning.Length > 0 ? "连接已更换。" + unloadWarning : ModelReadyMessage(serverChanged ? "连接已更换，已恢复此服务器的对话；原记录仍在本机" : "连接设置已应用"), unloadWarning.Length > 0 || capabilities.SupportsChat == false);
+            SetStatus(unloadWarning.Length > 0 ? L.T("连接已更换。", "Connection changed. ") + unloadWarning : ModelReadyMessage(serverChanged ? L.T("连接已更换，已恢复此服务器的对话；原记录仍在本机", "Connection changed; this server's conversation restored. Previous records remain local") : L.T("连接设置已应用", "Connection settings applied")), unloadWarning.Length > 0 || capabilities.SupportsChat == false);
             return true;
         }
         catch
@@ -1063,8 +1063,8 @@ internal sealed partial class OllamaChatWindow : Window
             await StopGenerationAsync();
             if (_shutdown || _conversation != null && !SaveCurrentDraft()) return;
             RestoreConversation(_chatStore.CreateConversation(EndpointScope(_client.Endpoint), _settings.SkinId.ToLowerInvariant(), StorageModel));
-            _contextNote.Text = "已开始新对话 · " + ConnectionNote();
-            SetStatus("新对话已就绪；之前的记录可以从“历史”继续。"); _input.Focus();
+            _contextNote.Text = L.T("已开始新对话 · ", "New conversation started · ") + ConnectionNote();
+            SetStatus(L.T("新对话已就绪；之前的记录可以从“历史”继续。", "New conversation ready. Continue previous conversations through History.")); _input.Focus();
         }
         catch (Exception ex) { if (!_shutdown) ReportStorageFailure(ex); }
         finally { _sessionSwitching = false; if (!_shutdown) { RefreshControls(); if (_storageError == null) RefreshCharacter(); } }
@@ -1089,25 +1089,27 @@ internal sealed partial class OllamaChatWindow : Window
         if (_sessionTransition != null) await _sessionTransition;
         if (_generating || _switching || _preparingImage || _shutdown || _configuring || _sessionSwitching || ModelMemoryBusy) return;
         if (_conversation == null || _conversation.Endpoint != EndpointScope(_client.Endpoint) || _conversation.PersonaKey != _settings.SkinId.ToLowerInvariant())
-        { SetStatus("请先恢复当前角色与服务器的对话。", true); return; }
+        { SetStatus(L.T("请先恢复当前角色与服务器的对话。", "Restore the conversation for the current character and server first."), true); return; }
         if (SharedMemoryContext.TryExtractExplicitMemory(_input.Text, out var memoryContent))
         {
-            if (_pendingImages.Count > 0) { SetStatus("保存记忆时请先移除图片；记忆库只保存你明确写下的文字。", true); return; }
+            if (_pendingImages.Count > 0) { SetStatus(L.T("保存记忆时请先移除图片；记忆库只保存你明确写下的文字。", "Remove images before saving a memory; only text you explicitly provide is saved."), true); return; }
             SaveExplicitMemory(memoryContent); return;
         }
         string memoryRequest = _input.Text.Trim();
-        if (memoryRequest.StartsWith("记住：", StringComparison.Ordinal) || memoryRequest.StartsWith("记住:", StringComparison.Ordinal) || memoryRequest.StartsWith("请记住", StringComparison.Ordinal))
+        if (memoryRequest.StartsWith("记住：", StringComparison.Ordinal) || memoryRequest.StartsWith("记住:", StringComparison.Ordinal) || memoryRequest.StartsWith("请记住", StringComparison.Ordinal)
+            || memoryRequest.StartsWith("remember:", StringComparison.OrdinalIgnoreCase) || memoryRequest.StartsWith("remember：", StringComparison.OrdinalIgnoreCase)
+            || memoryRequest.StartsWith("please remember", StringComparison.OrdinalIgnoreCase))
         {
-            SetStatus(SharedMemoryContext.ContainsLikelySecret(memoryRequest) ? "这段内容疑似含密码或密钥，未写入共享记忆；输入仍保留。" : "请在“记住：”后填写 1–1000 字的记忆内容。输入仍保留。", true);
+            SetStatus(SharedMemoryContext.ContainsLikelySecret(memoryRequest) ? L.T("这段内容疑似含密码或密钥，未写入共享记忆；输入仍保留。", "This content may contain a password or key and was not saved to shared memory. Your input is preserved.") : L.T("请在“记住：”后填写 1–1000 字的记忆内容。输入仍保留。", "Enter 1–1000 characters after 'remember:'. Your input is preserved."), true);
             return;
         }
-        if (!_connected || !_installedModels.Contains(_model, StringComparer.Ordinal)) { SetStatus("请先连接 Ollama 并选择已安装模型。", true); return; }
-        if (_capabilities.SupportsChat == false) { SetStatus("当前模型不支持聊天，请选择其他模型。", true); return; }
-        if (_capabilities.SupportsImages == false && _pendingImages.Count > 0) { SetStatus("当前模型仅支持文字，请先移除待发送图片，或切换支持图片的模型。", true); return; }
+        if (!_connected || !_installedModels.Contains(_model, StringComparer.Ordinal)) { SetStatus(L.T("请先连接 Ollama 并选择已安装模型。", "Connect to Ollama and select an installed model first."), true); return; }
+        if (_capabilities.SupportsChat == false) { SetStatus(L.T("当前模型不支持聊天，请选择其他模型。", "This model does not support chat. Please choose another."), true); return; }
+        if (_capabilities.SupportsImages == false && _pendingImages.Count > 0) { SetStatus(L.T("当前模型仅支持文字，请先移除待发送图片，或切换支持图片的模型。", "This model supports text only. Remove the pending images or choose a vision model."), true); return; }
         var draft = _input.Text;
         if (string.IsNullOrWhiteSpace(draft) && _pendingImages.Count == 0) return;
-        var prompt = string.IsNullOrWhiteSpace(draft) ? "请描述这张图片。" : draft.Trim();
-        if (prompt.Length > MaxInputCharacters) { SetStatus("每条消息最多 3000 字符。", true); return; }
+        var prompt = string.IsNullOrWhiteSpace(draft) ? L.T("请描述这张图片。", "Please describe this image.") : draft.Trim();
+        if (prompt.Length > MaxInputCharacters) { SetStatus(L.T("每条消息最多 3000 字符。", "Each message can contain up to 3000 characters."), true); return; }
         var images = _pendingImages.ToArray();
         var persona = CurrentPersona();
         try
@@ -1120,7 +1122,7 @@ internal sealed partial class OllamaChatWindow : Window
         if (EstimateTokens(prompt, images.Length) > budget)
         {
             int maximum = Math.Max(0, (budget - images.Length * 1800 - 16) / 2);
-            SetStatus($"为角色设定和回复预留空间，本条消息请缩短到 {maximum} 字符以内。输入与图片已保留。", true);
+            SetStatus(L.T($"为角色设定和回复预留空间，本条消息请缩短到 {maximum} 字符以内。输入与图片已保留。", $"To reserve space for the persona and reply, shorten this message to {maximum} characters. Your input and images are preserved."), true);
             return;
         }
         if (!SaveCurrentDraft()) return;
@@ -1136,12 +1138,12 @@ internal sealed partial class OllamaChatWindow : Window
         var cancellation = _generationCancellation;
         RefreshControls();
         var user = new OllamaMessage("user", prompt, images.Length == 0 ? null : images.Select(x => x.Base64).ToArray());
-        var userView = AddMessage("你", prompt, true, images, out _);
+        var userView = AddMessage(L.T("你", "You"), prompt, true, images, out _);
         var assistantView = AddMessage(characterName, persona.Thinking, false, Array.Empty<OllamaChatImage>(), out var answerView);
         _input.Clear(); _pendingImages.Clear(); RenderAttachments();
         _streamView = answerView;
         lock (_streamLock) _streamText.Clear();
-        _streamTimer.Start(); SetStatus("正在生成… 首次加载稍慢，可随时停止。");
+        _streamTimer.Start(); SetStatus(L.T("正在生成… 首次加载稍慢，可随时停止。", "Generating… The first load may take longer. You can stop at any time."));
         _scroll.ScrollToEnd();
         bool completedButUnsaved = false;
         bool modelGateEntered = false;
@@ -1153,7 +1155,7 @@ internal sealed partial class OllamaChatWindow : Window
             var client = _client;
             if (_settings.LlmBehaviorEnabled && BehaviorCommandsReady && _behaviorHost != null)
             {
-                SetStatus("正在理解你的意思并检查可执行动作…");
+                SetStatus(L.T("正在理解你的意思并检查可执行动作…", "Understanding your request and checking available actions…"));
                 // This phase runs before any new web lookup. The planner itself
                 // excludes memory/system text and external evidence as instructions.
                 var plan = await PetBehaviorPlanner.PlanConversationAsync(client, model, context, _behaviorHost, _capabilities.SupportsTools, cancellation.Token);
@@ -1162,8 +1164,8 @@ internal sealed partial class OllamaChatWindow : Window
                 persona = persona with { SystemPrompt = persona.SystemPrompt + "\n" + receipt };
                 context = BuildContext(user, persona, out dropped);
             }
-            if (dropped > 0) _contextNote.Text = $"本次上下文省略了最早 {dropped} 轮，保留最近完整对话。" + (_capabilities.SupportsImages == false ? "图片历史轮次不发送。" : "");
-            else _contextNote.Text = (_capabilities.SupportsImages == false ? "图片历史轮次不发送 · " : "") + ConnectionNote();
+            if (dropped > 0) _contextNote.Text = L.T($"本次上下文省略了最早 {dropped} 轮，保留最近完整对话。", $"The earliest {dropped} turns were omitted from this request; recent complete turns are retained.") + (_capabilities.SupportsImages == false ? L.T("图片历史轮次不发送。", "Earlier image turns are not sent.") : "");
+            else _contextNote.Text = (_capabilities.SupportsImages == false ? L.T("图片历史轮次不发送 · ", "Earlier image turns are not sent · ") : "") + ConnectionNote();
             PetWebChatUpdate? completed = null;
             IReadOnlyList<PetWebSource> sources = Array.Empty<PetWebSource>();
             string? webWarning = null;
@@ -1179,7 +1181,7 @@ internal sealed partial class OllamaChatWindow : Window
                     PetWebAnswerContext.ApplyMetadata(delta, ref sources, ref webWarning);
                     lock (_streamLock)
                     {
-                        if (_streamText.Length + (delta.Content?.Length ?? 0) > 16000) throw new InvalidDataException("回复超过安全长度，请缩短问题后重试。");
+                        if (_streamText.Length + (delta.Content?.Length ?? 0) > 16000) throw new InvalidDataException(L.T("回复超过安全长度，请缩短问题后重试。", "The reply exceeded the safe length limit. Shorten the question and retry."));
                         _streamText.Append(delta.Content);
                     }
                     if (!string.IsNullOrEmpty(delta.Content))
@@ -1189,9 +1191,9 @@ internal sealed partial class OllamaChatWindow : Window
             }, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             if (_shutdown || _conversation?.Id != conversationId || !string.Equals(_settings.SkinId, persona.Key, StringComparison.OrdinalIgnoreCase)) throw new OperationCanceledException();
-            if (completed == null) throw new InvalidDataException("模型回复中断，请重试。");
+            if (completed == null) throw new InvalidDataException(L.T("模型回复中断，请重试。", "The model reply was interrupted. Please retry."));
             string answer; lock (_streamLock) answer = _streamText.ToString();
-            if (string.IsNullOrWhiteSpace(answer)) throw new InvalidDataException("模型返回了空回复，请重试。");
+            if (string.IsNullOrWhiteSpace(answer)) throw new InvalidDataException(L.T("模型返回了空回复，请重试。", "The model returned an empty reply. Please retry."));
             long sequence;
             try
             {
@@ -1203,8 +1205,8 @@ internal sealed partial class OllamaChatWindow : Window
             {
                 completedButUnsaved = true; FlushStream(); AddSources(assistantView, sources); AddWebWarning(assistantView, webWarning);
                 if (assistantView is Border { Child: StackPanel unsavedContents })
-                    unsavedContents.Children.Add(Ui.Text("此回复尚未保存到本地，请先复制需要保留的内容。", 11, "#A44F39"));
-                throw new InvalidDataException("回复已生成，但本地记录未能保存；输入已保留，请检查磁盘后重试。", ex);
+                    unsavedContents.Children.Add(Ui.Text(L.T("此回复尚未保存到本地，请先复制需要保留的内容。", "This reply has not been saved locally. Copy anything you want to keep."), 11, "#A44F39"));
+                throw new InvalidDataException(L.T("回复已生成，但本地记录未能保存；输入已保留，请检查磁盘后重试。", "The reply was generated, but could not be saved locally. Your input is preserved. Check the disk and retry."), ex);
             }
             try { UpdateConversationTitle(); } catch (Exception ex) { ReportStorageFailure(ex); }
             FlushStream();
@@ -1212,8 +1214,8 @@ internal sealed partial class OllamaChatWindow : Window
             AddWebWarning(assistantView, webWarning);
             _history.Add(new ChatTurn(user, new OllamaMessage("assistant", PetWebAnswerContext.Remember(answer, sources, webWarning)), userView, assistantView, persona.Key, sequence));
             LimitVisibleHistory();
-            var rate = completed.TokensPerSecond is > 0 ? $" · {completed.TokensPerSecond:0.0} tokens/秒" : "";
-            SetStatus("回复完成" + rate + (webWarning != null ? " · 联网受限，详情见回复下方提示。" : sources.Count > 0 ? $" · 已附 {sources.Count} 个网页来源。" : _capabilities.SupportsImages == false ? " · 可继续文字聊天。" : " · 可继续聊天或发送图片。"), webWarning != null);
+            var rate = completed.TokensPerSecond is > 0 ? L.T($" · {completed.TokensPerSecond:0.0} tokens/秒", $" · {completed.TokensPerSecond:0.0} tokens/s") : "";
+            SetStatus(L.T("回复完成", "Reply complete") + rate + (webWarning != null ? L.T(" · 联网受限，详情见回复下方提示。", " · Web access limited; see the notice below the reply.") : sources.Count > 0 ? L.T($" · 已附 {sources.Count} 个网页来源。", $" · {sources.Count} web sources attached.") : _capabilities.SupportsImages == false ? L.T(" · 可继续文字聊天。", " · You can continue with text.") : L.T(" · 可继续聊天或发送图片。", " · Continue chatting or send an image.")), webWarning != null);
             string bubbleText = answer.Length <= 100 ? answer : answer[..100] + "…";
             // Streamed speech owns this turn when enabled. Keep the legacy final
             // callback for callers that have not supplied streaming playback.
@@ -1230,7 +1232,7 @@ internal sealed partial class OllamaChatWindow : Window
             {
                 if (!completedButUnsaved) { _messages.Children.Remove(userView); _messages.Children.Remove(assistantView); }
                 _input.Text = draft; _pendingImages.AddRange(images); RenderAttachments();
-                SetStatus(ex is OperationCanceledException ? "已停止。本条消息和图片已放回输入区，可修改后重新发送。" : FriendlyFailure(ex), ex is not OperationCanceledException);
+                SetStatus(ex is OperationCanceledException ? L.T("已停止。本条消息和图片已放回输入区，可修改后重新发送。", "Stopped. Your message and images are back in the input area; edit and resend when ready.") : FriendlyFailure(ex), ex is not OperationCanceledException);
             }
         }
         finally
@@ -1260,8 +1262,8 @@ internal sealed partial class OllamaChatWindow : Window
 
     private static string FriendlyFailure(Exception ex)
     {
-        if (ex is InvalidDataException || ex is OllamaException) return ex.Message + " 本条消息已放回输入区。";
-        return "回复失败：请确认 Ollama 正在运行且已安装所选模型；也可能显存不足。消息与图片已保留，可重试。";
+        if (ex is InvalidDataException || ex is OllamaException) return ex.Message + L.T(" 本条消息已放回输入区。", " Your message is back in the input area.");
+        return L.T("回复失败：请确认 Ollama 正在运行且已安装所选模型；也可能显存不足。消息与图片已保留，可重试。", "Reply failed. Check that Ollama is running and the selected model is installed; GPU memory may also be insufficient. Your message and images are preserved for retry.");
     }
 
     private FrameworkElement AddMessage(string who, string text, bool user, IReadOnlyList<OllamaChatImage> images, out TextBox body)
@@ -1284,7 +1286,7 @@ internal sealed partial class OllamaChatWindow : Window
     {
         if (sources.Count == 0 || view is not Border { Child: StackPanel contents }) return;
         var panel = new StackPanel { Name = "OllamaSources", Margin = new Thickness(0, 9, 0, 0) };
-        panel.Children.Add(Ui.Text("网页来源", 10, "#718267", true));
+        panel.Children.Add(Ui.Text(L.T("网页来源", "Web sources"), 10, "#718267", true));
         for (int index = 0; index < Math.Min(6, sources.Count); index++)
         {
             var source = sources[index];
@@ -1296,7 +1298,7 @@ internal sealed partial class OllamaChatWindow : Window
             {
                 e.Handled = true;
                 try { Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); }
-                catch { SetStatus("无法打开浏览器，可以复制回答中的来源。", true); }
+                catch { SetStatus(L.T("无法打开浏览器，可以复制回答中的来源。", "Could not open the browser. You can copy the source link from the reply."), true); }
             };
             var text = Ui.Text("", 11, "#356446"); text.TextWrapping = TextWrapping.Wrap; text.Margin = new Thickness(0, 4, 0, 0); text.Inlines.Add(link);
             panel.Children.Add(text);
@@ -1323,7 +1325,7 @@ internal sealed partial class OllamaChatWindow : Window
     private async Task PickImagesAsync()
     {
         if (VoiceInputBusy || ModelMemoryBusy) return;
-        var picker = new OpenFileDialog { Title = "发送图片给桌宠", Filter = "图片（PNG、JPEG、BMP、GIF）|*.png;*.jpg;*.jpeg;*.bmp;*.gif", Multiselect = true, CheckFileExists = true };
+        var picker = new OpenFileDialog { Title = L.T("发送图片给桌宠", "Send images to your pet"), Filter = L.T("图片（PNG、JPEG、BMP、GIF）|*.png;*.jpg;*.jpeg;*.bmp;*.gif", "Images (PNG, JPEG, BMP, GIF)|*.png;*.jpg;*.jpeg;*.bmp;*.gif"), Multiselect = true, CheckFileExists = true };
         if (picker.ShowDialog(this) == true) await AddImageFilesAsync(picker.FileNames);
     }
 
@@ -1332,8 +1334,8 @@ internal sealed partial class OllamaChatWindow : Window
         if (_generating || _switching || _preparingImage || _shutdown || _configuring || _sessionSwitching || VoiceInputBusy || ModelMemoryBusy) return;
         if (!CanAttachImages()) return;
         var files = paths.ToArray();
-        if (files.Length + _pendingImages.Count > OllamaChatImage.MaxFiles) { SetStatus("每次最多发送 2 张图片；请先移除一些图片。", true); return; }
-        _preparingImage = true; RefreshControls(); SetStatus("正在本机处理图片…");
+        if (files.Length + _pendingImages.Count > OllamaChatImage.MaxFiles) { SetStatus(L.T("每次最多发送 2 张图片；请先移除一些图片。", "Up to 2 images per message. Remove an image first."), true); return; }
+        _preparingImage = true; RefreshControls(); SetStatus(L.T("正在本机处理图片…", "Processing images locally…"));
         int added = 0; bool failed = false;
         try
         {
@@ -1341,10 +1343,10 @@ internal sealed partial class OllamaChatWindow : Window
             {
                 try { _pendingImages.Add(await OllamaChatImage.FromFileAsync(path, _lifetime.Token)); added++; }
                 catch (OperationCanceledException) { break; }
-                catch (Exception ex) { failed = true; SetStatus(ex is InvalidDataException ? ex.Message : "图片无法读取或文件损坏，请选择其他图片。", true); }
+                catch (Exception ex) { failed = true; SetStatus(ex is InvalidDataException ? ex.Message : L.T("图片无法读取或文件损坏，请选择其他图片。", "Could not read the image, or the file is damaged. Choose another image."), true); }
                 if (_shutdown) break;
             }
-            if (!_shutdown) { RenderAttachments(); if (!failed) SetStatus($"已添加 {added} 张图片。PNG/JPEG/BMP/GIF 第一帧，长边缩至 1280；原图保持不变。"); }
+            if (!_shutdown) { RenderAttachments(); if (!failed) SetStatus(L.T($"已添加 {added} 张图片。PNG/JPEG/BMP/GIF 第一帧，长边缩至 1280；原图保持不变。", $"Added {added} image(s). PNG/JPEG/BMP or the first GIF frame, resized to a longest edge of 1280 pixels; originals are unchanged.")); }
         }
         finally { _preparingImage = false; if (!_shutdown) { RefreshControls(); RefreshCharacter(); } }
     }
@@ -1353,18 +1355,18 @@ internal sealed partial class OllamaChatWindow : Window
     {
         if (_generating || _switching || _preparingImage || _shutdown || _configuring || _sessionSwitching || VoiceInputBusy || ModelMemoryBusy) return;
         if (!CanAttachImages()) return;
-        if (_pendingImages.Count >= OllamaChatImage.MaxFiles) { SetStatus("每次最多发送 2 张图片。", true); return; }
+        if (_pendingImages.Count >= OllamaChatImage.MaxFiles) { SetStatus(L.T("每次最多发送 2 张图片。", "Up to 2 images per message."), true); return; }
         _preparingImage = true; RefreshControls();
         try
         {
             var bitmap = Clipboard.GetImage();
-            if (bitmap == null) { SetStatus("剪贴板中没有图片。可复制图片后粘贴，或使用“添加图片”。"); return; }
-            SetStatus("正在本机处理剪贴板图片…");
+            if (bitmap == null) { SetStatus(L.T("剪贴板中没有图片。可复制图片后粘贴，或使用“添加图片”。", "No image on the clipboard. Copy an image first or use Add images.")); return; }
+            SetStatus(L.T("正在本机处理剪贴板图片…", "Processing the clipboard image locally…"));
             var image = await OllamaChatImage.FromClipboardAsync(bitmap, _lifetime.Token);
-            if (!_shutdown) { _pendingImages.Add(image); RenderAttachments(); SetStatus("已添加剪贴板图片，可输入问题后发送。"); }
+            if (!_shutdown) { _pendingImages.Add(image); RenderAttachments(); SetStatus(L.T("已添加剪贴板图片，可输入问题后发送。", "Clipboard image added. Enter a question and send it.")); }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (!_shutdown) SetStatus(ex is InvalidDataException ? ex.Message : "无法读取剪贴板图片，请使用“添加图片”。", true); }
+        catch (Exception ex) { if (!_shutdown) SetStatus(ex is InvalidDataException ? ex.Message : L.T("无法读取剪贴板图片，请使用“添加图片”。", "Could not read the clipboard image. Please use Add images."), true); }
         finally { _preparingImage = false; if (!_shutdown) { RefreshControls(); RefreshCharacter(); } }
     }
 
@@ -1376,7 +1378,7 @@ internal sealed partial class OllamaChatWindow : Window
         {
             var card = new StackPanel { Width = 76 };
             card.Children.Add(new Image { Source = attachment.Preview, Height = _compactLayout ? 30 : 46, Stretch = Stretch.Uniform, ToolTip = attachment.Name });
-            var remove = Ui.Button("移除", (_, _) => { _pendingImages.Remove(attachment); RenderAttachments(); RefreshControls(); }); remove.Padding = new Thickness(5, 2, 5, 2); remove.FontSize = 10; remove.Margin = new Thickness(0, 2, 0, 0); AutomationProperties.SetName(remove, "移除图片 " + attachment.Name); card.Children.Add(remove);
+            var remove = Ui.Button(L.T("移除", "Remove"), (_, _) => { _pendingImages.Remove(attachment); RenderAttachments(); RefreshControls(); }); remove.Padding = new Thickness(5, 2, 5, 2); remove.FontSize = 10; remove.Margin = new Thickness(0, 2, 0, 0); AutomationProperties.SetName(remove, L.T("移除图片 ", "Remove image ") + attachment.Name); card.Children.Add(remove);
             _attachments.Children.Add(new Border { Child = card, Padding = new Thickness(3), Margin = new Thickness(0, 0, 5, 0), Background = Ui.Brush("#E6EEDF"), CornerRadius = new CornerRadius(8) });
         }
         RefreshControls();
@@ -1385,9 +1387,9 @@ internal sealed partial class OllamaChatWindow : Window
 
     private bool CanAttachImages()
     {
-        if (!_connected || _installedModels.Count == 0) { SetStatus("请先连接 Ollama 并选择已安装模型。", true); return false; }
-        if (_capabilities.SupportsChat == false) { SetStatus("当前模型不支持聊天，请选择其他模型。", true); return false; }
-        if (_capabilities.SupportsImages == false) { SetStatus("当前模型仅支持文字；请选择支持图片的模型。", true); return false; }
+        if (!_connected || _installedModels.Count == 0) { SetStatus(L.T("请先连接 Ollama 并选择已安装模型。", "Connect to Ollama and select an installed model first."), true); return false; }
+        if (_capabilities.SupportsChat == false) { SetStatus(L.T("当前模型不支持聊天，请选择其他模型。", "This model does not support chat. Please choose another."), true); return false; }
+        if (_capabilities.SupportsImages == false) { SetStatus(L.T("当前模型仅支持文字；请选择支持图片的模型。", "This model supports text only. Choose a model that supports images."), true); return false; }
         return true;
     }
 

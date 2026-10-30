@@ -17,7 +17,8 @@ internal enum LifecycleEvent
     DispatcherUnhandledException, DomainUnhandledException,
     GraphicsRecoveryStarted, GraphicsRecoveryChildStarted,
     GraphicsRecoveryUnavailable, GraphicsRecoveryFailed, GraphicsRecoveryExit,
-    ConnectionRetry, ConnectionRecovered, ConnectionEstablished, ChatStorageFailure
+    ConnectionRetry, ConnectionRecovered, ConnectionEstablished, ChatStorageFailure,
+    RestartRequested, RestartChildStarted, RestartFailed
 }
 
 internal enum LifecycleFailureKind

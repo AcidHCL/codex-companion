@@ -28,7 +28,7 @@ internal sealed class PetVoiceLibrary
     internal PetVoiceLibrary(string? root = null)
     {
         RootPath = Path.GetFullPath(root ?? DefaultRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (string.IsNullOrEmpty(Path.GetDirectoryName(RootPath))) throw new ArgumentException("音色保存目录无效。", nameof(root));
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(RootPath))) throw new ArgumentException(L.T("音色保存目录无效。", "The voice library directory is invalid."), nameof(root));
     }
 
     internal PetVoiceProfile Save(PetVoiceDesignSample sample, string? name = null)
@@ -45,7 +45,7 @@ internal sealed class PetVoiceLibrary
         Directory.CreateDirectory(RootPath);
         EnsureNoReparsePoints(RootPath);
         if (Directory.Exists(target) || File.Exists(target) || Directory.Exists(pending) || File.Exists(pending))
-            throw new IOException("无法创建新的固定音色，请重试。");
+            throw new IOException(L.T("无法创建新的固定音色，请重试。", "Could not create the saved voice. Please try again."));
         Directory.CreateDirectory(pending);
         try
         {
@@ -59,7 +59,7 @@ internal sealed class PetVoiceLibrary
             EnsureNoReparsePoints(pending);
             EnsureNoReparsePoints(RootPath);
             Directory.Move(pending, target);
-            return new PetVoiceProfile("saved-voice", "Vivian", info.Language, "", id);
+            return new PetVoiceProfile("saved-voice", "Vivian", info.Language, "", id, FollowAppLanguage: false);
         }
         finally { CleanupPending(pending, id); }
     }
@@ -127,7 +127,7 @@ internal sealed class PetVoiceLibrary
         RequireCustomReference(referenceId);
         string displayName = ValidateName(name);
         if (!TryReadMetadata(referenceId, out var previous) || previous == null)
-            throw new IOException("找不到此自定义音色，或音色记录已损坏。");
+            throw new IOException(L.T("找不到此自定义音色，或音色记录已损坏。", "This custom voice was not found, or its record is damaged."));
         var renamed = previous with { Name = displayName };
         string directory = Child(referenceId), metadata = Path.Combine(directory, "metadata.json");
         string pendingName = ".metadata-" + Guid.NewGuid().ToString("N") + ".tmp";
@@ -155,14 +155,14 @@ internal sealed class PetVoiceLibrary
     {
         RequireCustomReference(referenceId);
         if (!TryReadMetadata(referenceId, out _))
-            throw new IOException("找不到此自定义音色，或音色记录已损坏。");
+            throw new IOException(L.T("找不到此自定义音色，或音色记录已损坏。", "This custom voice was not found, or its record is damaged."));
         string source = Child(referenceId), removed = Child(".trash-" + referenceId);
         EnsureNoReparsePoints(source);
         EnsureNoReparsePoints(Path.Combine(source, "reference.wav"));
         EnsureNoReparsePoints(Path.Combine(source, "reference.txt"));
         EnsureNoReparsePoints(Path.Combine(source, "metadata.json"));
         EnsureNoReparsePoints(removed);
-        if (Directory.Exists(removed) || File.Exists(removed)) throw new IOException("此音色已有恢复副本，请先检查本机音色库。");
+        if (Directory.Exists(removed) || File.Exists(removed)) throw new IOException(L.T("此音色已有恢复副本，请先检查本机音色库。", "A recovery copy already exists for this voice. Check your local voice library."));
         // This is a reversible removal, not recursive deletion. The published
         // ID disappears atomically; all bytes remain in the private trash folder.
         // A failure leaves the original version and every other voice untouched.
@@ -172,7 +172,7 @@ internal sealed class PetVoiceLibrary
     private static void RequireCustomReference(string? referenceId)
     {
         if (!PetVoiceProfiles.IsReferenceId(referenceId))
-            throw new ArgumentException("只能修改自定义音色；默认音色受到保护。");
+            throw new ArgumentException(L.T("只能修改自定义音色；默认音色受到保护。", "Only custom voices can be modified. Default voices are protected."));
     }
 
     private static string AutomaticName(string skinId, DateTimeOffset created) =>
@@ -183,20 +183,20 @@ internal sealed class PetVoiceLibrary
         // Names are metadata only. In particular punctuation in a display name
         // never becomes part of a directory, filename, or reference identifier.
         if (name == null || !ValidText(name, 120) || name.Any(c => char.IsControl(c) || c is '\u2028' or '\u2029'))
-            throw new ArgumentException("音色名称须为 1–60 个字符的单行文字。");
+            throw new ArgumentException(L.T("音色名称须为 1–60 个字符的单行文字。", "Enter a single-line voice name containing 1–60 characters."));
         string trimmed = name.Trim();
         if (trimmed.Length == 0 || trimmed is "." or ".." || trimmed.EnumerateRunes().Count() > 60)
-            throw new ArgumentException("音色名称须为 1–60 个字符的单行文字。");
+            throw new ArgumentException(L.T("音色名称须为 1–60 个字符的单行文字。", "Enter a single-line voice name containing 1–60 characters."));
         return trimmed;
     }
 
     internal static void ValidateSample(PetVoiceDesignSample sample)
     {
         ArgumentNullException.ThrowIfNull(sample);
-        if (!PetVoiceProfiles.KnownSkin(sample.SkinId)) throw new ArgumentException("请选择已知的桌宠角色。");
-        if (!ValidText(sample.Instruction, 600)) throw new ArgumentException("请输入 1–600 字的音色描述。");
-        if (!ValidText(sample.Text, 100)) throw new ArgumentException("试听台词应为 1–100 字，请使用普通文本。");
-        if (!PetVoiceProfiles.Languages.Contains(sample.Language, StringComparer.Ordinal)) throw new ArgumentException("不支持该语音语言。");
+        if (!PetVoiceProfiles.KnownSkin(sample.SkinId)) throw new ArgumentException(L.T("请选择已知的桌宠角色。", "Select a supported pet character."));
+        if (!ValidText(sample.Instruction, 600)) throw new ArgumentException(L.T("请输入 1–600 字的音色描述。", "Enter a voice description containing 1–600 characters."));
+        if (!ValidText(sample.Text, 100)) throw new ArgumentException(L.T("试听台词应为 1–100 字，请使用普通文本。", "Enter 1–100 characters of plain text for the audition."));
+        if (!PetVoiceProfiles.Languages.Contains(sample.Language, StringComparer.Ordinal)) throw new ArgumentException(L.T("不支持该语音语言。", "This speech language is not supported."));
         ValidateWave(sample.Wave);
     }
 
@@ -206,7 +206,7 @@ internal sealed class PetVoiceLibrary
         // Shared parsing checks RIFF length, duplicated/truncated chunks, PCM16
         // encoding, block alignment and data size before deriving the duration.
         TimeSpan duration = PetSpeechWave.Duration(wave);
-        if (duration.TotalSeconds is < 1 or > 30) throw new InvalidOperationException("固定音色的参考音频需为 1–30 秒，请调整试听台词后重新生成。");
+        if (duration.TotalSeconds is < 1 or > 30) throw new InvalidOperationException(L.T("固定音色的参考音频需为 1–30 秒，请调整试听台词后重新生成。", "A saved voice needs 1–30 seconds of reference audio. Adjust the audition text and generate again."));
         for (int offset = 12; offset < wave.Length;)
         {
             uint size = BinaryPrimitives.ReadUInt32LittleEndian(wave.AsSpan(offset + 4, 4));
@@ -236,14 +236,14 @@ internal sealed class PetVoiceLibrary
         }
         return true;
     }
-    private static InvalidOperationException InvalidWave() => new("试听音频必须是 24 kHz、单声道、16 位 PCM WAV，大小不超过 10 MiB。");
+    private static InvalidOperationException InvalidWave() => new(L.T("试听音频必须是 24 kHz、单声道、16 位 PCM WAV，大小不超过 10 MiB。", "Audition audio must be 24 kHz mono 16-bit PCM WAV, no larger than 10 MiB."));
 
     private string Child(string name)
     {
         string full = Path.GetFullPath(Path.Combine(RootPath, name));
         if (!full.StartsWith(RootPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(Path.GetDirectoryName(full), RootPath, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("音色路径无效。");
+            throw new ArgumentException(L.T("音色路径无效。", "The voice path is invalid."));
         return full;
     }
 
@@ -254,7 +254,7 @@ internal sealed class PetVoiceLibrary
             try
             {
                 if ((File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
-                    throw new IOException("固定音色目录不能使用链接或重解析点。");
+                    throw new IOException(L.T("固定音色目录不能使用链接或重解析点。", "Saved voice directories cannot use links or reparse points."));
             }
             catch (FileNotFoundException) { }
             catch (DirectoryNotFoundException) { }

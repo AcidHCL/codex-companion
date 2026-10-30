@@ -29,7 +29,7 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
     private static readonly byte[] ZeroBuffer = new byte[BufferBytes];
     private const uint CallbackEvent = 0x00050000, WaveMapper = uint.MaxValue;
     private const uint HeaderDone = 0x00000001;
-    private const string CleanupError = "麦克风未能正常释放，请先完全退出桌宠，重新连接输入设备后再启动。";
+    private static string CleanupError => L.T("麦克风未能正常释放，请先完全退出桌宠，重新连接输入设备后再启动。", "The microphone could not be released. Quit AI Pet completely, reconnect the input device, and restart.");
     private static readonly object FailedDeviceGate = new();
     private static readonly List<AutoResetEvent> FailedDeviceEvents = new();
     private static int _nativeCleanupFaulted;
@@ -52,8 +52,8 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (Volatile.Read(ref _nativeCleanupFaulted) != 0) throw new InvalidOperationException(CleanupError);
-            if (_session != null) throw new InvalidOperationException("请先结束上一段录音，再开始新的语音输入。");
-            if (GetAvailableDeviceCount() == 0) throw new InvalidOperationException("未检测到麦克风，请连接输入设备并检查 Windows 声音设置。");
+            if (_session != null) throw new InvalidOperationException(L.T("请先结束上一段录音，再开始新的语音输入。", "Finish the previous recording before starting a new one."));
+            if (GetAvailableDeviceCount() == 0) throw new InvalidOperationException(L.T("未检测到麦克风，请连接输入设备并检查 Windows 声音设置。", "No microphone detected. Connect an input device and check Windows sound settings."));
             var session = new Session();
             _session = session;
             var worker = new Thread(() => Capture(session)) { IsBackground = true, Name = "AI Pet microphone capture" };
@@ -62,7 +62,7 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
             if (!session.Ready.Task.Wait(TimeSpan.FromSeconds(5)))
             {
                 session.RequestStop();
-                throw new InvalidOperationException("麦克风启动超时，请检查输入设备后重试。");
+                throw new InvalidOperationException(L.T("麦克风启动超时，请检查输入设备后重试。", "Microphone startup timed out. Check the input device and retry."));
             }
             if (session.Error != null)
             {
@@ -81,7 +81,7 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
             if (session == null) return PcmAudioBuffer.BuildWave(ReadOnlySpan<byte>.Empty);
             session.RequestStop();
             if (!session.Finished.Task.Wait(TimeSpan.FromSeconds(5)))
-                throw new InvalidOperationException("麦克风尚未停止，请检查输入设备后重试。");
+                throw new InvalidOperationException(L.T("麦克风尚未停止，请检查输入设备后重试。", "The microphone has not stopped. Check the input device and retry."));
             _session = null;
             try
             {
@@ -171,7 +171,7 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
         }
         catch (Exception ex)
         {
-            session.Error = ex is InvalidOperationException ? ex.Message : "麦克风录音中断，请检查输入设备后重试。";
+            session.Error = ex is InvalidOperationException ? ex.Message : L.T("麦克风录音中断，请检查输入设备后重试。", "Microphone recording was interrupted. Check the input device and retry.");
         }
         finally
         {
@@ -254,11 +254,11 @@ internal sealed class PetMicrophoneRecorder : IPetMicrophoneRecorder
 
     private static string ErrorMessage(uint result) => result switch
     {
-        2 or 6 => "未找到可用的麦克风，请检查 Windows 默认输入设备。",
-        4 => "麦克风被其他程序独占，请释放设备后重试。",
-        7 => "无法分配录音缓冲区，请稍后重试。",
-        32 => "当前麦克风不支持所需的录音格式，请更换 Windows 默认输入设备。",
-        _ => "无法使用麦克风，请检查 Windows 麦克风权限、默认输入设备及占用情况。"
+        2 or 6 => L.T("未找到可用的麦克风，请检查 Windows 默认输入设备。", "No usable microphone found. Check the Windows default input device."),
+        4 => L.T("麦克风被其他程序独占，请释放设备后重试。", "Another application has exclusive access to the microphone. Release it and retry."),
+        7 => L.T("无法分配录音缓冲区，请稍后重试。", "Could not allocate the recording buffer. Try again shortly."),
+        32 => L.T("当前麦克风不支持所需的录音格式，请更换 Windows 默认输入设备。", "The microphone does not support the required recording format. Change the Windows default input device."),
+        _ => L.T("无法使用麦克风，请检查 Windows 麦克风权限、默认输入设备及占用情况。", "Could not use the microphone. Check Windows microphone permissions, the default input device, and other applications using it.")
     };
 
     public void Dispose()

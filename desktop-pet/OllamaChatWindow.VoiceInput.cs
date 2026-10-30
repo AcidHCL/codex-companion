@@ -26,7 +26,7 @@ internal sealed partial class OllamaChatWindow
 
     private void AddVoiceInputButton(DockPanel actions)
     {
-        _microphone = IconButton(MicrophoneGeometry, "语音输入：点击录音，再次点击转文字；本机识别，不自动发送", async (_, _) => await ToggleVoiceInputAsync());
+        _microphone = IconButton(MicrophoneGeometry, L.T("语音输入：点击录音，再次点击转文字；本机识别，不自动发送", "Voice input: click to record, then click again to transcribe locally; text is not sent automatically"), async (_, _) => await ToggleVoiceInputAsync());
         _microphone.Name = "OllamaMicrophone"; _microphone.Margin = new Thickness(5, 0, 0, 0);
         actions.Children.Add(_microphone);
     }
@@ -98,12 +98,12 @@ internal sealed partial class OllamaChatWindow
         int available = MaxInputCharacters - _input.Text.Length - separator.Length;
         if (available < text.Length)
         {
-            _voiceInputResultHint = "输入框空间不足，转写未写入。请缩短草稿后重新录音。";
+            _voiceInputResultHint = L.T("输入框空间不足，转写未写入。请缩短草稿后重新录音。", "There is not enough room in the input box for the transcript. Shorten the draft and record again.");
             RefreshVoiceInputControls(); return;
         }
         _input.Text += separator + text;
         _input.CaretIndex = _input.Text.Length;
-        _voiceInputResultHint = "已转成文字，可编辑后发送。";
+        _voiceInputResultHint = L.T("已转成文字，可编辑后发送。", "Transcribed. You can edit the text before sending.");
         _voiceConversation = null;
         QueueDraftSave(); RefreshControls();
         _input.Focus();
@@ -115,7 +115,7 @@ internal sealed partial class OllamaChatWindow
         bool recording = _voiceInput.State == PetVoiceInputState.Recording;
         bool transcribing = _voiceInput.State == PetVoiceInputState.Transcribing;
         _microphone.IsEnabled = VoiceInputBusy || CanStartVoiceInput();
-        string label = recording ? "结束录音并转文字" : transcribing ? "取消语音识别" : "语音输入：点击录音，再次点击转文字；本机识别，不自动发送";
+        string label = recording ? L.T("结束录音并转文字", "Finish recording and transcribe") : transcribing ? L.T("取消语音识别", "Cancel transcription") : L.T("语音输入：点击录音，再次点击转文字；本机识别，不自动发送", "Voice input: click to record, then click again to transcribe locally; text is not sent automatically");
         _microphone.ToolTip = label; AutomationProperties.SetName(_microphone, label);
         _microphone.Background = recording ? Ui.Brush("#FCE6E2") : transcribing ? Ui.Brush("#E6EEDD") : Brushes.White;
         if (_microphone.Content is ShapePath icon)
@@ -124,8 +124,8 @@ internal sealed partial class OllamaChatWindow
             icon.Stroke = Ui.Brush(recording ? "#A84235" : "#526D4F");
         }
         string hint = recording
-            ? "● 正在录音 " + Math.Floor(_voiceInput.ElapsedSeconds).ToString(CultureInfo.InvariantCulture) + " / 60 秒 · 点击麦克风完成，Esc 取消"
-            : transcribing ? "正在本机转成文字… 点击麦克风或 Esc 取消" : _voiceInputResultHint ?? _voiceInput.StatusText;
+            ? L.T("● 正在录音 ", "● Recording ") + Math.Floor(_voiceInput.ElapsedSeconds).ToString(CultureInfo.InvariantCulture) + L.T(" / 60 秒 · 点击麦克风完成，Esc 取消", " / 60 s · Click the microphone to finish, Esc to cancel")
+            : transcribing ? L.T("正在本机转成文字… 点击麦克风或 Esc 取消", "Transcribing locally… Click the microphone or press Esc to cancel") : _voiceInputResultHint ?? _voiceInput.StatusText;
         _voiceInputStatus.Text = hint; _voiceInputStatus.ToolTip = hint;
         _voiceInputStatus.Foreground = Ui.Brush(recording ? "#A84235" : "#718267");
         _voiceInputStatus.Visibility = !_voiceInputMessageVisible || string.IsNullOrWhiteSpace(hint) ? Visibility.Collapsed : Visibility.Visible;

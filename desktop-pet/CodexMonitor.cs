@@ -63,7 +63,7 @@ internal sealed class CodexMonitor : IDisposable
         if (ConnectionRequested && PairingState != CodexPairingState.Revoked) { _timer.Start(); _ = RefreshAsync(true); }
         else { Snapshot = DisabledSnapshot(); NotifyChanged(); }
     }
-    private static CodexSnapshot DisabledSnapshot() => CodexSnapshot.Empty with { StatusText = "连接已关闭" };
+    private static CodexSnapshot DisabledSnapshot() => CodexSnapshot.Empty with { StatusText = L.T("连接已关闭", "Connection off") };
     private void InvalidateAccess()
     {
         ++_accessGeneration;
@@ -90,7 +90,7 @@ internal sealed class CodexMonitor : IDisposable
     public async Task ResumeConnectionAsync()
     {
         if (!_connection.ResumeSavedPairing())
-            throw new InvalidOperationException("请先在 Codex 中按 Codex首次连接.txt 重新配对，再点重新连接。");
+            throw new InvalidOperationException(L.T("请先在 Codex 中按 Codex首次连接.txt 重新配对，再点重新连接。", "Pair again in Codex using Codex首次连接.txt, then click Reconnect."));
         InvalidateAccess(); _settings.CodexEnabled = true; _settings.CodexMessagesEnabled = false;
         _connection.SetMessageAccess(false); _failures = 0; SaveSettings();
         _timer.Start(); await RefreshAsync(true);
@@ -123,7 +123,7 @@ internal sealed class CodexMonitor : IDisposable
         if (source.HasValue)
         {
             if (!nextOverrides.ContainsKey(task.Key) && nextOverrides.Count >= TaskSourcePolicy.MaximumOverrides)
-                throw new InvalidOperationException("手动来源记录已达上限，请先将不需要的记录恢复为自动判断。");
+                throw new InvalidOperationException(L.T("手动来源记录已达上限，请先将不需要的记录恢复为自动判断。", "The manual source record limit has been reached. Restore unused entries to automatic detection first."));
             nextOverrides[task.Key] = source == TaskSource.Codex ? "codex" : "dot";
         }
         else nextOverrides.Remove(task.Key);
@@ -161,7 +161,7 @@ internal sealed class CodexMonitor : IDisposable
         {
             // Every operation after acquiring the gate, including UI notification,
             // belongs inside this try/finally. Rendering cannot strand polling.
-            Snapshot = Snapshot with { Refreshing = true, StatusText = Snapshot.Connected ? "正在同步…" : "正在连接 Codex…" };
+            Snapshot = Snapshot with { Refreshing = true, StatusText = Snapshot.Connected ? L.T("正在同步…", "Syncing…") : L.T("正在连接 Codex…", "Connecting to Codex…") };
             NotifyChanged();
             using var access = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, _accessLifetime.Token);
             var token = access.Token;
@@ -179,7 +179,7 @@ internal sealed class CodexMonitor : IDisposable
             }
             IReadOnlyList<CodexTaskInfo> tasks = taskList.OrderByDescending(t => t.IsRunning).ThenByDescending(t => t.NeedsAttention).ThenByDescending(t => t.Pinned).ThenByDescending(t => t.UpdatedAt).ToArray();
             var unavailable = CodexParser.Get(tasksData, "unavailableHosts");
-            string? error = unavailable.ValueKind == JsonValueKind.Array && unavailable.GetArrayLength() > 0 ? "部分远程设备当前不可用。" : null;
+            string? error = unavailable.ValueKind == JsonValueKind.Array && unavailable.GetArrayLength() > 0 ? L.T("部分远程设备当前不可用。", "Some remote devices are currently unavailable.") : null;
             var buckets = Snapshot.Buckets;
             var usageTime = Snapshot.UsageUpdatedAt;
             var resetCredits = Snapshot.ResetCreditsAvailable;
@@ -200,7 +200,7 @@ internal sealed class CodexMonitor : IDisposable
                     buckets = usage.Buckets; resetCredits = usage.ResetCredits; usageTime = DateTimeOffset.Now;
                 }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-                catch (Exception) { error = "用量暂时无法更新；下次自动重试。已有用量为上次成功读取的结果。"; }
+                catch (Exception) { error = L.T("用量暂时无法更新；下次自动重试。已有用量为上次成功读取的结果。", "Usage could not be updated; it will retry automatically. Displayed usage is from the last successful read."); }
             }
             if (generation != _accessGeneration || !ConnectionEnabled) return;
             // Manual ownership may have changed while any RPC was in flight.
@@ -214,7 +214,7 @@ internal sealed class CodexMonitor : IDisposable
             }
             else if (!prior.Connected) LifecycleLog.Record(LifecycleEvent.ConnectionEstablished);
             _timer.Interval = TimeSpan.FromSeconds(_settings.RefreshSeconds);
-            Snapshot = new CodexSnapshot(true, false, error == null ? "已连接 Codex" : "已连接 · 部分数据待更新", DateTimeOffset.Now, usageTime, buckets, tasks, error, resetCredits);
+            Snapshot = new CodexSnapshot(true, false, error == null ? L.T("已连接 Codex", "Connected to Codex") : L.T("已连接 · 部分数据待更新", "Connected · Some data pending"), DateTimeOffset.Now, usageTime, buckets, tasks, error, resetCredits);
             ReconcileSelection();
             NotifyChanged();
             if (MessagesEnabled && sourceGeneration == _sourceGeneration && prior.Connected && (_settings.NotificationsEnabled || (_settings.SceneAutoEnabled && _settings.ScenePackId != null)))
@@ -242,13 +242,13 @@ internal sealed class CodexMonitor : IDisposable
             _timer.Interval = TimeSpan.FromSeconds(seconds);
             string error = PairingState switch
             {
-                CodexPairingState.Unavailable => "连接记录暂时无法读取；会自动重试，无需重新配对。",
-                CodexPairingState.Invalid => "连接记录未通过完整性、权限或当前用户解密检查；已停止访问，修复后会重试。",
-                CodexPairingState.Missing => "未找到连接记录，请在 Codex 中完成首次配对。",
-                CodexPairingState.Expired => "连接记录已过期，请在 Codex 中主动重新配对。",
+                CodexPairingState.Unavailable => L.T("连接记录暂时无法读取；会自动重试，无需重新配对。", "The connection record is temporarily unreadable. Retrying automatically; no new pairing is needed."),
+                CodexPairingState.Invalid => L.T("连接记录未通过完整性、权限或当前用户解密检查；已停止访问，修复后会重试。", "The connection record failed integrity, permissions, or current-user decryption checks. Access stopped and will retry after repair."),
+                CodexPairingState.Missing => L.T("未找到连接记录，请在 Codex 中完成首次配对。", "No connection record found. Complete initial pairing in Codex."),
+                CodexPairingState.Expired => L.T("连接记录已过期，请在 Codex 中主动重新配对。", "The connection record has expired. Pair again explicitly in Codex."),
                 _ => FriendlyError(ex)
             };
-            Snapshot = Snapshot with { Connected = false, Refreshing = false, StatusText = $"Codex 未连接 · {seconds:0} 秒后自动重试", Error = error };
+            Snapshot = Snapshot with { Connected = false, Refreshing = false, StatusText = L.T($"Codex 未连接 · {seconds:0} 秒后自动重试", $"Codex disconnected · Retrying in {seconds:0} s"), Error = error };
             NotifyChanged();
         }
         finally
@@ -273,7 +273,7 @@ internal sealed class CodexMonitor : IDisposable
             if (old.Status == task.Status) continue;
             if (task.NeedsAttention && !old.NeedsAttention)
             {
-                EmitNotice(new PetNotice("任务需要关注", task.Title, "attention"), task.Key, sourceGeneration); emitted++; continue;
+                EmitNotice(new PetNotice(L.T("任务需要关注", "Task needs attention"), task.Title, "attention"), task.Key, sourceGeneration); emitted++; continue;
             }
             if ((!old.IsRunning && !old.NeedsAttention) || task.IsRunning || task.Kind != "codex") continue;
             try
@@ -283,8 +283,8 @@ internal sealed class CodexMonitor : IDisposable
                 if (!MessagesEnabled || sourceGeneration != _sourceGeneration ||
                     Snapshot.Tasks.FirstOrDefault(row => row.Key == task.Key)?.Source != TaskSource.Codex) return;
                 var state = CodexParser.ParseConversation(data, task.Key).LatestTurnStatus;
-                if (state == "completed") { EmitNotice(new PetNotice("任务已完成", task.Title, "complete"), task.Key, sourceGeneration); emitted++; }
-                else if (state is "failed" or "interrupted") { EmitNotice(new PetNotice(state == "failed" ? "任务执行失败" : "任务已中断", task.Title, "attention"), task.Key, sourceGeneration); emitted++; }
+                if (state == "completed") { EmitNotice(new PetNotice(L.T("任务已完成", "Task completed"), task.Title, "complete"), task.Key, sourceGeneration); emitted++; }
+                else if (state is "failed" or "interrupted") { EmitNotice(new PetNotice(state == "failed" ? L.T("任务执行失败", "Task failed") : L.T("任务已中断", "Task interrupted"), task.Title, "attention"), task.Key, sourceGeneration); emitted++; }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch { /* A missing task is not evidence of completion. */ }
@@ -404,8 +404,8 @@ internal sealed class CodexMonitor : IDisposable
     }
     private static string FriendlyError(Exception ex)
     {
-        if (ex is OperationCanceledException or TimeoutException) return "连接超时。请确认 Codex App 已打开，稍后会自动重试。";
-        return "连接验证或读取未完成。请检查 Codex 签名、运行状态和配对记录；无法识别的接口会被拒绝。";
+        if (ex is OperationCanceledException or TimeoutException) return L.T("连接超时。请确认 Codex App 已打开，稍后会自动重试。", "Connection timed out. Make sure Codex App is open; retrying automatically shortly.");
+        return L.T("连接验证或读取未完成。请检查 Codex 签名、运行状态和配对记录；无法识别的接口会被拒绝。", "Connection validation or reading did not finish. Check Codex's signature, running state, and pairing record. Unrecognized interfaces are rejected.");
     }
     public void Dispose()
     {

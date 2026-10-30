@@ -52,7 +52,7 @@ internal sealed class PetSpeechPlayer(Dispatcher dispatcher) : IPetSpeechPlayer
             SetVolume(volume);
             media.MediaOpened += (_, _) => { if (ReferenceEquals(_media, media) && !cancellationToken.IsCancellationRequested) media.Play(); };
             media.MediaEnded += (_, _) => completion.TrySetResult();
-            media.MediaFailed += (_, _) => completion.TrySetException(new InvalidOperationException("音频播放失败，请检查当前音频设备。"));
+            media.MediaFailed += (_, _) => completion.TrySetException(new InvalidOperationException(L.T("音频播放失败，请检查当前音频设备。", "Audio playback failed. Check the current audio device.")));
             using var registration = cancellationToken.Register(() => dispatcher.BeginInvoke(() =>
             {
                 if (ReferenceEquals(_completion, completion)) Stop();

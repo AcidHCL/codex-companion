@@ -59,7 +59,7 @@ internal static class PetSpeechWave
         return new Clip(format.Value, dataOffset, dataLength);
     }
 
-    private static InvalidOperationException InvalidWave() => new("语音引擎返回的音频格式无效，暂未播放。");
+    private static InvalidOperationException InvalidWave() => new(L.T("语音引擎返回的音频格式无效，暂未播放。", "The speech engine returned invalid audio. Playback was skipped."));
 
     internal sealed class Builder : IDisposable
     {
@@ -78,9 +78,9 @@ internal static class PetSpeechWave
         {
             var stream = _stream ?? throw new ObjectDisposedException(nameof(Builder));
             Clip clip = Parse(wave);
-            if (_format != null && _format != clip.Format) throw new InvalidOperationException("语音片段格式不一致，暂未播放。");
+            if (_format != null && _format != clip.Format) throw new InvalidOperationException(L.T("语音片段格式不一致，暂未播放。", "Speech chunks have inconsistent formats. Playback was skipped."));
             if (stream.Length + clip.Length > _maximumBytes)
-                throw new InvalidOperationException("这条回答的语音过长，已保留文字；请分段朗读。");
+                throw new InvalidOperationException(L.T("这条回答的语音过长，已保留文字；请分段朗读。", "This reply is too long to read aloud in one go. The text is preserved; try shorter sections."));
             _format = clip.Format;
             stream.Position = stream.Length;
             stream.Write(wave, clip.Offset, clip.Length);

@@ -16,7 +16,9 @@ namespace DesktopPet;
 internal sealed class Live2DView : Grid, IDisposable
 {
     private const string Origin = "https://aipet.invalid";
-    private const string Entry = Origin + "/runtime/index.html";
+    // Bind the allowed entry URL to the language at construction. Only the
+    // bundled page is navigable; model resource URLs retain their strict rules.
+    private readonly string Entry = Origin + "/runtime/index.html?lang=" + L.Language;
     private readonly WebView2CompositionControl _browser;
     private readonly string _profileDirectory;
     private CoreWebView2Environment? _environment;
@@ -41,7 +43,7 @@ internal sealed class Live2DView : Grid, IDisposable
         foreach (string relative in catalog.GetValidatedFiles(model))
             _files["/model/" + relative] = Path.Combine(model.RootDirectory, relative.Replace('/', Path.DirectorySeparatorChar));
         string runtime = Path.Combine(AppContext.BaseDirectory, "assets", "live2d-runtime");
-        if (!Directory.Exists(runtime)) throw new FileNotFoundException("Live2D 运行文件缺失，请重新构建桌宠。");
+        if (!Directory.Exists(runtime)) throw new FileNotFoundException(L.T("Live2D 运行文件缺失，请重新构建桌宠。", "Live2D runtime files are missing. Rebuild AI Pet."));
         foreach (string file in Directory.EnumerateFiles(runtime, "*", SearchOption.AllDirectories))
         {
             string relative = Path.GetRelativePath(runtime, file).Replace('\\', '/');
@@ -91,7 +93,7 @@ internal sealed class Live2DView : Grid, IDisposable
             core.WebMessageReceived += MessageReceived;
             core.NavigationCompleted += (_, e) =>
             {
-                if (!e.IsSuccess) ReportFailure("Live2D 页面加载失败：" + e.WebErrorStatus);
+                if (!e.IsSuccess) ReportFailure(L.T("Live2D 页面加载失败：", "The Live2D page failed to load: ") + e.WebErrorStatus);
             };
             core.Navigate(Entry);
             await _ready.Task.WaitAsync(TimeSpan.FromSeconds(25));
@@ -110,13 +112,13 @@ internal sealed class Live2DView : Grid, IDisposable
         }
         catch (WebView2RuntimeNotFoundException ex)
         {
-            var error = new InvalidOperationException("未找到 Microsoft Edge WebView2 Runtime。安装后即可使用 Live2D；PNG 皮肤仍可使用。", ex);
+            var error = new InvalidOperationException(L.T("未找到 Microsoft Edge WebView2 Runtime。安装后即可使用 Live2D；PNG 皮肤仍可使用。", "Microsoft Edge WebView2 Runtime was not found. Install it to use Live2D; PNG skins remain available."), ex);
             ReportFailure(error.Message, error);
             throw error;
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
-            ReportFailure("Live2D 模型加载失败。", ex);
+            ReportFailure(L.T("Live2D 模型加载失败。", "The Live2D model failed to load."), ex);
             throw;
         }
     }
@@ -148,20 +150,20 @@ internal sealed class Live2DView : Grid, IDisposable
         }
         catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex))
         {
-            content?.Dispose(); ReportFailure("Live2D 渲染进程已停止。", ex);
+            content?.Dispose(); ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), ex);
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
             content?.Dispose(); Program.Log(ex);
             try { Respond(e, null, 404, "Not Found", ""); }
-            catch (Exception responseError) when (WebViewFailurePolicy.IsUnavailable(responseError)) { ReportFailure("Live2D 渲染进程已停止。", responseError); }
+            catch (Exception responseError) when (WebViewFailurePolicy.IsUnavailable(responseError)) { ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), responseError); }
         }
     }
 
     private void Respond(CoreWebView2WebResourceRequestedEventArgs e, Stream? content, int status, string reason, string headers)
     {
         if (_disposed || IsFailed) { content?.Dispose(); return; }
-        var environment = _environment ?? throw new InvalidOperationException("Live2D 运行环境不可用。");
+        var environment = _environment ?? throw new InvalidOperationException(L.T("Live2D 运行环境不可用。", "The Live2D runtime is unavailable."));
         e.Response = environment.CreateWebResourceResponse(content, status, reason, headers);
     }
 
@@ -178,16 +180,16 @@ internal sealed class Live2DView : Grid, IDisposable
             if (root.TryGetProperty("requestId", out var request) && !string.IsNullOrEmpty(request.GetString()) && request.GetString() != _requestId) return;
             if (type == "loaded") _loaded.TrySetResult(true);
             if (type == "error")
-                ReportFailure(root.TryGetProperty("message", out var message) ? message.GetString() ?? "模型加载失败。" : "模型加载失败。");
+                ReportFailure(root.TryGetProperty("message", out var message) ? message.GetString() ?? L.T("模型加载失败。", "The model failed to load.") : L.T("模型加载失败。", "The model failed to load."));
         }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure("Live2D 渲染进程已停止。", ex); }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), ex); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { Program.Log(ex); }
     }
 
     internal void HandleProcessFailure(CoreWebView2ProcessFailedKind kind)
     {
         if (!_disposed && !IsFailed && WebViewFailurePolicy.RequiresRecreation(kind))
-            ReportFailure("Live2D 渲染进程已停止：" + kind);
+            ReportFailure(L.T("Live2D 渲染进程已停止：", "The Live2D renderer has stopped: ") + kind);
     }
 
     private void ReportFailure(string message, Exception? error = null)
@@ -204,14 +206,14 @@ internal sealed class Live2DView : Grid, IDisposable
     private void ThrowIfUnavailable()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (IsFailed) throw new InvalidOperationException("Live2D 渲染进程已停止。");
+        if (IsFailed) throw new InvalidOperationException(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."));
     }
 
     private void Post(object message)
     {
         if (_disposed || IsFailed || !_runtimeReady) return;
         try { _browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message)); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure("Live2D 渲染进程已停止。", ex); }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), ex); }
     }
 
     public void SetPaused(bool paused)
@@ -230,7 +232,7 @@ internal sealed class Live2DView : Grid, IDisposable
     {
         ThrowIfUnavailable();
         try { return await _browser.ExecuteScriptAsync("JSON.stringify(window.petDiagnostics())"); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure("Live2D 渲染进程已停止。", ex); throw; }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), ex); throw; }
     }
 
     internal async Task<CharacterGeometry> CaptureContactGeometryAsync()
@@ -254,7 +256,7 @@ internal sealed class Live2DView : Grid, IDisposable
     {
         ThrowIfUnavailable();
         try { await _browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream); }
-        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure("Live2D 渲染进程已停止。", ex); throw; }
+        catch (Exception ex) when (WebViewFailurePolicy.IsUnavailable(ex)) { ReportFailure(L.T("Live2D 渲染进程已停止。", "The Live2D renderer has stopped."), ex); throw; }
     }
 
     public void Dispose()

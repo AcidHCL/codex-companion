@@ -46,7 +46,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     private Process? _worker;
     private long _workerRevision;
     private bool _disposed;
-    private PetVoiceProfile _profile = PetVoiceProfiles.DefaultForSkin("deepseek");
+    private PetVoiceProfile _profile = PetVoiceProfiles.ResolveForPlayback(PetVoiceProfiles.DefaultForSkin("deepseek"));
     internal const int MaxWaveBytes = 32 * 1024 * 1024;
 
     internal PetVoiceClient(Func<(string Python, string Script)>? runtimeResolver = null, int port = 18766,
@@ -67,7 +67,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
 
     public async Task SelectProfileAsync(PetVoiceProfile profile, CancellationToken cancellationToken)
     {
-        profile = PetVoiceProfiles.Normalize(profile, "deepseek");
+        profile = PetVoiceProfiles.ResolveForPlayback(PetVoiceProfiles.Normalize(profile, "deepseek"));
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         await _startup.WaitAsync(lifetime.Token).ConfigureAwait(false);
         try
@@ -91,7 +91,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         "saved-voice" => "saved-voice:" + _profile.ReferenceId,
         "voice-design" => "voice-design",
         "custom-voice" => "custom-voice:" + _profile.Speaker,
-        _ => throw new InvalidOperationException("当前角色尚未选择语音模型。")
+        _ => throw new InvalidOperationException(L.T("当前角色尚未选择语音模型。", "No speech model is selected for this character."))
     };
 
     // Authenticated read-only state for diagnostics; never starts a worker.
@@ -108,7 +108,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
 
     internal static PetVoiceHealth ParseHealth(JsonElement root)
     {
-        if (root.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("语音引擎返回了无效的状态信息。");
+        if (root.ValueKind != JsonValueKind.Object) throw new InvalidOperationException(L.T("语音引擎返回了无效的状态信息。", "The speech engine returned invalid status information."));
         bool Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
         string Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
         long? Bytes(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
@@ -155,7 +155,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
                 if (File.Exists(python)) return (python, script);
             }
         }
-        throw new InvalidOperationException("本地音色引擎尚未安装，请先运行 voice-service 中的安装脚本。");
+        throw new InvalidOperationException(L.T("本地音色引擎尚未安装，请先运行 voice-service 中的安装脚本。", "The local speech engine is not installed. Run the setup script in voice-service first."));
     }
 
     private async Task EnsureStartedAsync(CancellationToken cancellationToken)
@@ -165,7 +165,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         Process? createdThisAttempt = null;
         try
         {
-            if (!PetVoiceProfiles.IsEnabled(_profile)) throw new InvalidOperationException("当前角色尚未选择语音模型。");
+            if (!PetVoiceProfiles.IsEnabled(_profile)) throw new InvalidOperationException(L.T("当前角色尚未选择语音模型。", "No speech model is selected for this character."));
             Process? existing;
             lock (_workerLock)
             {
@@ -198,7 +198,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             lock (_workerLock)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                if (!process.Start()) throw new InvalidOperationException("本地音色服务未能启动。");
+                if (!process.Start()) throw new InvalidOperationException(L.T("本地音色服务未能启动。", "The local speech service could not start."));
                 _worker = process; createdThisAttempt = process; _workerRevision++;
             }
             process.BeginOutputReadLine(); process.BeginErrorReadLine();
@@ -214,14 +214,14 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             while (until.Elapsed < TimeSpan.FromSeconds(50))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (process.HasExited) throw new InvalidOperationException("本地音色服务已退出，请检查模型安装或端口占用。");
+                if (process.HasExited) throw new InvalidOperationException(L.T("本地音色服务已退出，请检查模型安装或端口占用。", "The local speech service exited. Check the model installation and port availability."));
                 try
                 {
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     timeout.CancelAfter(TimeSpan.FromSeconds(2));
                     using var response = await _http.GetAsync("health", timeout.Token).ConfigureAwait(false);
                     if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
-                        throw new InvalidOperationException("语音端口被其他服务占用，无法验证本次语音会话。");
+                        throw new InvalidOperationException(L.T("语音端口被其他服务占用，无法验证本次语音会话。", "Another service is using the speech port. This speech session could not be authenticated."));
                     if (response.IsSuccessStatusCode) return;
                     lastFailure = "HTTP " + (int)response.StatusCode;
                 }
@@ -229,7 +229,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { lastFailure = "connection_timeout"; }
                 await Task.Delay(250, cancellationToken).ConfigureAwait(false);
             }
-            throw new InvalidOperationException("本地音色服务连接超时（" + lastFailure + "）。");
+            throw new InvalidOperationException(L.T("本地音色服务连接超时（" + lastFailure + "）。", "Local speech service connection timed out (" + lastFailure + ")."));
         }
         catch
         {
@@ -282,7 +282,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             {
                 response.Dispose();
                 if (await RestartRetiredWorkerAsync(owner, token).ConfigureAwait(false)) continue;
-                throw new InvalidOperationException("语音会话已改变，请重新发起朗读。");
+                throw new InvalidOperationException(L.T("语音会话已改变，请重新发起朗读。", "The speech session has changed. Start the readout again."));
             }
             return response;
         }
@@ -346,22 +346,22 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         {
             string hint = response.StatusCode switch
             {
-                HttpStatusCode.Conflict => "语音引擎正在处理另一段声音，请稍后重试。",
-                HttpStatusCode.ServiceUnavailable => "本地音色引擎暂不可用，可能正在等待空闲显存或尚未安装完整。",
-                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "本地语音会话认证失败。",
-                _ => "本地音色合成失败，可点击试听重试。"
+                HttpStatusCode.Conflict => L.T("语音引擎正在处理另一段声音，请稍后重试。", "The speech engine is busy with another request. Please try again shortly."),
+                HttpStatusCode.ServiceUnavailable => L.T("本地音色引擎暂不可用，可能正在等待空闲显存或尚未安装完整。", "The local speech engine is unavailable. It may be waiting for free GPU memory or an incomplete installation."),
+                HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => L.T("本地语音会话认证失败。", "Local speech session authentication failed."),
+                _ => L.T("本地音色合成失败，可点击试听重试。", "Local speech synthesis failed. Click Audition to try again.")
             };
             throw new InvalidOperationException(hint);
         }
         if (response.Content.Headers.ContentLength is long length && length > MaxWaveBytes)
-            throw new InvalidOperationException("语音结果超过允许大小。");
+            throw new InvalidOperationException(L.T("语音结果超过允许大小。", "The generated audio exceeds the size limit."));
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var output = new MemoryStream();
         var buffer = new byte[65536];
         int read;
         while ((read = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) != 0)
         {
-            if (output.Length + read > MaxWaveBytes) throw new InvalidOperationException("语音结果超过允许大小。");
+            if (output.Length + read > MaxWaveBytes) throw new InvalidOperationException(L.T("语音结果超过允许大小。", "The generated audio exceeds the size limit."));
             output.Write(buffer, 0, read);
         }
         var bytes = output.ToArray();
@@ -375,9 +375,9 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         var token = lifetime.Token;
         using var response = await SendVoiceRequestAsync("v1/audio/stream", new { input = text, voice = VoiceId, request_id = requestId }, token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("本地流式语音暂不可用，请检查语音模型状态后重试。");
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(L.T("本地流式语音暂不可用，请检查语音模型状态后重试。", "Local streamed speech is unavailable. Check the speech model status and try again."));
         if (response.Content.Headers.ContentType?.MediaType != "application/x-ndjson")
-            throw new InvalidOperationException("语音服务未返回有效的音频流。");
+            throw new InvalidOperationException(L.T("语音服务未返回有效的音频流。", "The speech service did not return a valid audio stream."));
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         await foreach (var chunk in PetPcmProtocol.ReadAsync(stream, token).ConfigureAwait(false)) yield return chunk;
     }
@@ -386,7 +386,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         using var response = await SendVoiceRequestAsync("preload", new { request_id = requestId }, lifetime.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("语音模型预加载失败，请检查显存和本地引擎安装。");
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(L.T("语音模型预加载失败，请检查显存和本地引擎安装。", "Speech model preload failed. Check free GPU memory and the local engine installation."));
     }
 
     public async Task SetRetentionAsync(bool active, CancellationToken cancellationToken)
@@ -397,7 +397,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         lifetime.CancelAfter(TimeSpan.FromSeconds(3));
         using var content = JsonBody(new { active });
         using var response = await _http.PostAsync("retention", content, lifetime.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("无法更新语音模型保留状态。");
+        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(L.T("无法更新语音模型保留状态。", "Could not update speech model retention."));
     }
 
     public async Task UnloadAsync(CancellationToken cancellationToken)
@@ -419,7 +419,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         if (bytes.Length < 44 || bytes.Length > MaxWaveBytes ||
             System.Text.Encoding.ASCII.GetString(bytes, 0, 4) != "RIFF" ||
             System.Text.Encoding.ASCII.GetString(bytes, 8, 4) != "WAVE")
-            throw new InvalidOperationException("语音服务未返回有效的 WAV 音频。");
+            throw new InvalidOperationException(L.T("语音服务未返回有效的 WAV 音频。", "The speech service did not return valid WAV audio."));
     }
 
     public async Task CancelAsync(string requestId)
@@ -482,12 +482,12 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             _beforeOwnedWorkerStop?.Invoke();
             if (!worker.HasExited) worker.Kill(entireProcessTree: true);
             exited = worker.WaitForExit(5000);
-            if (!exited && throwOnFailure) throw new InvalidOperationException("语音进程尚未退出，显存释放未完成，请重试卸载。");
+            if (!exited && throwOnFailure) throw new InvalidOperationException(L.T("语音进程尚未退出，显存释放未完成，请重试卸载。", "The speech process is still running and has not released GPU memory. Try unloading again."));
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             try { exited = worker.HasExited; } catch (InvalidOperationException) { }
-            if (!exited && throwOnFailure) throw new InvalidOperationException("语音进程未能退出，显存释放未完成，请重试卸载。", ex);
+            if (!exited && throwOnFailure) throw new InvalidOperationException(L.T("语音进程未能退出，显存释放未完成，请重试卸载。", "The speech process could not exit or release GPU memory. Try unloading again."), ex);
         }
         finally
         {

@@ -39,10 +39,10 @@ internal sealed class PetCompanionUi : IDisposable
         {
             _actions = new PetActionRailWindow(new[]
             {
-                new PetQuickAction("chat", "对话", "\uE8F2", () => Invoke(_openChat)),
-                new PetQuickAction("settings", "设置", "\uE713", () => Invoke(_openSettings)),
-                new PetQuickAction("dashboard", "看板", "\uE80F", () => Invoke(_openDashboard)),
-                new PetQuickAction("more", "更多", "\uE712", () => Invoke(_pet.OpenMoreActions))
+                new PetQuickAction("chat", L.T("对话", "Chat"), "\uE8F2", () => Invoke(_openChat)),
+                new PetQuickAction("settings", L.T("设置", "Settings"), "\uE713", () => Invoke(_openSettings)),
+                new PetQuickAction("dashboard", L.T("看板", "Dashboard"), "\uE80F", () => Invoke(_openDashboard)),
+                new PetQuickAction("more", L.T("更多", "More"), "\uE712", () => Invoke(_pet.OpenMoreActions))
             }) { Owner = _pet, Topmost = _pet.Settings.Topmost };
             ConfigureSurface(_actions);
         }

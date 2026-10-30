@@ -25,7 +25,7 @@ internal sealed class ChatLibraryWindow : Window
     internal ChatLibraryWindow(IChatMemoryStore store, string endpoint, string personaKey, string model, string? currentConversationId)
     {
         _store = store; _endpoint = endpoint; _personaKey = personaKey; _model = model; _currentId = currentConversationId;
-        Title = AppVersion.WindowTitle("历史对话"); Width = 470; Height = 575; MinWidth = 330; MinHeight = 480;
+        Title = AppVersion.WindowTitle(L.T("历史对话", "Conversation history")); Width = L.IsEnglish ? 560 : 470; Height = 575; MinWidth = 330; MinHeight = 480;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.CanResizeWithGrip; AllowsTransparency = true;
         Background = Brushes.Transparent; ShowInTaskbar = false; WindowStartupLocation = WindowStartupLocation.CenterOwner;
         UseLayoutRounding = true; Resources.MergedDictionaries.Add(Ui.CreateResources());
@@ -33,25 +33,25 @@ internal sealed class ChatLibraryWindow : Window
         for (int i = 0; i < 8; i++) body.RowDefinitions.Add(new RowDefinition { Height = i == 3 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
         var heading = new DockPanel();
         var close = Ui.Button("×", (_, _) => Close()); close.Name = "ChatLibraryClose"; close.Width = 30; close.Height = 30; close.Padding = new Thickness(0);
-        AutomationProperties.SetName(close, "关闭历史对话"); DockPanel.SetDock(close, Dock.Right); heading.Children.Add(close);
-        var label = Ui.Text("历史对话", 20, "#214332", true); label.VerticalAlignment = VerticalAlignment.Center; heading.Children.Add(label); body.Children.Add(heading);
+        AutomationProperties.SetName(close, L.T("关闭历史对话", "Close conversation history")); DockPanel.SetDock(close, Dock.Right); heading.Children.Add(close);
+        var label = Ui.Text(L.T("历史对话", "Conversation history"), 20, "#214332", true); label.VerticalAlignment = VerticalAlignment.Center; heading.Children.Add(label); body.Children.Add(heading);
         heading.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 1 && e.OriginalSource is TextBlock) DragMove(); };
-        var note = Ui.Text("保存在此电脑 · 仅列出当前服务器、当前角色的对话", 11, "#75866B"); note.TextWrapping = TextWrapping.Wrap; note.Margin = new Thickness(0, 8, 0, 11); Grid.SetRow(note, 1); body.Children.Add(note);
-        _search = Input("ChatLibrarySearch", ""); _search.ToolTip = "搜索对话标题";
-        AutomationProperties.SetName(_search, "搜索对话标题");
+        var note = Ui.Text(L.T("保存在此电脑 · 仅列出当前服务器、当前角色的对话", "Saved on this computer · Current server and character only"), 11, "#75866B"); note.TextWrapping = TextWrapping.Wrap; note.Margin = new Thickness(0, 8, 0, 11); Grid.SetRow(note, 1); body.Children.Add(note);
+        _search = Input("ChatLibrarySearch", ""); _search.ToolTip = L.T("搜索对话标题", "Search conversation titles");
+        AutomationProperties.SetName(_search, L.T("搜索对话标题", "Search conversation titles"));
         var searchFrame = Frame(_search); searchFrame.Margin = new Thickness(0, 0, 0, 10); Grid.SetRow(searchFrame, 2); body.Children.Add(searchFrame);
         _list = new ListBox { Name = "ChatLibraryList", Background = Brushes.White, BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(4), MinHeight = 30 };
         ScrollViewer.SetHorizontalScrollBarVisibility(_list, ScrollBarVisibility.Disabled);
-        _list.ItemContainerStyle = SelectionStyle(); AutomationProperties.SetName(_list, "已保存的对话");
+        _list.ItemContainerStyle = SelectionStyle(); AutomationProperties.SetName(_list, L.T("已保存的对话", "Saved conversations"));
         var listFrame = Frame(_list); Grid.SetRow(listFrame, 3); body.Children.Add(listFrame);
         var edit = new Grid { Margin = new Thickness(0, 11, 0, 0) }; edit.ColumnDefinitions.Add(new ColumnDefinition()); edit.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        _title = Input("ChatLibraryTitle", ""); _title.MaxLength = 80; AutomationProperties.SetName(_title, "对话标题"); edit.Children.Add(Frame(_title));
-        _rename = Ui.Button("改名", (_, _) => RenameSelected()); _rename.Name = "ChatLibraryRename"; _rename.Margin = new Thickness(7, 0, 0, 0); Grid.SetColumn(_rename, 1); edit.Children.Add(_rename); Grid.SetRow(edit, 4); body.Children.Add(edit);
+        _title = Input("ChatLibraryTitle", ""); _title.MaxLength = 80; AutomationProperties.SetName(_title, L.T("对话标题", "Conversation title")); edit.Children.Add(Frame(_title));
+        _rename = Ui.Button(L.T("改名", "Rename"), (_, _) => RenameSelected()); _rename.Name = "ChatLibraryRename"; _rename.Margin = new Thickness(7, 0, 0, 0); Grid.SetColumn(_rename, 1); edit.Children.Add(_rename); Grid.SetRow(edit, 4); body.Children.Add(edit);
         _confirmation = Ui.Text("", 11, "#874F3C"); _confirmation.TextWrapping = TextWrapping.Wrap;
         var confirmStack = new DockPanel { LastChildFill = true };
         var confirmActions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
-        var confirm = Ui.Button("确认删除", (_, _) => ConfirmDelete()); confirm.Name = "ChatLibraryConfirmDelete"; confirm.Foreground = Ui.Brush("#A34D3A"); confirmActions.Children.Add(confirm);
-        var cancel = Ui.Button("取消", (_, _) => CancelDelete()); cancel.Name = "ChatLibraryCancelDelete"; cancel.Margin = new Thickness(7, 0, 0, 0); confirmActions.Children.Add(cancel);
+        var confirm = Ui.Button(L.T("确认删除", "Confirm deletion"), (_, _) => ConfirmDelete()); confirm.Name = "ChatLibraryConfirmDelete"; confirm.Foreground = Ui.Brush("#A34D3A"); confirmActions.Children.Add(confirm);
+        var cancel = Ui.Button(L.T("取消", "Cancel"), (_, _) => CancelDelete()); cancel.Name = "ChatLibraryCancelDelete"; cancel.Margin = new Thickness(7, 0, 0, 0); confirmActions.Children.Add(cancel);
         DockPanel.SetDock(confirmActions, Dock.Bottom); confirmStack.Children.Add(confirmActions);
         confirmStack.Children.Add(new ScrollViewer { Content = _confirmation, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
         // Confirmation replaces the flexible list area. It never pushes the
@@ -59,9 +59,9 @@ internal sealed class ChatLibraryWindow : Window
         _confirmBox = new Border { Child = confirmStack, Background = Ui.Brush("#FFF0E7"), Padding = new Thickness(10), CornerRadius = new CornerRadius(10), MinHeight = 75, Visibility = Visibility.Collapsed }; Grid.SetRow(_confirmBox, 3); body.Children.Add(_confirmBox);
         var footer = new StackPanel(); _status = Ui.Text("", 11, "#6C8261"); _status.Name = "ChatLibraryStatus"; _status.TextWrapping = TextWrapping.Wrap; _status.Margin = new Thickness(0, 9, 0, 8); footer.Children.Add(_status);
         var actions = new Grid(); actions.ColumnDefinitions.Add(new ColumnDefinition()); actions.ColumnDefinitions.Add(new ColumnDefinition()); actions.ColumnDefinitions.Add(new ColumnDefinition());
-        var create = Ui.Button("新对话", (_, _) => CreateNew()); create.Name = "ChatLibraryNew"; create.Margin = new Thickness(0, 0, 5, 0); actions.Children.Add(create);
-        _delete = Ui.Button("删除", (_, _) => RequestDelete()); _delete.Name = "ChatLibraryDelete"; _delete.Margin = new Thickness(3, 0, 5, 0); Grid.SetColumn(_delete, 1); actions.Children.Add(_delete);
-        _open = Ui.Button("打开对话", (_, _) => OpenSelected()); _open.Name = "ChatLibraryOpen"; _open.Background = Ui.Brush("#356446"); _open.Foreground = Brushes.White; _open.Margin = new Thickness(3, 0, 0, 0); Grid.SetColumn(_open, 2); actions.Children.Add(_open); footer.Children.Add(actions); Grid.SetRow(footer, 6); body.Children.Add(footer);
+        var create = Ui.Button(L.T("新对话", "New conversation"), (_, _) => CreateNew()); create.Name = "ChatLibraryNew"; create.Margin = new Thickness(0, 0, 5, 0); actions.Children.Add(create);
+        _delete = Ui.Button(L.T("删除", "Delete"), (_, _) => RequestDelete()); _delete.Name = "ChatLibraryDelete"; _delete.Margin = new Thickness(3, 0, 5, 0); Grid.SetColumn(_delete, 1); actions.Children.Add(_delete);
+        _open = Ui.Button(L.T("打开对话", "Open conversation"), (_, _) => OpenSelected()); _open.Name = "ChatLibraryOpen"; _open.Background = Ui.Brush("#356446"); _open.Foreground = Brushes.White; _open.Margin = new Thickness(3, 0, 0, 0); Grid.SetColumn(_open, 2); actions.Children.Add(_open); footer.Children.Add(actions); Grid.SetRow(footer, 6); body.Children.Add(footer);
         var version = Ui.VersionLabel(false); version.HorizontalAlignment = HorizontalAlignment.Right; version.Margin = new Thickness(0, 9, 0, 0); Grid.SetRow(version, 7); body.Children.Add(version);
         Content = new Border { Background = Ui.Brush("#F7F9F2"), BorderBrush = Ui.Brush("#C9D6C0"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(20), Child = body };
         _search.TextChanged += (_, _) => RefreshList();
@@ -86,16 +86,16 @@ internal sealed class ChatLibraryWindow : Window
             {
                 var row = new StackPanel { Margin = new Thickness(7, 5, 7, 5) };
                 var title = Ui.Text(conversation.Title, 13, "#294739", conversation.Id == _currentId); title.TextTrimming = TextTrimming.CharacterEllipsis; row.Children.Add(title);
-                row.Children.Add(Ui.Text(conversation.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + (conversation.Id == _currentId ? " · 当前" : "") + (conversation.HasDraft ? " · 草稿" : ""), 10, "#85917D"));
+                row.Children.Add(Ui.Text(conversation.UpdatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm") + (conversation.Id == _currentId ? L.T(" · 当前", " · Current") : "") + (conversation.HasDraft ? L.T(" · 草稿", " · Draft") : ""), 10, "#85917D"));
                 var item = new ListBoxItem { Tag = conversation, Content = row, ToolTip = conversation.Title };
                 _list.Items.Add(item); if (conversation.Id == selectedId) _list.SelectedItem = item;
             }
             if (_list.SelectedItem == null && _list.Items.Count > 0) _list.SelectedIndex = 0;
-            _status.Text = matches.Count == 0 ? (query.Length > 0 ? "没有匹配的对话。" : "这里还没有对话，点击“新对话”开始。") : $"共 {matches.Count} 个对话" + (matches.Count > 200 ? "，显示最近 200 个；输入标题搜索更早的记录。" : "。双击即可继续。");
+            _status.Text = matches.Count == 0 ? (query.Length > 0 ? L.T("没有匹配的对话。", "No matching conversations.") : L.T("这里还没有对话，点击“新对话”开始。", "No conversations yet. Click New conversation to start.")) : L.T($"共 {matches.Count} 个对话", $"{matches.Count} conversation(s)") + (matches.Count > 200 ? L.T("，显示最近 200 个；输入标题搜索更早的记录。", "; showing the latest 200. Search by title to find older records.") : L.T("。双击即可继续。", ". Double-click to continue."));
             _status.Foreground = Ui.Brush("#6C8261");
             UpdateActions();
         }
-        catch (Exception) { SetError("读取对话失败，请检查本地存储是否可用。"); }
+        catch (Exception) { SetError(L.T("读取对话失败，请检查本地存储是否可用。", "Could not read conversations. Check that local storage is available.")); }
     }
 
     private void UpdateActions() { bool selected = Selected() != null; _open.IsEnabled = selected; _rename.IsEnabled = selected; _delete.IsEnabled = selected; _title.IsEnabled = selected; }
@@ -104,20 +104,20 @@ internal sealed class ChatLibraryWindow : Window
     private void CreateNew()
     {
         try { SelectedConversationId = _store.CreateConversation(_endpoint, _personaKey, _model).Id; Close(); }
-        catch (Exception) { SetError("新对话保存失败，未关闭当前记录。"); }
+        catch (Exception) { SetError(L.T("新对话保存失败，未关闭当前记录。", "Could not save a new conversation. The current conversation remains open.")); }
     }
     private void RenameSelected()
     {
         if (Selected() is not { } item) return;
-        string title = _title.Text.Trim(); if (title.Length == 0) { SetError("请填写对话标题。"); return; }
+        string title = _title.Text.Trim(); if (title.Length == 0) { SetError(L.T("请填写对话标题。", "Enter a conversation title.")); return; }
         try { _store.RenameConversation(item.Id, title); RefreshList(item.Id); }
-        catch (Exception) { SetError("标题保存失败，原记录保持不变。"); }
+        catch (Exception) { SetError(L.T("标题保存失败，原记录保持不变。", "Could not save the title. The original record is unchanged.")); }
     }
     private void RequestDelete()
     {
         if (Selected() is not { } item) return;
         _deleteId = item.Id;
-        _confirmation.Text = "删除“" + item.Title + "”？这会删除此对话的文字和图片，无法撤销。共享记忆会保留。";
+        _confirmation.Text = L.T("删除“", "Delete “") + item.Title + L.T("”？这会删除此对话的文字和图片，无法撤销。共享记忆会保留。", "”? Its messages and images will be deleted permanently. Shared memory will be kept.");
         _list.IsEnabled = false; _confirmBox.Visibility = Visibility.Visible;
     }
     private void CancelDelete() { _deleteId = null; _confirmBox.Visibility = Visibility.Collapsed; _list.IsEnabled = true; }
@@ -156,7 +156,7 @@ internal sealed class ChatLibraryWindow : Window
             {
                 try { _store.SetActiveConversation(originalActive); } catch (Exception) { }
             }
-            SetError(deleted ? "记录已删除，但恢复其他对话时出错；关闭此窗口后会重试。" : "删除失败，请重试；未删除的记录仍然保留。");
+            SetError(deleted ? L.T("记录已删除，但恢复其他对话时出错；关闭此窗口后会重试。", "The conversation was deleted, but restoring another one failed. Closing this window will retry.") : L.T("删除失败，请重试；未删除的记录仍然保留。", "Deletion failed. Please retry; records that were not deleted are still preserved."));
         }
     }
 

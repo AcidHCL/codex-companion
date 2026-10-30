@@ -10,7 +10,7 @@ namespace DesktopPet;
 internal sealed record UsageWindowInfo(int DurationMinutes, double? UsedPercent, DateTimeOffset? ResetsAt)
 {
     public double? RemainingPercent => UsedPercent.HasValue ? Math.Clamp(100 - UsedPercent.Value, 0, 100) : null;
-    public string PeriodLabel => DurationMinutes switch { 10080 => "每周", 300 => "5 小时", _ => DurationMinutes > 0 ? DurationMinutes + " 分钟" : "未知周期" };
+    public string PeriodLabel => DurationMinutes switch { 10080 => L.T("每周", "Weekly"), 300 => L.T("5 小时", "5 hours"), _ => DurationMinutes > 0 ? DurationMinutes + L.T(" 分钟", " min") : L.T("未知周期", "Unknown window") };
 }
 internal sealed record UsageBucketInfo(string Id, string Name, string? Plan, string? CreditBalance, bool? HasCredits, bool Unlimited, IReadOnlyList<UsageWindowInfo> Windows);
 internal sealed record CodexTaskInfo(string Id, string Title, string Status, string Kind, string? HostId, string? ProjectName, double UpdatedAt, bool Pinned)
@@ -21,13 +21,13 @@ internal sealed record CodexTaskInfo(string Id, string Title, string Status, str
     public string Key => Kind + ":" + (HostId ?? "local") + ":" + Id;
     public bool IsRunning => Status is "active" or "inProgress" or "running";
     public bool NeedsAttention => Status is "needsAttention" or "waitingForInput" or "waitingForApproval" or "interrupted" or "error" or "systemError";
-    public string StatusLabel => Status switch { "waitingForApproval" => "等待审批", "waitingForInput" => "等待输入", "systemError" or "error" => "任务异常", "notLoaded" => "未加载", _ => IsRunning ? "正在执行" : NeedsAttention ? "需要关注" : Status is "idle" or "completed" ? "空闲" : "状态未知" };
+    public string StatusLabel => Status switch { "waitingForApproval" => L.T("等待审批", "Waiting for approval"), "waitingForInput" => L.T("等待输入", "Waiting for input"), "systemError" or "error" => L.T("任务异常", "Task error"), "notLoaded" => L.T("未加载", "Not loaded"), _ => IsRunning ? L.T("正在执行", "Running") : NeedsAttention ? L.T("需要关注", "Needs attention") : Status is "idle" or "completed" ? L.T("空闲", "Idle") : L.T("状态未知", "Unknown status") };
 }
 internal sealed record PublicMessage(string Id, string Role, string Text, string? Phase);
 internal sealed record ConversationPage(string TaskKey, IReadOnlyList<PublicMessage> Messages, string? NextCursor, string? LatestTurnStatus, bool HasMore);
 internal sealed record CodexSnapshot(bool Connected, bool Refreshing, string StatusText, DateTimeOffset? LastUpdated, DateTimeOffset? UsageUpdatedAt, IReadOnlyList<UsageBucketInfo> Buckets, IReadOnlyList<CodexTaskInfo> Tasks, string? Error, int? ResetCreditsAvailable)
 {
-    public static CodexSnapshot Empty => new(false, false, "等待连接 Codex", null, null, Array.Empty<UsageBucketInfo>(), Array.Empty<CodexTaskInfo>(), null, null);
+    public static CodexSnapshot Empty => new(false, false, L.T("等待连接 Codex", "Waiting to connect to Codex"), null, null, Array.Empty<UsageBucketInfo>(), Array.Empty<CodexTaskInfo>(), null, null);
     public IReadOnlyList<CodexTaskInfo> CodexTasks => Tasks.Where(task => task.Source == TaskSource.Codex).ToArray();
     public IReadOnlyList<CodexTaskInfo> DotTasks => Tasks.Where(task => task.Source == TaskSource.Dot).ToArray();
     public IReadOnlyList<CodexTaskInfo> UnknownTasks => Tasks.Where(task => task.Source == TaskSource.Unknown).ToArray();
@@ -47,7 +47,7 @@ internal static class CodexParser
         if (buckets.Count == 0 && Get(data, "rateLimits").ValueKind == JsonValueKind.Object)
             buckets.Add(ParseBucket(Text(Get(data, "rateLimits"), "limitId") ?? "codex", Get(data, "rateLimits")));
         if (!data.TryGetProperty("rateLimits", out _) && !data.TryGetProperty("rateLimitsByLimitId", out _))
-            throw new InvalidDataException("Codex 用量接口格式发生变化。");
+            throw new InvalidDataException(L.T("Codex 用量接口格式发生变化。", "The Codex usage response format has changed."));
         int? resets = Number(Get(data, "rateLimitResetCredits"), "availableCount") is double count && count >= 0 ? (int)count : null;
         return (buckets, resets, Text(data, "accountId"));
     }
@@ -72,7 +72,7 @@ internal static class CodexParser
     public static IReadOnlyList<CodexTaskInfo> ParseTasks(JsonElement data)
     {
         RequireObject(data);
-        if (Get(data, "threads").ValueKind != JsonValueKind.Array) throw new InvalidDataException("Codex 任务接口格式发生变化。");
+        if (Get(data, "threads").ValueKind != JsonValueKind.Array) throw new InvalidDataException(L.T("Codex 任务接口格式发生变化。", "The Codex task response format has changed."));
         var rows = new Dictionary<string, CodexTaskInfo>(StringComparer.Ordinal);
         foreach (string slot in new[] { "pinnedThreads", "threads" })
         {
@@ -85,7 +85,7 @@ internal static class CodexParser
                 if (Text(task, "kind") != "codex") continue;
                 string? id = Text(task, "id");
                 if (string.IsNullOrEmpty(id)) continue;
-                var row = new CodexTaskInfo(id, Text(task, "title") ?? "未命名任务", Status(task), "codex", Text(task, "hostId"), Text(task, "projectName") ?? Text(task, "cwd"), Number(task, "updatedAt") ?? 0, slot == "pinnedThreads");
+                var row = new CodexTaskInfo(id, Text(task, "title") ?? L.T("未命名任务", "Untitled task"), Status(task), "codex", Text(task, "hostId"), Text(task, "projectName") ?? Text(task, "cwd"), Number(task, "updatedAt") ?? 0, slot == "pinnedThreads");
                 var source = TaskSourcePolicy.Classify(task);
                 row = row with { Source = source, DetectedSource = source };
                 if (!rows.ContainsKey(row.Key)) rows[row.Key] = row;
@@ -98,7 +98,7 @@ internal static class CodexParser
     {
         RequireObject(data);
         var turns = Get(data, "turns");
-        if (turns.ValueKind != JsonValueKind.Array) throw new InvalidDataException("Codex 对话接口格式发生变化。");
+        if (turns.ValueKind != JsonValueKind.Array) throw new InvalidDataException(L.T("Codex 对话接口格式发生变化。", "The Codex conversation response format has changed."));
         var page = Get(data, "page");
         var messages = new List<PublicMessage>();
         var entries = turns.EnumerateArray().ToArray();
@@ -122,7 +122,7 @@ internal static class CodexParser
                     body = content.ValueKind != JsonValueKind.Array ? "" : string.Join("\n", content.EnumerateArray().Select(c => Text(c, "type") switch
                     {
                         "text" => Text(c, "text") ?? "",
-                        "image" or "localImage" => "[图片附件]",
+                        "image" or "localImage" => L.T("[图片附件]", "[Image attachment]"),
                         _ => ""
                     }).Where(s => s.Length > 0));
                 }
@@ -158,7 +158,7 @@ internal static class CodexParser
     internal static string? Text(JsonElement data, string name) => Get(data, name).ValueKind == JsonValueKind.String ? Get(data, name).GetString() : null;
     internal static double? Number(JsonElement data, string name) => Get(data, name).ValueKind == JsonValueKind.Number && Get(data, name).TryGetDouble(out double value) && double.IsFinite(value) ? value : null;
     internal static bool? Bool(JsonElement data, string name) => Get(data, name).ValueKind is JsonValueKind.True ? true : Get(data, name).ValueKind is JsonValueKind.False ? false : null;
-    private static void RequireObject(JsonElement data) { if (data.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Codex 返回了无法识别的数据。"); }
+    private static void RequireObject(JsonElement data) { if (data.ValueKind != JsonValueKind.Object) throw new InvalidDataException(L.T("Codex 返回了无法识别的数据。", "Codex returned unrecognized data.")); }
     private static DateTimeOffset? Timestamp(double? seconds)
     {
         if (!seconds.HasValue) return null;

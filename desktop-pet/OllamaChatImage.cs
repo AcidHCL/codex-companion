@@ -19,17 +19,17 @@ internal sealed record OllamaChatImage(string Name, string Base64, BitmapSource 
     internal static OllamaChatImage FromStored(ChatStoredImage stored)
     {
         if (stored.Base64.Length == 0 || stored.Base64.Length > MaxFileBytes * 4 / 3 + 4)
-            throw new InvalidDataException("保存的图片数据大小异常。");
+            throw new InvalidDataException(L.T("保存的图片数据大小异常。", "The saved image has an invalid data size."));
         byte[] bytes;
         try { bytes = Convert.FromBase64String(stored.Base64); }
-        catch (FormatException ex) { throw new InvalidDataException("保存的图片数据已损坏。", ex); }
+        catch (FormatException ex) { throw new InvalidDataException(L.T("保存的图片数据已损坏。", "The saved image data is damaged."), ex); }
         if (bytes.Length < 8 || bytes[0] != 137 || bytes[1] != 80 || bytes[2] != 78 || bytes[3] != 71 || bytes[4] != 13 || bytes[5] != 10 || bytes[6] != 26 || bytes[7] != 10)
-            throw new InvalidDataException("保存的图片不是有效 PNG。");
+            throw new InvalidDataException(L.T("保存的图片不是有效 PNG。", "The saved image is not a valid PNG."));
         using var buffer = new MemoryStream(bytes, false);
         var decoder = BitmapDecoder.Create(buffer, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        if (decoder.Frames.Count != 1) throw new InvalidDataException("保存的图片格式异常。");
+        if (decoder.Frames.Count != 1) throw new InvalidDataException(L.T("保存的图片格式异常。", "The saved image has an invalid format."));
         var frame = decoder.Frames[0];
-        if (frame.PixelWidth > MaxEdge || frame.PixelHeight > MaxEdge) throw new InvalidDataException("保存的图片尺寸超出限制。");
+        if (frame.PixelWidth > MaxEdge || frame.PixelHeight > MaxEdge) throw new InvalidDataException(L.T("保存的图片尺寸超出限制。", "The saved image dimensions exceed the limit."));
         return Prepare(stored.Name, frame, CancellationToken.None);
     }
 
@@ -39,14 +39,14 @@ internal sealed record OllamaChatImage(string Name, string Base64, BitmapSource 
             cancellationToken.ThrowIfCancellationRequested();
             using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (file.Length == 0 || file.Length > MaxFileBytes)
-                throw new InvalidDataException("图片文件需小于 15 MB。");
+                throw new InvalidDataException(L.T("图片文件需小于 15 MB。", "Image files must be smaller than 15 MB."));
             using var buffer = new MemoryStream();
             var bytes = new byte[64 * 1024];
             int count;
             while ((count = file.Read(bytes, 0, bytes.Length)) > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (buffer.Length + count > MaxFileBytes) throw new InvalidDataException("图片文件需小于 15 MB。");
+                if (buffer.Length + count > MaxFileBytes) throw new InvalidDataException(L.T("图片文件需小于 15 MB。", "Image files must be smaller than 15 MB."));
                 buffer.Write(bytes, 0, count);
             }
             var header = buffer.GetBuffer();
@@ -55,7 +55,7 @@ internal sealed record OllamaChatImage(string Name, string Base64, BitmapSource 
             bool jpeg = length >= 3 && header[0] == 255 && header[1] == 216 && header[2] == 255;
             bool gif = length >= 6 && header[0] == 71 && header[1] == 73 && header[2] == 70 && header[3] == 56 && (header[4] == 55 || header[4] == 57) && header[5] == 97;
             bool bmp = length >= 2 && header[0] == 66 && header[1] == 77;
-            if (!(png || jpeg || gif || bmp)) throw new InvalidDataException("请选择真实的 PNG、JPEG、BMP 或 GIF 图片（GIF 取第一帧）。");
+            if (!(png || jpeg || gif || bmp)) throw new InvalidDataException(L.T("请选择真实的 PNG、JPEG、BMP 或 GIF 图片（GIF 取第一帧）。", "Choose a valid PNG, JPEG, BMP, or GIF image (only the first GIF frame is used)."));
             buffer.Position = 0;
             var decoder = BitmapDecoder.Create(buffer, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnDemand);
             var frame = decoder.Frames[0];
@@ -81,13 +81,13 @@ internal sealed record OllamaChatImage(string Name, string Base64, BitmapSource 
         CheckDimensions(bitmap.PixelWidth, bitmap.PixelHeight);
         var frozen = bitmap.Clone();
         frozen.Freeze();
-        return Task.Run(() => Prepare("剪贴板图片", frozen, cancellationToken), cancellationToken);
+        return Task.Run(() => Prepare(L.T("剪贴板图片", "Clipboard image"), frozen, cancellationToken), cancellationToken);
     }
 
     private static void CheckDimensions(int width, int height)
     {
         if (width <= 0 || height <= 0 || width > 16000 || height > 16000 || (long)width * height > MaxPixels)
-            throw new InvalidDataException("图片分辨率过大；请使用 4000 万像素以内、单边不超过 16000 像素的图片。");
+            throw new InvalidDataException(L.T("图片分辨率过大；请使用 4000 万像素以内、单边不超过 16000 像素的图片。", "Image resolution is too large. Use an image up to 40 megapixels, with no edge longer than 16000 pixels."));
     }
 
     private static OllamaChatImage Prepare(string name, BitmapSource source, CancellationToken cancellationToken)

@@ -65,8 +65,8 @@ internal static class ModelVramBreakdown
         var local = new List<ModelVramItem>(); var remote = new List<ModelVramItem>(); var notes = new List<string>();
         if (modelError != null || models == null)
         {
-            (ollamaLocal ? local : remote).Add(new("ollama:unknown", "Ollama 模型（状态不可用）", ColorForModel("ollama:unknown"), null, !ollamaLocal));
-            notes.Add((ollamaLocal ? "本机" : "远程") + " Ollama 暂未提供模型占用。");
+            (ollamaLocal ? local : remote).Add(new("ollama:unknown", L.T("Ollama 模型（状态不可用）", "Ollama models (status unavailable)"), ColorForModel("ollama:unknown"), null, !ollamaLocal));
+            notes.Add((ollamaLocal ? L.T("本机", "Local") : L.T("远程", "Remote")) + L.T(" Ollama 暂未提供模型占用。", " Ollama has not provided model memory usage."));
         }
         else
         {
@@ -75,16 +75,16 @@ internal static class ModelVramBreakdown
                     model.VramBytes is >= 0 ? model.VramBytes : null, !ollamaLocal));
         }
         if (voiceError != null)
-            local.Add(new("voice", "语音模型（状态不可用）", VoiceColor, null));
+            local.Add(new("voice", L.T("语音模型（状态不可用）", "Speech model (status unavailable)"), VoiceColor, null));
         else if (voice == null)
-            local.Add(new("voice", "语音模型（未加载）", VoiceColor, 0));
+            local.Add(new("voice", L.T("语音模型（未加载）", "Speech model (not loaded)"), VoiceColor, 0));
         else
         {
             bool hasMemory = voice.Loaded || voice.Retiring || voice.ReservedBytes is > 0 || voice.AllocatedBytes is > 0;
-            string name = string.IsNullOrWhiteSpace(voice.Model) ? "语音模型" : "语音 · " + voice.Model;
+            string name = string.IsNullOrWhiteSpace(voice.Model) ? L.T("语音模型", "Speech model") : L.T("语音 · ", "Speech · ") + voice.Model;
             // Reserved already includes allocated. Do not sum or substitute the
             // smaller allocation metric as if it represented all voice memory.
-            local.Add(new("voice", name + (hasMemory ? "（含缓存）" : "（未加载）"), VoiceColor,
+            local.Add(new("voice", name + (hasMemory ? L.T("（含缓存）", " (including cache)") : L.T("（未加载）", " (not loaded)")), VoiceColor,
                 voice.ReservedBytes is >= 0 ? voice.ReservedBytes : null));
         }
         long? total = null, usedBytes = null;
@@ -93,14 +93,14 @@ internal static class ModelVramBreakdown
             try { total = gpus.Aggregate(0L, (sum, gpu) => checked(sum + gpu.TotalBytes)); usedBytes = gpus.Aggregate(0L, (sum, gpu) => checked(sum + gpu.UsedBytes)); }
             catch (OverflowException) { total = usedBytes = null; }
         }
-        if (total == null) notes.Add("本机显存总量不可用" + (string.IsNullOrWhiteSpace(gpuError) ? "。" : "：" + Limit(gpuError)));
+        if (total == null) notes.Add(L.T("本机显存总量不可用", "Local GPU memory total unavailable") + (string.IsNullOrWhiteSpace(gpuError) ? L.T("。", ".") : L.T("：", ": ") + Limit(gpuError)));
         bool unknown = local.Any(m => m.Bytes == null);
         decimal known = local.Sum(m => (decimal)(m.Bytes ?? 0));
         long knownBytes = known <= long.MaxValue ? (long)known : long.MaxValue;
         bool fits = usedBytes != null && known <= usedBytes;
-        if (usedBytes != null && !fits) notes.Add("模型上报合计高于本次驱动实测：采样时间或统计口径不同，暂不合并为整卡分区。");
-        if (unknown) notes.Add("部分模型未提供显存；未归属区域可能包含这些模型，不能视为零占用。");
-        if (gpus is { Count: > 1 }) notes.Add("多张显卡按总量汇总；接口未提供各模型在每张显卡上的分配。");
+        if (usedBytes != null && !fits) notes.Add(L.T("模型上报合计高于本次驱动实测：采样时间或统计口径不同，暂不合并为整卡分区。", "Reported model usage exceeds the driver's measurement. Sampling times or accounting differ, so these figures are not merged into the GPU partition chart."));
+        if (unknown) notes.Add(L.T("部分模型未提供显存；未归属区域可能包含这些模型，不能视为零占用。", "Some models do not report GPU memory. Unattributed usage may include them; unavailable figures do not mean zero usage."));
+        if (gpus is { Count: > 1 }) notes.Add(L.T("多张显卡按总量汇总；接口未提供各模型在每张显卡上的分配。", "Multiple GPUs are aggregated. The interface does not report each model's allocation on individual cards."));
         return new(local, remote, total, usedBytes, knownBytes, fits,
             fits ? usedBytes - knownBytes : null, total != null ? total - usedBytes : null, unknown, notes);
     }
@@ -115,21 +115,21 @@ internal static class ModelVramBreakdown
             {
                 var gpu = gpus[i];
                 view.Children.Add(Text(gpu.Name + " · " + Bytes(gpu.UsedBytes) + " / " + Bytes(gpu.TotalBytes) +
-                    " · GPU 使用率 " + (gpu.UtilizationPercent is { } p ? p + "%" : "未提供"), "GpuInfo" + i, true));
+                    L.T(" · GPU 使用率 ", " · GPU utilization ") + (gpu.UtilizationPercent is { } p ? p + "%" : L.T("未提供", "Not provided")), "GpuInfo" + i, true));
             }
         if (snapshot.TotalBytes is { } total && snapshot.UsedBytes is { } used)
         {
-            if (gpus!.Count > 1) view.Children.Add(Text("全部显卡 · 已用 " + Bytes(used) + " / " + Bytes(total), "GpuAggregateUsage", true));
+            if (gpus!.Count > 1) view.Children.Add(Text(L.T("全部显卡 · 已用 ", "All GPUs · Used ") + Bytes(used) + " / " + Bytes(total), "GpuAggregateUsage", true));
             var parts = snapshot.AttributionFits
                 ? snapshot.LocalModels.Where(m => m.Bytes is > 0).ToList()
                 : new List<ModelVramItem>();
             long other = snapshot.AttributionFits ? snapshot.OtherBytes!.Value : used;
-            parts.Add(new("other", snapshot.AttributionFits ? "其他 / 未归属" : "驱动实测已用", OtherColor, other));
-            parts.Add(new("free", "可用显存", FreeColor, snapshot.FreeBytes));
+            parts.Add(new("other", snapshot.AttributionFits ? L.T("其他 / 未归属", "Other / unattributed") : L.T("驱动实测已用", "Driver-reported usage"), OtherColor, other));
+            parts.Add(new("free", L.T("可用显存", "Free GPU memory"), FreeColor, snapshot.FreeBytes));
             view.Children.Add(Bar(parts, total, "GpuCapacitySegments"));
             if (!snapshot.AttributionFits && snapshot.KnownModelBytes > 0)
             {
-                view.Children.Add(Text("模型上报相对占比（单独比例，不代表整卡分区）", "GpuAttributionMismatch"));
+                view.Children.Add(Text(L.T("模型上报相对占比（单独比例，不代表整卡分区）", "Relative reported model usage (separate proportions, not GPU partitions)"), "GpuAttributionMismatch"));
                 view.Children.Add(Bar(snapshot.LocalModels, snapshot.KnownModelBytes, "GpuModelRelativeSegments"));
             }
         }
@@ -137,18 +137,18 @@ internal static class ModelVramBreakdown
         if (snapshot.UsedBytes is { } && snapshot.TotalBytes is { })
         {
             var accounting = new List<ModelVramItem>();
-            if (snapshot.OtherBytes is { } other) accounting.Add(new("other", "其他 / 未归属", OtherColor, other));
-            else accounting.Add(new("driver", "驱动实测已用", OtherColor, snapshot.UsedBytes));
-            accounting.Add(new("free", "可用显存", FreeColor, snapshot.FreeBytes));
+            if (snapshot.OtherBytes is { } other) accounting.Add(new("other", L.T("其他 / 未归属", "Other / unattributed"), OtherColor, other));
+            else accounting.Add(new("driver", L.T("驱动实测已用", "Driver-reported usage"), OtherColor, snapshot.UsedBytes));
+            accounting.Add(new("free", L.T("可用显存", "Free GPU memory"), FreeColor, snapshot.FreeBytes));
             view.Children.Add(Legend(accounting, "GpuAccountingLegend"));
         }
         if (snapshot.RemoteModels.Count > 0)
         {
-            view.Children.Add(Text("远程 Ollama 模型 · 不计入本机显存条", "RemoteModelLegendHeading", true));
+            view.Children.Add(Text(L.T("远程 Ollama 模型 · 不计入本机显存条", "Remote Ollama models · Excluded from local GPU memory"), "RemoteModelLegendHeading", true));
             view.Children.Add(Legend(snapshot.RemoteModels, "RemoteModelLegend"));
         }
         foreach (string note in snapshot.Notes) view.Children.Add(Text(note, "", false));
-        view.Children.Add(Text("语音按 PyTorch 保留显存计入（已包含分配量）；颜色随模型保持，未归属包含桌面、其他程序及未报告的开销。", "ModelVramScopeHint"));
+        view.Children.Add(Text(L.T("语音按 PyTorch 保留显存计入（已包含分配量）；颜色随模型保持，未归属包含桌面、其他程序及未报告的开销。", "Speech uses PyTorch reserved memory, including allocated memory. Colors stay with each model. Unattributed usage includes the desktop, other applications, and unreported overhead."), "ModelVramScopeHint"));
         return view;
     }
 
@@ -188,7 +188,7 @@ internal static class ModelVramBreakdown
         if (name.Length > 0) text.Name = name;
         text.TextWrapping = TextWrapping.Wrap; text.Margin = new Thickness(0, 0, 0, 7); return text;
     }
-    private static string Bytes(long? bytes) => bytes == null ? "未提供" : bytes >= 1024L * 1024 * 1024
+    private static string Bytes(long? bytes) => bytes == null ? L.T("未提供", "Not provided") : bytes >= 1024L * 1024 * 1024
         ? (bytes.Value / (1024d * 1024 * 1024)).ToString("0.00", CultureInfo.CurrentCulture) + " GiB"
         : (bytes.Value / (1024d * 1024)).ToString("0.0", CultureInfo.CurrentCulture) + " MiB";
     private static string Limit(string text) => text.Length <= 240 ? text : text[..240] + "…";

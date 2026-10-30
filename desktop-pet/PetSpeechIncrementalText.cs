@@ -16,7 +16,7 @@ internal sealed class PetSpeechIncrementalText
     internal IReadOnlyList<string> Append(string? delta, bool final = false)
     {
         delta ??= "";
-        if (_received + delta.Length > 16000) throw new InvalidOperationException("语音正文超过允许长度。");
+        if (_received + delta.Length > 16000) throw new InvalidOperationException(L.T("语音正文超过允许长度。", "Speech text exceeds the length limit."));
         _received += delta.Length;
         _pending.Append(delta);
         var result = new List<string>();
@@ -87,7 +87,7 @@ internal sealed class PetSpeechIncrementalText
             else if (ch == ']' && brackets > 0) brackets--;
             else if (ch == '(') parentheses++;
             else if (ch == ')' && parentheses > 0) parentheses--;
-            if (brackets == 0 && parentheses == 0 && "。！？!?\n".Contains(ch))
+            if (brackets == 0 && parentheses == 0 && ("。！？!?\n".Contains(ch) || ch == '.' && PetSpeechText.IsSentencePeriod(text, i)))
             {
                 // A single word/title is too short for a stable first voice
                 // request. Full sentences/paragraphs give the model context.

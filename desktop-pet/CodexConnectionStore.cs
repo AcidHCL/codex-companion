@@ -113,7 +113,7 @@ internal sealed class CodexConnectionStore
             using var gate = Enter();
             using var parents = PinDirectories(true);
             if (EntryExists(RevocationPath) && !allowReactivation)
-            { LastState = CodexPairingState.Revoked; LastError = "连接已清除，请重新主动配对。"; return false; }
+            { LastState = CodexPairingState.Revoked; LastError = L.T("连接已清除，请重新主动配对。", "Pairing was cleared. Pair again explicitly."); return false; }
             ValidateExisting(ProtectedPath, true);
             ValidateExisting(LegacyPath, false);
             ValidateExisting(RevocationPath, true);
@@ -152,7 +152,7 @@ internal sealed class CodexConnectionStore
             DeleteValidated(LegacyPath, false);
         }
         catch (Exception ex) when (IsStorageError(ex))
-        { LastError = SafeStorageError; throw new IOException("无法安全清除连接记录；已停止连接，请检查本机文件权限。", ex); }
+        { LastError = SafeStorageError; throw new IOException(L.T("无法安全清除连接记录；已停止连接，请检查本机文件权限。", "Could not safely clear pairing data. Connection stopped; check local file permissions."), ex); }
     }
 
     // Migration coordination uses the same mutex as every normal read/save/revoke.
@@ -201,7 +201,7 @@ internal sealed class CodexConnectionStore
         if (hint!.SavedAtUtc < DateTimeOffset.UtcNow.AddDays(-90))
         {
             LastState = CodexPairingState.Expired;
-            LastError = "连接记录已过期，请在 Codex 中主动重新配对。";
+            LastError = L.T("连接记录已过期，请在 Codex 中主动重新配对。", "Pairing data has expired. Pair again explicitly in Codex.");
             return null;
         }
         LastState = CodexPairingState.Ready; return hint;
@@ -330,7 +330,7 @@ internal sealed class CodexConnectionStore
     {
         if (!GetFileInformationByHandle(handle, out var info)) throw new Win32Exception(Marshal.GetLastWin32Error());
         if ((info.Attributes & 0x400) != 0 || ((info.Attributes & 0x10) != 0) != directory || (!directory && info.NumberOfLinks != 1))
-            throw new InvalidDataException("连接记录路径不是独立的普通文件或目录。");
+            throw new InvalidDataException(L.T("连接记录路径不是独立的普通文件或目录。", "The pairing path is not an independent regular file or directory."));
     }
 
     private IDisposable Enter()
@@ -338,7 +338,7 @@ internal sealed class CodexConnectionStore
         var mutex = new Mutex(false, mutexName);
         try
         {
-            try { if (!mutex.WaitOne(TimeSpan.FromSeconds(5))) throw new IOException("连接记录正在使用中。"); }
+            try { if (!mutex.WaitOne(TimeSpan.FromSeconds(5))) throw new IOException(L.T("连接记录正在使用中。", "Pairing data is currently in use.")); }
             catch (AbandonedMutexException) { }
             return new MutexLease(mutex);
         }
@@ -376,7 +376,7 @@ internal sealed class CodexConnectionStore
         }
     }
 
-    private const string SafeStorageError = "连接记录未通过完整性、权限或当前用户解密检查；已停止访问。";
+    private static string SafeStorageError => L.T("连接记录未通过完整性、权限或当前用户解密检查；已停止访问。", "Pairing data failed integrity, permissions, or current-user decryption checks. Access stopped.");
     private void RecordFailure(Exception ex)
     {
         // Sharing/lock/device races may clear on the next poll. All other failures
@@ -384,7 +384,7 @@ internal sealed class CodexConnectionStore
         bool temporary = ex is IOException ||
             ex is Win32Exception native && native.NativeErrorCode is 2 or 3 or 21 or 32 or 33 or 170 or 995 or 1117 or 1237;
         LastState = temporary ? CodexPairingState.Unavailable : CodexPairingState.Invalid;
-        LastError = temporary ? "连接记录暂时无法读取；稍后会自动重试，无需重新配对。" : SafeStorageError;
+        LastError = temporary ? L.T("连接记录暂时无法读取；稍后会自动重试，无需重新配对。", "Pairing data is temporarily unreadable. Automatic retry will follow; pairing again is not required.") : SafeStorageError;
     }
     private static bool IsStorageError(Exception ex) => ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or CryptographicException or Win32Exception or ArgumentException or System.Security.SecurityException;
     private sealed class LegacyHint

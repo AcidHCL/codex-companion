@@ -1,3 +1,12 @@
+1.31.1 一键重启
+语言选择右侧新增“重启桌宠 / Restart AI Pet”，保存设置后正常退出并重新打开设置页，应用所选语言。
+
+1.31.0 中英文界面与提示词
+设置 → 桌宠与互动 → Language / 语言：选择简体中文或 English，自动保存，重启桌宠后统一生效。切换时不打断当前聊天或丢弃未保存的声音草稿。
+界面、提示气泡、角色人设、动作规划、联网与记忆提示词及新建音色工坊示例会切换语言；历史对话和自定义名称、音频、提示词保留原文。
+DeepSeek 与 GPT 默认音色继续使用原参考音频，朗读语言跟随软件。设置 → 模型与语音 → 语音生成方式 → 朗读语言 可手动指定语言。自定义音色原有语言设置保留，歌曲录音不变。
+English: Open Settings → Pet & interaction → Language / 语言, select English, then restart AI Pet. Default voices keep their original identity and follow the app language. Use Models & speech → Speech generation method → Speech language for a manual override. Existing conversations and custom voices are preserved.
+
 1.30.2 表演入口统一
 设置 → 桌宠与互动：“音乐与唱歌”仅保留音乐开关与音量；“表演与情绪”统一选择“唱 Let Me Go”“保持 Q 弹 · 邦友的酒”及其他表情舞蹈，点击播放所选表演。停止表演可结束唱歌、配乐舞蹈或其他表演并恢复日常状态。
 
@@ -22,7 +31,7 @@ Let Me Go 和 GPT 龙娘固定音色分别作为 DeepSeek 与 GPT 的内置默�
 角色声音（1.27.0）
 在看板 → 模型与显存 → 每个角色的声音中，分别为九个角色选择声音模型、预置音色或文字音色描述并保存。编辑对象不会切换当前角色或 Ollama 模型。DeepSeek 默认保留原参考音色，其他角色配置后启用。
 
-AI Pet 1.30.2 · 使用说明
+AI Pet 1.31.1 · 使用说明
 
 1.27.0 · GPT 小白龙人设与基础动画
 选择 GPT 皮肤即启用独立的旧版规格动画：待机、工作、左右走路、拎起挣扎、下落、落地、开心、生气、受惊、害羞，以及左右跳跃、攀爬和翻上窗沿，共 17 个动作、120 张透明 PNG。

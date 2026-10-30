@@ -16,7 +16,7 @@ internal sealed class PetActionRailWindow : Window
 {
     internal PetActionRailWindow(IEnumerable<PetQuickAction> actions)
     {
-        Title = AppVersion.WindowTitle("桌宠快捷操作");
+        Title = AppVersion.WindowTitle(L.T("桌宠快捷操作", "Pet quick actions"));
         WindowStyle = WindowStyle.None;
         ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true;
