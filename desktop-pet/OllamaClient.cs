@@ -15,6 +15,8 @@ using System.Threading.Tasks;
 namespace DesktopPet;
 
 internal sealed record OllamaModelChoice(string Id, string DisplayName);
+internal sealed record OllamaRunningModel(string Name, long? SizeBytes, long? VramBytes,
+    int? ContextLength, DateTimeOffset? ExpiresAt);
 
 internal static class OllamaModels
 {
@@ -47,6 +49,8 @@ internal interface IOllamaClient : IDisposable
 {
     Uri Endpoint => OllamaClient.LocalEndpoint;
     Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct);
+    Task<IReadOnlyList<OllamaRunningModel>> ListRunningModelsAsync(CancellationToken ct)
+        => Task.FromException<IReadOnlyList<OllamaRunningModel>>(new NotSupportedException("此服务器暂不提供模型驻留状态。"));
     Task<OllamaModelCapabilities> GetModelInfoAsync(string model, CancellationToken ct) => Task.FromResult(OllamaModelCapabilities.Unknown);
     IAsyncEnumerable<OllamaChatDelta> ChatAsync(string model, IReadOnlyList<OllamaMessage> messages, CancellationToken ct);
     IAsyncEnumerable<OllamaChatDelta> ChatWithToolsAsync(string model, IReadOnlyList<OllamaMessage> messages,
@@ -128,6 +132,40 @@ internal sealed class OllamaClient : IOllamaClient
             modelInfo.Clear();
         }
         return available.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    // Observes server residency without touching selection, installed-model caches,
+    // keep_alive, or inference. Missing telemetry is unknown, not zero usage.
+    public async Task<IReadOnlyList<OllamaRunningModel>> ListRunningModelsAsync(CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/ps");
+        using var response = await SendAsync(request, deadline.Token, ct).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented)
+            throw new NotSupportedException("此 Ollama 服务器暂不提供模型驻留状态。连接与聊天仍可正常使用。");
+        await EnsureSuccessAsync(response, deadline.Token, ct).ConfigureAwait(false);
+        string body = await ReadBodyAsync(response, MaxDocumentChars, truncate: false, deadline.Token, ct).ConfigureAwait(false);
+        using var document = ParseDocument(body);
+        ThrowResponseError(document.RootElement);
+        if (!document.RootElement.TryGetProperty("models", out var models) || models.ValueKind != JsonValueKind.Array)
+            throw ProtocolFailure();
+        var running = new List<OllamaRunningModel>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in models.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object || HasNonEmptyString(item, "remote_model") || HasNonEmptyString(item, "remote_host")) continue;
+            string? name = StringProperty(item, "name") ?? StringProperty(item, "model");
+            if (!OllamaModels.IsSupported(name) || !seen.Add(name!)) continue;
+            long? Bytes(string field) => item.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.Number &&
+                value.TryGetInt64(out long number) && number >= 0 ? number : null;
+            long? context = Bytes("context_length");
+            DateTimeOffset? expires = item.TryGetProperty("expires_at", out var expiry) && expiry.ValueKind == JsonValueKind.String &&
+                expiry.TryGetDateTimeOffset(out var parsedExpiry) ? parsedExpiry : null;
+            running.Add(new OllamaRunningModel(name!, Bytes("size"), Bytes("size_vram"),
+                context is > 0 and <= int.MaxValue ? (int)context.Value : null, expires));
+        }
+        return running.OrderBy(model => model.Name, StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
     public async Task<OllamaModelCapabilities> GetModelInfoAsync(string model, CancellationToken ct)

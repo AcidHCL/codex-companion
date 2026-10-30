@@ -54,7 +54,8 @@ internal sealed partial class PetWindow
         if (_closed || DisplayRenderingPaused || IsLive2DLoading || CurrentLive2DModel != null || CurrentScenePack != null || IsSceneLoading) return;
         try
         {
-            var pack = BundledSceneAnimations.FindForSkin(CurrentSkin.Id, Settings.DeepSeekAnimationPackId);
+            var pack = BundledSceneAnimations.FindForSkin(CurrentSkin.Id,
+                CurrentSkin.Id == "deepseek" ? Settings.DeepSeekAnimationPackId : null);
             if (pack != null) await SelectScenePackAsync(pack);
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { SceneStatus = "默认动画不可用：" + ex.Message; Program.Log(ex); SettingsChanged?.Invoke(); }
@@ -99,7 +100,7 @@ internal sealed partial class PetWindow
             if (!string.Equals(validated.SkinId, CurrentSkin.Id, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("当前角色已改变，请重新选择动作包。");
             CurrentScenePack = validated;
             Settings.ScenePackId = validated.Id;
-            if (BundledSceneAnimations.IsBuiltIn(validated.Id)) Settings.DeepSeekAnimationPackId = validated.Id;
+            if (BundledSceneAnimations.IsDeepSeekBuiltIn(validated.Id)) Settings.DeepSeekAnimationPackId = validated.Id;
             IsSceneLoading = false;
             SceneStatus = "已选择 · " + validated.Name;
             renderer.Completed += () =>

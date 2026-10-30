@@ -15,13 +15,14 @@ internal static class SceneAnimationLibrary
         var catalog = new SceneAnimationCatalog();
         var result = new List<SceneAnimationPack>(catalog.Load(out var importedIssues));
         var errors = new List<string>(importedIssues);
-        foreach (string id in new[] { BundledSceneAnimations.DeepSeekId, BundledSceneAnimations.DeepSeekRedrawnId })
+        foreach (var (skin, id) in new[] { ("gpt", BundledSceneAnimations.GptId),
+            ("deepseek", BundledSceneAnimations.DeepSeekId), ("deepseek", BundledSceneAnimations.DeepSeekRedrawnId) })
         {
             try
             {
-                if (BundledSceneAnimations.FindForSkin("deepseek", id) is { } builtIn) result.Insert(0, builtIn);
+                if (BundledSceneAnimations.FindForSkin(skin, id) is { } builtIn) result.Insert(0, builtIn);
             }
-            catch (Exception ex) { errors.Add("DeepSeek 内置动画（" + id + "）：" + ex.Message); }
+            catch (Exception ex) { errors.Add("内置动画（" + id + "）：" + ex.Message); }
         }
         string samples = Path.Combine(AppContext.BaseDirectory, "assets", "scene-samples");
         if (Directory.Exists(samples))
@@ -66,7 +67,7 @@ internal sealed class SceneAnimationLibraryWindow : Window
         var header = new StackPanel();
         var version = Ui.VersionLabel(); version.Margin = new Thickness(0, 0, 0, 7); header.Children.Add(version);
         header.Children.Add(Ui.Text("场景动画", 26, "#203E2C", true));
-        var intro = Ui.Text("DeepSeek 提供 24 FPS 重绘版与完整保留的旧版动画。\n可随时切换，选择会自动保存；动作随任务、互动和移动状态播放。", 13, "#66815C");
+        var intro = Ui.Text("DeepSeek 可切换新旧动画；GPT 小龙娘使用经典模式的状态与表情动画。\n选择会自动保存；动作随任务、互动和移动状态播放。", 13, "#66815C");
         intro.TextWrapping = TextWrapping.Wrap; intro.LineHeight = 22; intro.Margin = new Thickness(0, 10, 0, 16);
         header.Children.Add(intro); root.Children.Add(header);
         _packs = new ListBox { DisplayMemberPath = "Name", BorderBrush = Ui.Brush("#D3DFCF"), BorderThickness = new Thickness(1), Padding = new Thickness(8), FontSize = 15 };
@@ -96,7 +97,7 @@ internal sealed class SceneAnimationLibraryWindow : Window
         _classic = Ui.Button("回到旧版动画", async (_, _) => await SelectBuiltInAsync(BundledSceneAnimations.DeepSeekId));
         _classic.Margin = new Thickness(10, 0, 0, 0);
         versions.Children.Add(_redrawn); versions.Children.Add(_classic); footer.Children.Add(versions);
-        var help = Ui.Text("这里预览动作画面；实际跳跃、攀爬请用移动控制或向模型发出请求。表演与情绪播放一次后恢复状态；唱歌可持续播放，含 Let Me Go 音乐。新增舞蹈与烟花暂不含声音。支持 PNG 序列、APNG、精灵图和视频；导入请选择 .petanim.json 清单。", 11, "#7B8D78");
+        var help = Ui.Text("这里预览动作画面；实际跳跃、攀爬请用移动控制或向模型发出请求。情绪播放一次后恢复状态。可用表演取决于角色已安装的动作，GPT 暂无唱歌等独立表演。支持 PNG 序列、APNG、精灵图和视频；导入请选择 .petanim.json 清单。", 11, "#7B8D78");
         help.TextWrapping = TextWrapping.Wrap; help.LineHeight = 18; help.Margin = new Thickness(0, 12, 0, 0); footer.Children.Add(help);
         Grid.SetRow(footer, 2); root.Children.Add(footer); Content = root;
         _packs.SelectionChanged += (_, _) => RefreshSelection();

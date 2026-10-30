@@ -12,6 +12,7 @@ internal sealed class TrayService : IDisposable
     public event Action? ShowRequested;
     public event Action? HideRequested;
     public event Action? SettingsRequested;
+    public event Action? SkinsRequested;
     public event Action? ExitRequested;
     public event Action? DashboardRequested;
     public event Action? ChatRequested;
@@ -29,7 +30,8 @@ internal sealed class TrayService : IDisposable
         menu.Items.Add("显示桌宠", null, (_, _) => ShowRequested?.Invoke());
         menu.Items.Add("隐藏桌宠", null, (_, _) => HideRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("皮肤与设置…", null, (_, _) => SettingsRequested?.Invoke());
+        menu.Items.Add("设置…", null, (_, _) => SettingsRequested?.Invoke());
+        menu.Items.Add("角色换装…", null, (_, _) => SkinsRequested?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出桌宠", null, (_, _) => ExitRequested?.Invoke());
         icon = new NotifyIcon

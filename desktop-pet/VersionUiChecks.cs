@@ -136,7 +136,14 @@ internal static class VersionUiChecks
                 Check(!versionBounds.IntersectsWith(speechBounds), "Version label overlaps the speech text.");
 
                 var preferences = new SettingsWindow(pet, skins);
-                await ShowAsync(preferences); Verify(preferences, "settings-minimum"); preferences.Hide();
+                await ShowAsync(preferences); Verify(preferences, "wardrobe-minimum"); preferences.Hide();
+                var appSettings = new AppSettingsWindow(pet, modelServices: new DashboardModelServices(
+                    (_, _) => Task.FromResult<IReadOnlyList<OllamaRunningModel>>(Array.Empty<OllamaRunningModel>()),
+                    _ => Task.FromResult<PetVoiceHealth?>(null),
+                    _ => Task.FromResult<IReadOnlyList<LocalGpuInfo>>(Array.Empty<LocalGpuInfo>())));
+                await ShowAsync(appSettings); Verify(appSettings, "settings-general-minimum");
+                Descendants<Button>(appSettings).Single(x => x.Name == "SettingsNavModels").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await SettleAsync(appSettings); Verify(appSettings, "settings-models-minimum"); appSettings.Hide();
                 monitor = new CodexMonitor(settings, fake, persistSettings: false);
                 await monitor.RefreshAsync(true);
                 var dashboard = new CodexDashboard(monitor, settings, () => { });

@@ -114,13 +114,11 @@ internal sealed partial class PetWindow
         else if (!PhysicalBehaviorBusy && !_manualScene) Bounce();
 
         if (generation != _clickGeneration || _closed || !IsVisible || DisplayRenderingPaused) return;
-        // Immediate visual acknowledgement also works without an LLM. Keep
-        // this tiny bubble silent so rapid pokes do not queue TTS utterances;
-        // the eventual model reaction uses the normal speech output path.
+        // Offline clicks use the same optional voice path as other dialogue.
+        // A new utterance replaces the previous one, so repeated pokes never
+        // build up a stale speech queue.
         if (!Settings.LlmBehaviorEnabled || !_explicitBehaviorCommandsActive)
-            ShowSpeechBubble(CurrentSkin.Id == "deepseek"
-                ? count >= 3 ? "再戳本鲸就要生气了！赔一碗白米饭！" : count == 2 ? "哎呀，怎么又戳本鲸！" : "嗯？找本鲸有什么事？"
-                : count >= 3 ? "别一直戳我啦！" : count == 2 ? "又戳我？" : "我在呢～");
+            Say(PetPersona.ClickReply(CurrentSkin.Id, count));
         EmitBehaviorInteraction("clicked", count, played, now);
     }
 }

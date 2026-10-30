@@ -1,0 +1,11 @@
+{
+  "voice_id": "gpt-dragon-fixed-v1",
+  "model": "Qwen3-TTS-12Hz-1.7B-Base",
+  "reference_generated_by": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+  "design_instruction": "青年女性的御姐声线，清亮通透，同时有温润、饱满的中低音支撑。普通话清晰自然，音高适中，语速稍从容，咬字细腻利落。气质优雅、自信，像一位见多识广又珍爱宝藏的白龙大小姐。语气带一点克制的傲娇和若有若无的笑意，嘴上小骄傲，关心人时柔和温暖。自然说话，不要幼态、尖细夹音、刻意气泡音、过度气声或夸张戏剧腔。",
+  "reference_text": "哼，终于想起本小姐了？先说好，宝库里的金币可不能随便碰。至于你的难题，交给我就好。哼，今天就不收报酬了……才不是特意照顾你呢，只是不想看你一个人忙到太晚。",
+  "transcript_note": "Reference text includes the short interjection heard by offline ASR before the fourth sentence.",
+  "sample_rate": 24000,
+  "duration_seconds": 18.92,
+  "sha256": "207a331a63b1f208f85194edc17ded274272f458808c0a1df0690327143dc093"
+}

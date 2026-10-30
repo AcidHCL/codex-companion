@@ -10,13 +10,15 @@ internal static class PetPerformanceCatalog
     internal static readonly string[] Names =
     {
         "sing", "happy", "angry", "startled", "bashful",
-        "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks"
+        "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks", "bangyou-dance"
     };
     internal static IReadOnlyList<string> Installed(SceneAnimationPack? pack) =>
         pack == null ? System.Array.Empty<string>() : Names.Where(pack.Actions.ContainsKey).ToArray();
+    internal static bool IsMusicPerformance(string? name) => name is "sing" or "bangyou-dance";
     internal static string Label(string name) => name switch
     {
-        "sing" => "唱 Let Me Go", "happy" => "开心 · 得意", "angry" => "生气 · 鼓脸",
+        "sing" => "唱 Let Me Go", "bangyou-dance" => "保持 Q 弹 · 邦友的酒",
+        "happy" => "开心 · 得意", "angry" => "生气 · 鼓脸",
         "startled" => "受惊 · 回神", "bashful" => "害羞 · 嘴硬",
         "token-come" => "招手讨 Token", "bowl-tap" => "敲碗等饭", "bowl-tap-eager" => "木勺敲锅",
         "dance" => "小拳踏步舞", "dance-2" => "摆臂摇尾舞", "dance-3" => "举手踢腿舞", "fireworks" => "烟花小剧场", _ => name
@@ -26,8 +28,9 @@ internal static class PetPerformanceCatalog
     // artwork names separate from the physical movement tool vocabulary.
     internal static string Intent(string name) => name switch
     {
+        "bangyou-dance" => "邦友的酒、邦友、保持Q弹、Q弹、转转舞；指定这首歌或这段舞时选择这个，配套音乐播放完后结束",
         "happy" => "开心、得意、小小庆祝",
-        "angry" => "轻微生气、鼓脸、被叫肥鱼时俏皮抗议",
+        "angry" => "轻微生气、鼓脸、被逗弄时符合当前角色的俏皮抗议",
         "startled" => "受惊后回神、突然被碰到的惊讶",
         "bashful" => "害羞、被夸奖后的嘴硬不好意思",
         "token-come" => "招手讨 Token、Token 来、口粮来、招手讨口粮的俏皮表演",

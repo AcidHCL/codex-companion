@@ -17,8 +17,8 @@ internal sealed partial class PetWindow
     private void LoadBuiltInContactGeometry(SceneAnimationPack pack)
     {
         // Reload on every pack selection, including switching back to legacy.
-        // Invalid new metadata disables scripted movement instead of applying
-        // six-pose coordinates to unrelated twenty/thirty-six-frame artwork.
+        // Invalid authored metadata disables only scripted movement instead of
+        // applying another character or version's contact coordinates.
         try { _builtInMotionProfile = DeepSeekMotionTimeline.ForPack(pack); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         {
@@ -37,6 +37,13 @@ internal sealed partial class PetWindow
             visible.Union(FootGeometry.GetPngVisibleBounds(path));
             footY = Math.Max(footY, FootGeometry.GetPngFoot(path).Y);
         }
+        // If GPT's optional scripted-motion metadata is damaged, keep its
+        // ordinary standing line from idle artwork. A dangling drag/fall pose
+        // must not make its otherwise working idle character hover above ground.
+        if (pack.Id == BundledSceneAnimations.GptId && _builtInMotionProfile.StandingFoot == null &&
+            pack.Actions.TryGetValue("idle", out var idle))
+            footY = idle.Loop.Frames.Select(relative => FootGeometry.GetPngFoot(Path.Combine(pack.RootDirectory, relative)).Y)
+                .DefaultIfEmpty(footY).Max();
         Point foot = _builtInMotionProfile.StandingFoot is Point fixedFoot
             ? new Point(fixedFoot.X / _builtInMotionProfile.CanvasSize, fixedFoot.Y / _builtInMotionProfile.CanvasSize)
             : new Point(.5, footY);

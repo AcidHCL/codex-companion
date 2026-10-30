@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -258,10 +260,33 @@ internal static class PetClickInteractionChecks
 
                 phase = "offline_default";
                 settings.LlmBehaviorEnabled = false;
+                // Exercise real click -> Say -> voice routing with fake audio
+                // endpoints; persist:false still protects all user settings.
+                var voiceField = typeof(PetWindow).GetField("_voice", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                ((PetSpeechService?)voiceField.GetValue(pet))?.Dispose();
+                var clickSynth = new ClickVoiceSynth();
+                var clickPlayer = new ClickVoicePlayer();
+                voiceField.SetValue(pet, new PetSpeechService(settings, app.Dispatcher, clickSynth, clickPlayer));
+                settings.SpeechEnabled = true;
                 int beforeOffline = events.Count;
                 await pet.ReactToClickAsync(at.AddSeconds(20));
                 await WaitAction("happy");
                 Require(events.Count == beforeOffline, "disabled_llm_mode_keeps_local_expression_without_model_event");
+                await Until(() => clickPlayer.Played == 1);
+                Require(clickSynth.Texts.Single().Contains("找本鲸有什么事"),
+                    "offline_click_uses_voice_without_llm_walking_or_breathing");
+                await pet.ReactToClickAsync(at.AddSeconds(20.1));
+                await Until(() => clickPlayer.Played == 2);
+                Require(clickSynth.Texts[^1].Contains("怎么又戳本鲸"), "second_click_speaks_its_new_reaction");
+                await pet.ReactToClickAsync(at.AddSeconds(20.2));
+                await Until(() => clickPlayer.Played == 3);
+                await pet.ReactToClickAsync(at.AddSeconds(20.3));
+                await Until(() => clickPlayer.Played == 4);
+                Require(clickSynth.Texts.Any(text => text.Contains("赔一碗白米饭")) && clickPlayer.Played == 4,
+                    "repeated_angry_clicks_are_new_utterances_even_with_identical_text");
+                settings.SpeechEnabled = false;
+                await pet.ReactToClickAsync(at.AddSeconds(20.4));
+                Require(clickPlayer.Played == 4, "offline_click_still_respects_speech_disabled");
 
                 phase = "routed_pointer_input";
                 settings.LlmBehaviorEnabled = true;
@@ -295,6 +320,25 @@ internal static class PetClickInteractionChecks
                 Require(events.Count == beforeLostCapture && !movement.IsDragging,
                     "lost_pointer_capture_does_not_commit_a_click");
 
+                phase = "gpt_offline_persona_and_expressions";
+                settings.LlmBehaviorEnabled = false;
+                pet.SelectSkin("gpt");
+                await WaitAction("idle");
+                Require(pet.CurrentScenePack?.SkinId == "gpt", "gpt_clicks_use_its_own_bundled_character_artwork");
+                var speechBlock = (TextBlock)typeof(PetWindow).GetField("_speech", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(pet)!;
+                int beforeDragon = events.Count;
+                foreach (var item in new[] { (Offset: 40d, Action: "happy", Marker: "小龙娘"),
+                    (Offset: 40.1d, Action: "startled", Marker: "龙角"), (Offset: 40.2d, Action: "angry", Marker: "本龙") })
+                {
+                    await pet.ReactToClickAsync(at.AddSeconds(item.Offset));
+                    await WaitAction(item.Action);
+                    Require(speechBlock.Text.Contains(item.Marker, StringComparison.Ordinal) &&
+                        !speechBlock.Text.Contains("本鲸", StringComparison.Ordinal) && !speechBlock.Text.Contains("米饭", StringComparison.Ordinal),
+                        "gpt_offline_" + item.Action + "_uses_dragon_dialogue_and_expression");
+                }
+                Require(events.Count == beforeDragon && clickPlayer.Played == 4,
+                    "gpt_offline_clicks_do_not_call_a_model_or_borrow_deepseek_voice");
+
                 phase = "closed_pet";
                 settings.LlmBehaviorEnabled = true;
                 int beforeClose = events.Count;
@@ -320,5 +364,32 @@ internal static class PetClickInteractionChecks
             if (clock.Elapsed.TotalSeconds >= seconds) throw new TimeoutException("click_fixture_not_ready");
             await Task.Delay(20);
         }
+    }
+
+    private sealed class ClickVoiceSynth : IPetSpeechSynthesizer
+    {
+        internal readonly List<string> Texts = new();
+        public Task<byte[]> SynthesizeAsync(string text, string id, CancellationToken token)
+        {
+            Texts.Add(text);
+            using var buffer = new MemoryStream(); using var writer = new BinaryWriter(buffer);
+            writer.Write("RIFF"u8); writer.Write(40); writer.Write("WAVEfmt "u8); writer.Write(16);
+            writer.Write((short)1); writer.Write((short)1); writer.Write(24000); writer.Write(48000);
+            writer.Write((short)2); writer.Write((short)16); writer.Write("data"u8); writer.Write(4);
+            writer.Write(new byte[] { 1, 0, 2, 0 });
+            return Task.FromResult(buffer.ToArray());
+        }
+        public Task CancelAsync(string id) => Task.CompletedTask;
+        public Task ReleaseAsync() => Task.CompletedTask;
+        public void Dispose() { }
+    }
+
+    private sealed class ClickVoicePlayer : IPetSpeechPlayer
+    {
+        internal int Played;
+        public Task PlayAsync(byte[] wave, double volume, CancellationToken token) { token.ThrowIfCancellationRequested(); Played++; return Task.CompletedTask; }
+        public void Stop() { }
+        public void SetVolume(double volume) { }
+        public void Dispose() { }
     }
 }

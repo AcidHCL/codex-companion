@@ -16,13 +16,13 @@ namespace DesktopPet;
 // real desktop windows, account state, model endpoints and input are untouched.
 internal static class DeepSeekMotionIntegrationChecks
 {
-    public static int Run(bool redrawn = false)
+    public static int Run(bool redrawn = false, bool gpt = false)
     {
         var checks = new List<string>();
         var captures = new List<object>();
         var transitions = new List<object>();
         object? failureState = null;
-        string evidenceName = redrawn ? "redrawn-motion" : "deepseek-motion";
+        string evidenceName = gpt ? "gpt-motion" : redrawn ? "redrawn-motion" : "deepseek-motion";
         string output = Path.Combine(AppContext.BaseDirectory, evidenceName + "-evidence");
         Directory.CreateDirectory(output);
         string profile = Path.Combine(output, "webview-" + Guid.NewGuid().ToString("N"));
@@ -59,7 +59,7 @@ internal static class DeepSeekMotionIntegrationChecks
                 DesktopPlatformSnapshot? synthetic = null;
                 var settings = new DesktopSettings
                 {
-                    SkinId = "deepseek", Size = 200, MovementEnabled = false, MotionEnabled = false,
+                    SkinId = gpt ? "gpt" : "deepseek", Size = 200, MovementEnabled = false, MotionEnabled = false,
                     DeepSeekAnimationPackId = redrawn ? DeepSeekMotionTimeline.RedrawnPackId : "builtin-deepseek-small",
                     SoundEnabled = false, Topmost = false, CodexEnabled = false, CodexMessagesEnabled = false, NotificationsEnabled = false
                 };
@@ -71,7 +71,7 @@ internal static class DeepSeekMotionIntegrationChecks
                 await Until(() => pet.IsLoaded && pet.MovementController != null && pet.UsesBuiltInScenes && pet.IsScenePlaying && !pet.IsSceneLoading, 30);
                 var movement = pet.MovementController!;
                 var timeline = DeepSeekMotionTimeline.ForPack(pet.CurrentScenePack!);
-                Require(timeline.IsLegacy != redrawn, "selected_pack_has_matching_motion_profile");
+                Require(timeline.IsLegacy == !(redrawn || gpt), "selected_pack_has_matching_motion_profile");
                 void Record(string reason)
                 {
                     if (transitions.Count >= 300) transitions.RemoveAt(0);

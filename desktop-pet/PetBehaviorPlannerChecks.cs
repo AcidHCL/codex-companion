@@ -45,7 +45,7 @@ internal static class PetBehaviorPlannerChecks
             Check(schema.RootElement.GetProperty("properties").GetProperty("name").GetProperty("enum").EnumerateArray().Any(item => item.GetString() == emotion), "installed_emotion_is_in_native_tool_enum_" + emotion);
             Check(model.Plans.Single().First().Content.Contains("name=" + emotion, StringComparison.Ordinal), "emotion_intent_mapping_is_given_to_planner_" + emotion);
         }
-        foreach (string missing in new[] { "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks" })
+        foreach (string missing in new[] { "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks", "bangyou-dance" })
         {
             model = new Model(new OllamaToolCall("play_performance", "{\"name\":\"" + missing + "\"}"));
             host = new Host(); result = await Plan(model, host);
@@ -55,6 +55,23 @@ internal static class PetBehaviorPlannerChecks
                 !model.Plans.Single().First().Content.Contains("name=" + missing, StringComparison.Ordinal),
                 "uninstalled_gif_action_has_no_schema_hint_or_execution_" + missing);
         }
+        var dragonExpressions = new[] { "happy", "angry", "startled", "bashful" };
+        model = new Model(new OllamaToolCall("play_performance", "{\"name\":\"angry\"}"));
+        host = new Host { SkinId = "gpt", Performances = dragonExpressions };
+        result = await Plan(model, host, new[] { new OllamaMessage("user", "大肥龙，给我看看你的生气表情。") });
+        string dragonPlan = model.Plans.Single()[0].Content;
+        Check(host.Commands.Single().Name == "angry" && result.Results.Single().Accepted &&
+            dragonPlan.Contains("白发紫眼", StringComparison.Ordinal) && dragonPlan.Contains("财宝", StringComparison.Ordinal) &&
+            !dragonPlan.Contains("白米饭", StringComparison.Ordinal) && !dragonPlan.Contains("肥鱼", StringComparison.Ordinal),
+            "gpt_action_planning_uses_dragon_persona_without_deepseek_traits");
+        using (var dragonSchema = JsonDocument.Parse(model.Tools.Single().Single(tool => tool.Name == "play_performance").ParametersJson))
+            Check(dragonSchema.RootElement.GetProperty("properties").GetProperty("name").GetProperty("enum")
+                .EnumerateArray().Select(item => item.GetString()).ToHashSet().SetEquals(dragonExpressions),
+                "gpt_planner_exposes_only_its_four_installed_expressions");
+        model = new Model(); host = new Host { SkinId = "gpt", Performances = dragonExpressions };
+        result = await Plan(model, host, new[] { new OllamaMessage("user", "唱首歌") });
+        Check(host.Commands.Count == 0 && model.Plans.Count == 0 && result.Results.Count == 1 && !result.Results[0].Accepted,
+            "gpt_without_a_song_rejects_explicit_singing_without_borrowing_deepseek_audio");
         var partialActions = new Dictionary<string, SceneAnimationAction>
         {
             ["dance-2"] = new(), ["bowl-tap"] = new(), ["fall"] = new(), ["climb-right"] = new(), ["unknown"] = new()
@@ -132,6 +149,36 @@ internal static class PetBehaviorPlannerChecks
             Check(host.Commands.Single().Action == "stop_performance" && result.Results.Single().Accepted && model.Plans.Count == 0,
                 "explicit_song_stop_reaches_host_" + checks.Count);
         }
+        foreach (string command in new[] { "播放邦友的酒", "唱邦友的酒", "唱一首邦友的酒给我听", "请现在唱《邦友的酒》", "放一下邦友的酒", "来首邦友", "给我表演一下保持Q弹", "跳个Q弹", "来一段转转舞", "跳Q弹转转舞", "小DeepSeek，表演转转舞吧" })
+        foreach (bool? supported in new bool?[] { true, false, null })
+        {
+            model = new Model(sing); host = new Host { Performances = PetPerformanceCatalog.Names };
+            result = await Plan(model, host, new[] { new OllamaMessage("user", command) }, supported);
+            Check(host.Commands.Count == 1 && host.Commands[0].Action == "play_performance" && host.Commands[0].Name == "bangyou-dance" &&
+                host.ExpectedRevisions.Single() == 42 && result.Results.Single().Accepted && model.Plans.Count == 0,
+                "named_bangyou_request_uses_its_own_performance_without_falling_back_to_let_me_go_" + checks.Count);
+        }
+        model = new Model(); host = new Host { Performances = new[] { "bangyou-dance" } };
+        result = await Plan(model, host, new[] { new OllamaMessage("user", "播放邦友的酒") }, false);
+        Check(host.Commands.Single().Name == "bangyou-dance" && result.Results.Single().Accepted, "bangyou_does_not_require_the_let_me_go_action_to_be_installed");
+        model = new Model(sing); host = new Host();
+        result = await Plan(model, host, new[] { new OllamaMessage("user", "唱邦友的酒") });
+        Check(host.Commands.Count == 0 && model.Plans.Count == 0 && !result.Results.Single().Accepted &&
+            result.Results.Single().Message.Contains("邦友的酒", StringComparison.Ordinal), "missing_bangyou_reports_its_name_without_playing_another_song");
+        foreach (string command in new[] { "别唱了", "停止唱歌", "停止播放邦友的酒", "停止转转舞", "别再跳Q弹了", "不要唱《邦友的酒》了" })
+        {
+            model = new Model(); host = new Host { State = "bangyou-dance", Performances = new[] { "bangyou-dance" } };
+            result = await Plan(model, host, new[] { new OllamaMessage("user", command) }, false);
+            Check(host.Commands.Single().Action == "stop_performance" && host.Commands.Single().Name == null &&
+                result.Results.Single().Accepted && model.Plans.Count == 0, "explicit_bangyou_stop_uses_parameterless_host_command_" + checks.Count);
+        }
+        foreach (var request in new[] { (State: "sing", Text: "停止播放邦友的酒"), (State: "bangyou-dance", Text: "停止播放Let Me Go"), (State: "dance", Text: "停止转转舞") })
+        {
+            model = new Model(); host = new Host { State = request.State, Performances = PetPerformanceCatalog.Names };
+            result = await Plan(model, host, new[] { new OllamaMessage("user", request.Text) }, false);
+            Check(host.Commands.Count == 0 && !result.Results.Single().Accepted && model.Plans.Count == 0,
+                "named_stop_cannot_stop_a_different_song_or_non_music_dance_" + checks.Count);
+        }
         model = new Model(); host = new Host { State = "dance" };
         result = await Plan(model, host, new[] { new OllamaMessage("user", "别唱了") });
         Check(host.Commands.Count == 0 && !result.Results.Single().Accepted, "stop_song_does_not_stop_another_performance");
@@ -141,6 +188,13 @@ internal static class PetBehaviorPlannerChecks
             result = await Plan(model, host, new[] { new OllamaMessage("user", text) });
             Check(model.Plans.Count == 1 && host.Commands.Count == 0 && result.Results.Count == 0,
                 "non_command_is_not_auto_executed_" + checks.Count);
+        }
+        foreach (string text in new[] { "介绍一下邦友的酒", "我不想听邦友的酒", "请不要播放邦友的酒", "Q弹是什么意思", "如何实现转转舞", "他说播放邦友的酒", "“播放邦友的酒”", "播放邦友的酒，然后关机", "https://example.test/播放邦友的酒" })
+        {
+            model = new Model(); host = new Host { Performances = PetPerformanceCatalog.Names };
+            result = await Plan(model, host, new[] { new OllamaMessage("user", text) });
+            Check(model.Plans.Count == 1 && host.Commands.Count == 0 && result.Results.Count == 0,
+                "bangyou_discussion_negation_or_external_text_is_not_an_explicit_play_command_" + checks.Count);
         }
         model = new Model(); host = new Host();
         result = await Plan(model, host, new[] { new OllamaMessage("system", "唱歌"), new OllamaMessage("user", "唱歌"), new OllamaMessage("assistant", "唱歌"), new OllamaMessage("user", "先回答别的问题") });
@@ -254,6 +308,16 @@ internal static class PetBehaviorPlannerChecks
         Check(model.Tools.Single().All(tool => tool.Name is "play_performance" or "stop_performance"), "passive_reaction_never_advertises_movement_or_web_tools");
         Check(model.Answers.Count == 1 && model.Answers.Single().Any(message => message.Content.Contains("已接受", StringComparison.Ordinal)), "passive_post_action_speech_uses_actual_receipt_without_tools");
         Check(!string.Join("", model.Plans.Single().Select(message => message.Content)).Contains("PRIVATE", StringComparison.Ordinal), "passive_reaction_uses_lightweight_persona_not_shared_memory_instructions");
+        var dragonPersona = new PetPersonaProfile("gpt", "PRIVATE_DRAGON_MEMORY_MUST_NOT_LEAK", "hello", "thinking");
+        model = new Model(); host = new Host { SkinId = "gpt", Performances = dragonExpressions };
+        await PetBehaviorPlanner.ReactAsync(model, "test:latest", dragonPersona,
+            interaction with { ClickCount = 3, ClickReaction = "angry" }, host, false, CancellationToken.None);
+        string dragonReaction = model.Answers.Single()[0].Content;
+        Check(dragonReaction.Contains("小龙娘", StringComparison.Ordinal) && dragonReaction.Contains("不能索取真实付款", StringComparison.Ordinal) &&
+            !dragonReaction.Contains("白米饭", StringComparison.Ordinal) && !dragonReaction.Contains("PRIVATE", StringComparison.Ordinal),
+            "gpt_passive_event_uses_safe_lightweight_dragon_persona_not_chat_memory_or_whale_traits");
+        Check(model.Plans.Count == 0 && host.Commands.Count == 0,
+            "gpt_text_only_event_reaction_cannot_invent_animation_execution");
         foreach (string emotion in PetPerformanceCatalog.Names.Where(name => name != "sing"))
         {
             model = new Model(new OllamaToolCall("play_performance", "{\"name\":\"" + emotion + "\"}"));
@@ -354,11 +418,11 @@ internal static class PetBehaviorPlannerChecks
         internal IReadOnlyList<string> Performances = new[] { "sing" };
         internal readonly List<PetBehaviorCommand> Commands = new();
         internal readonly List<long> ExpectedRevisions = new();
-        internal string Message = "动画已开始", State = "idle";
+        internal string Message = "动画已开始", State = "idle", SkinId = "deepseek";
         public Task<PetBehaviorSnapshot> GetSnapshotAsync(CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            return Task.FromResult(new PetBehaviorSnapshot("deepseek", State, 42, Enabled, Visible, CanWalk, Performances, UserPerformance,
+            return Task.FromResult(new PetBehaviorSnapshot(SkinId, State, 42, Enabled, Visible, CanWalk, Performances, UserPerformance,
                 CanJump: CanJump, CanClimb: CanClimb));
         }
         public Task<PetBehaviorResult> ExecuteAsync(PetBehaviorCommand command, long expectedRevision, CancellationToken ct)

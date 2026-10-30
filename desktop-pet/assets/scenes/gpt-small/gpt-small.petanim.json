@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "name": "GPT 小龙娘 · 旧版规格状态动画",
+  "skinId": "gpt",
+  "anchorX": 0.5,
+  "anchorY": 1,
+  "actions": {
+    "idle": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/idle/01.png",
+          "frames/idle/02.png",
+          "frames/idle/03.png",
+          "frames/idle/04.png",
+          "frames/idle/05.png",
+          "frames/idle/06.png",
+          "frames/idle/07.png",
+          "frames/idle/08.png"
+        ],
+        "durationsMs": [
+          1400,
+          250,
+          160,
+          70,
+          110,
+          70,
+          160,
+          600
+        ]
+      },
+      "repeat": true
+    },
+    "working": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/working/01.png",
+          "frames/working/02.png",
+          "frames/working/03.png",
+          "frames/working/04.png",
+          "frames/working/05.png",
+          "frames/working/06.png",
+          "frames/working/07.png",
+          "frames/working/08.png"
+        ],
+        "durationsMs": [
+          130,
+          90,
+          130,
+          90,
+          130,
+          90,
+          130,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "walk-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/walk-left/01.png",
+          "frames/walk-left/02.png",
+          "frames/walk-left/03.png",
+          "frames/walk-left/04.png",
+          "frames/walk-left/05.png",
+          "frames/walk-left/06.png",
+          "frames/walk-left/07.png",
+          "frames/walk-left/08.png"
+        ],
+        "durationsMs": [
+          120,
+          90,
+          120,
+          90,
+          120,
+          90,
+          120,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "walk-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/walk-right/01.png",
+          "frames/walk-right/02.png",
+          "frames/walk-right/03.png",
+          "frames/walk-right/04.png",
+          "frames/walk-right/05.png",
+          "frames/walk-right/06.png",
+          "frames/walk-right/07.png",
+          "frames/walk-right/08.png"
+        ],
+        "durationsMs": [
+          120,
+          90,
+          120,
+          90,
+          120,
+          90,
+          120,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "fall": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/fall/01.png",
+          "frames/fall/02.png",
+          "frames/fall/03.png",
+          "frames/fall/04.png",
+          "frames/fall/05.png",
+          "frames/fall/06.png",
+          "frames/fall/07.png",
+          "frames/fall/08.png"
+        ],
+        "durationsMs": [
+          90,
+          90,
+          90,
+          90,
+          90,
+          90,
+          90,
+          90
+        ]
+      },
+      "repeat": true
+    },
+    "land": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/land/01.png",
+          "frames/land/02.png",
+          "frames/land/03.png",
+          "frames/land/04.png",
+          "frames/land/05.png",
+          "frames/land/06.png",
+          "frames/land/07.png",
+          "frames/land/08.png"
+        ],
+        "durationsMs": [
+          60,
+          70,
+          90,
+          90,
+          100,
+          100,
+          110,
+          140
+        ]
+      },
+      "repeat": false
+    },
+    "drag": {
+      "start": {
+        "type": "frames",
+        "frames": [
+          "frames/drag/01.png",
+          "frames/drag/02.png",
+          "frames/drag/03.png",
+          "frames/drag/04.png"
+        ],
+        "durationsMs": [
+          100,
+          120,
+          120,
+          140
+        ]
+      },
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/drag/05.png",
+          "frames/drag/06.png",
+          "frames/drag/07.png",
+          "frames/drag/08.png",
+          "frames/drag/09.png",
+          "frames/drag/10.png",
+          "frames/drag/11.png",
+          "frames/drag/12.png"
+        ],
+        "durationsMs": [
+          110,
+          110,
+          110,
+          110,
+          110,
+          110,
+          110,
+          110
+        ]
+      },
+      "repeat": true
+    },
+    "happy": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/happy/01.png",
+          "frames/happy/02.png",
+          "frames/happy/03.png",
+          "frames/happy/04.png",
+          "frames/happy/05.png",
+          "frames/happy/06.png"
+        ],
+        "durationsMs": [
+          250,
+          140,
+          160,
+          430,
+          180,
+          500
+        ]
+      },
+      "repeat": false
+    },
+    "angry": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/angry/01.png",
+          "frames/angry/02.png",
+          "frames/angry/03.png",
+          "frames/angry/04.png",
+          "frames/angry/05.png",
+          "frames/angry/06.png"
+        ],
+        "durationsMs": [
+          220,
+          120,
+          180,
+          480,
+          180,
+          440
+        ]
+      },
+      "repeat": false
+    },
+    "startled": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/startled/01.png",
+          "frames/startled/02.png",
+          "frames/startled/03.png",
+          "frames/startled/04.png",
+          "frames/startled/05.png",
+          "frames/startled/06.png"
+        ],
+        "durationsMs": [
+          260,
+          80,
+          130,
+          260,
+          190,
+          460
+        ]
+      },
+      "repeat": false
+    },
+    "bashful": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/bashful/01.png",
+          "frames/bashful/02.png",
+          "frames/bashful/03.png",
+          "frames/bashful/04.png",
+          "frames/bashful/05.png",
+          "frames/bashful/06.png"
+        ],
+        "durationsMs": [
+          240,
+          180,
+          220,
+          520,
+          220,
+          500
+        ]
+      },
+      "repeat": false
+    },
+    "jump-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/jump-left/01.png",
+          "frames/jump-left/02.png",
+          "frames/jump-left/03.png",
+          "frames/jump-left/04.png",
+          "frames/jump-left/05.png",
+          "frames/jump-left/06.png"
+        ],
+        "durationsMs": [
+          170,
+          90,
+          130,
+          160,
+          120,
+          180
+        ]
+      },
+      "repeat": false
+    },
+    "jump-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/jump-right/01.png",
+          "frames/jump-right/02.png",
+          "frames/jump-right/03.png",
+          "frames/jump-right/04.png",
+          "frames/jump-right/05.png",
+          "frames/jump-right/06.png"
+        ],
+        "durationsMs": [
+          170,
+          90,
+          130,
+          160,
+          120,
+          180
+        ]
+      },
+      "repeat": false
+    },
+    "climb-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-left/01.png",
+          "frames/climb-left/02.png",
+          "frames/climb-left/03.png",
+          "frames/climb-left/04.png",
+          "frames/climb-left/05.png",
+          "frames/climb-left/06.png"
+        ],
+        "durationsMs": [
+          150,
+          120,
+          140,
+          150,
+          120,
+          140
+        ]
+      },
+      "repeat": true
+    },
+    "climb-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-right/01.png",
+          "frames/climb-right/02.png",
+          "frames/climb-right/03.png",
+          "frames/climb-right/04.png",
+          "frames/climb-right/05.png",
+          "frames/climb-right/06.png"
+        ],
+        "durationsMs": [
+          150,
+          120,
+          140,
+          150,
+          120,
+          140
+        ]
+      },
+      "repeat": true
+    },
+    "climb-top-left": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-top-left/01.png",
+          "frames/climb-top-left/02.png",
+          "frames/climb-top-left/03.png",
+          "frames/climb-top-left/04.png",
+          "frames/climb-top-left/05.png",
+          "frames/climb-top-left/06.png"
+        ],
+        "durationsMs": [
+          220,
+          180,
+          220,
+          220,
+          200,
+          420
+        ]
+      },
+      "repeat": false
+    },
+    "climb-top-right": {
+      "loop": {
+        "type": "frames",
+        "frames": [
+          "frames/climb-top-right/01.png",
+          "frames/climb-top-right/02.png",
+          "frames/climb-top-right/03.png",
+          "frames/climb-top-right/04.png",
+          "frames/climb-top-right/05.png",
+          "frames/climb-top-right/06.png"
+        ],
+        "durationsMs": [
+          220,
+          180,
+          220,
+          220,
+          200,
+          420
+        ]
+      },
+      "repeat": false
+    }
+  }
+}

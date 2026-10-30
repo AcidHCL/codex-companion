@@ -27,7 +27,7 @@ internal static class SpeechUiChecks
         var fallbackBubbles = new List<string>();
         var voiceSessions = new List<bool>();
         int stopped = 0, result = 1;
-        PetWindow? pet = null; CodexDashboard? dashboard = null; CodexMonitor? monitor = null; OllamaChatWindow? chat = null;
+        PetWindow? pet = null; AppSettingsWindow? dashboard = null; CodexMonitor? monitor = null; OllamaChatWindow? chat = null;
         var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(35) };
         bool finished = false;
         void Require(bool value, string label) { if (!value) throw new InvalidOperationException(label); checks.Add(label); }
@@ -60,8 +60,8 @@ internal static class SpeechUiChecks
                 settings.SpeechVolume = .6;
                 pet = new PetWindow(SkinCatalog.Load(AppContext.BaseDirectory), settings, persist: false, subscribeToSystemEvents: false);
                 monitor = new CodexMonitor(settings, new NoConnection(), persistSettings: false);
-                dashboard = new CodexDashboard(monitor, settings, () => { }, pet) { ShowActivated = false, ShowInTaskbar = false };
-                dashboard.Show(); await Settle(dashboard);
+                dashboard = new AppSettingsWindow(pet, modelServices: NoModelServices()) { ShowActivated = false, ShowInTaskbar = false };
+                dashboard.Show(); Named<Button>(dashboard, "SettingsNavModels").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Settle(dashboard);
                 var enabled = Named<CheckBox>(dashboard, "SpeechEnabled");
                 var volume = Named<Slider>(dashboard, "SpeechVolume");
                 Require(enabled.IsEnabled && enabled.IsChecked == true && !monitor.ConnectionEnabled, "speech_controls_work_with_codex_disabled");
@@ -77,7 +77,7 @@ internal static class SpeechUiChecks
                 Named<Button>(dashboard, "SpeechPreload").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Named<Button>(dashboard, "SpeechUnload").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Require(!pet.IsSpeaking, "persist_false_ui_fixture_never_plays_audio");
-                dashboard.Width = dashboard.MinWidth; dashboard.Height = dashboard.MinHeight; await Settle(dashboard);
+                dashboard.Width = dashboard.MinWidth; dashboard.Height = dashboard.MinHeight; Named<TextBlock>(dashboard, "SpeechStatus").BringIntoView(); await Settle(dashboard);
                 Require(Fits(dashboard, Named<Button>(dashboard, "SpeechStop")) && Fits(dashboard, Named<TextBlock>(dashboard, "SpeechStatus")), "voice_controls_fit_minimum_dashboard_size");
                 Require(Fits(dashboard, Named<Button>(dashboard, "SpeechPreload")) && Fits(dashboard, Named<Button>(dashboard, "SpeechUnload")), "voice_model_load_controls_fit_dashboard");
                 Capture(dashboard, Path.Combine(evidence, "dashboard-voice-minimum.png"));
@@ -140,6 +140,10 @@ internal static class SpeechUiChecks
 
     private static async Task Until(Func<bool> condition)
     { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); while (!condition()) await Task.Delay(25, timeout.Token); }
+    private static DashboardModelServices NoModelServices() => new(
+        (_, _) => Task.FromResult<IReadOnlyList<OllamaRunningModel>>(Array.Empty<OllamaRunningModel>()),
+        _ => Task.FromResult<PetVoiceHealth?>(null),
+        _ => Task.FromResult<IReadOnlyList<LocalGpuInfo>>(Array.Empty<LocalGpuInfo>()));
     private static async Task Settle(Window window)
     { window.UpdateLayout(); await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle); await Task.Delay(50); window.UpdateLayout(); }
     private static T Named<T>(DependencyObject root, string name) where T : FrameworkElement => Descendants<T>(root).Single(x => x.Name == name);
@@ -155,7 +159,8 @@ internal static class SpeechUiChecks
         var client = new StreamingFixtureClient();
         var segments = new List<string>();
         int begins = 0, completes = 0, cancels = 0, bubbles = 0, legacyReplies = 0;
-        var callbacks = new PetChatSpeechCallbacks(() => ++begins, (id, text) => segments.Add(text), _ => completes++, () => cancels++, _ => bubbles++);
+        var cancelledResponses = new List<long>();
+        var callbacks = new PetChatSpeechCallbacks(() => ++begins, (id, text) => segments.Add(text), _ => completes++, id => { cancels++; cancelledResponses.Add(id); }, _ => bubbles++);
         var settings = new DesktopSettings { CodexEnabled = false, WebSearchEnabled = false, SharedMemoryEnabled = false };
         var chat = new OllamaChatWindow(settings, () => "DeepSeek", _ => { }, _ => legacyReplies++, () => { }, client: client,
             answerCompleted: (_, _) => legacyReplies++, streamingSpeech: callbacks) { ShowActivated = false, ShowInTaskbar = false };
@@ -181,6 +186,8 @@ internal static class SpeechUiChecks
             client.Release.TrySetResult(); await Task.Delay(20);
             require(cancels == 1 && completes == 1 && bubbles == 1 && legacyReplies == 0 && input.Text.Contains("取消"),
                 "cancelled_answer_stops_streamed_speech_without_late_final_or_duplicate_audio");
+            require(cancelledResponses.SequenceEqual(new long[] { 2 }),
+                "chat_cancellation_targets_its_own_response_instead_of_all_newer_speech");
         }
         finally { chat.Shutdown(); }
     }

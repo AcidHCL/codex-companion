@@ -82,7 +82,7 @@ internal static class OllamaChatChecks
             string? failure = null;
             try
             {
-                window = new OllamaChatWindow(settings, () => "DeepSeek", value => busy.Add(value), text => bubbles.Add(text), () => savedCallbacks++, recording)
+                window = new OllamaChatWindow(settings, () => settings.SkinId.ToLowerInvariant() switch { "gpt" => "GPT", "gemini" => "Gemini", _ => "DeepSeek" }, value => busy.Add(value), text => bubbles.Add(text), () => savedCallbacks++, recording)
                 { ShowActivated = false, ShowInTaskbar = false, Topmost = false };
                 window.Show();
                 await SettleAsync(window);
@@ -249,6 +249,21 @@ internal static class OllamaChatChecks
                     await SendComplete("新角色的第一句话。", "other_skin");
                     var otherSkin = LastChat(fake).Payload.GetProperty("messages");
                     Require(otherSkin.GetArrayLength() == 2 && !otherSkin[0].GetProperty("content").GetString()!.Contains("蓝色大肥鱼", StringComparison.Ordinal), "other_skin_has_no_deepseek_persona_or_prior_character_history");
+                    settings.SkinId = "gpt"; window.RefreshCharacter();
+                    fake.Enqueue(FixturePlan.Complete("宝库先锁好了，把问题给我看看。"));
+                    await SendComplete("白龙娘，今天一起工作吧。", "gpt_skin");
+                    var dragonMessages = LastChat(fake).Payload.GetProperty("messages");
+                    string dragonSystem = dragonMessages[0].GetProperty("content").GetString()!;
+                    Require(dragonMessages.GetArrayLength() == 2 && dragonSystem.Contains("GPT 小龙娘", StringComparison.Ordinal) &&
+                        dragonSystem.Contains("白发紫眼", StringComparison.Ordinal) && dragonSystem.Contains("非官方", StringComparison.Ordinal) &&
+                        dragonSystem.Contains("角色名是GPT", StringComparison.Ordinal) &&
+                        !dragonSystem.Contains("白米饭", StringComparison.Ordinal) && !dragonSystem.Contains("蓝色大肥鱼", StringComparison.Ordinal),
+                        "gpt_skin_sends_its_dragon_persona_without_whale_identity_or_other_character_history");
+                    Require(dragonSystem.Contains(settings.OllamaModel, StringComparison.Ordinal) &&
+                        dragonSystem.Contains("角色皮肤不代表后端模型", StringComparison.Ordinal) &&
+                        dragonSystem.Contains("不能索取真实付款", StringComparison.Ordinal) &&
+                        dragonSystem.Contains("本轮未启用联网", StringComparison.Ordinal),
+                        "gpt_persona_preserves_actual_model_identity_no_real_payment_and_web_capability_boundaries");
                     settings.SkinId = "deepseek"; window.RefreshCharacter();
                     fake.Enqueue(FixturePlan.Complete("本鲸回来了。"));
                     await SendComplete("切回大肥鱼继续。", "returning_skin");

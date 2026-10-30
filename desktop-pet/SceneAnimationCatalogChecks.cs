@@ -128,22 +128,68 @@ internal static class SceneAnimationCatalogChecks
                 !File.Exists(Path.Combine(importedSinging.RootDirectory, "sound.wav")) && !File.Exists(Path.Combine(importedSinging.RootDirectory, "sound.ogg")), "Audio import copies only the referenced bytes and does not include unrelated sounds.");
             var builtIn = BundledSceneAnimations.FindForSkin("deepseek") ?? throw new InvalidOperationException("Scene import check: packaged DeepSeek animation is missing.");
             Check(BundledSceneAnimations.IsBuiltIn(builtIn.Id) && !BundledSceneAnimations.IsBuiltIn("builtin-deepseek-small-other") && !BundledSceneAnimations.IsBuiltIn(first.Id), "Only the exact reserved DeepSeek package ID is built-in.");
-            Check(BundledSceneAnimations.FindForSkin("claude") == null && BundledSceneAnimations.FindForSkin("gpt") == null && BundledSceneAnimations.FindForSkin("deepseek/../claude") == null, "Bundled defaults must only attach to the explicitly mapped DeepSeek skin.");
+            Check(BundledSceneAnimations.FindForSkin("claude") == null && BundledSceneAnimations.FindForSkin("deepseek/../claude") == null &&
+                BundledSceneAnimations.FindForSkin("gpt", BundledSceneAnimations.DeepSeekId) == null &&
+                BundledSceneAnimations.FindForSkin("deepseek", BundledSceneAnimations.GptId) == null,
+                "Bundled defaults are explicitly mapped to their character and cannot attach another character's reserved pack.");
+            var gpt = BundledSceneAnimations.FindForSkin("gpt") ?? throw new InvalidOperationException("Scene import check: packaged GPT animation is missing.");
+            Check(gpt.Id == BundledSceneAnimations.GptId && BundledSceneAnimations.IsBuiltIn(gpt.Id) &&
+                !BundledSceneAnimations.IsDeepSeekBuiltIn(gpt.Id) && gpt.Actions.Count == 17 && gpt.Files.Count == 121,
+                "GPT has its own 17-action built-in package with 120 PNG frames and no borrowed DeepSeek preference.");
+            var gptFrames = gpt.Actions.Values.SelectMany(action => new[] { action.Start, action.Loop, action.End }
+                .OfType<SceneAnimationClip>().SelectMany(clip => clip.Frames)).ToArray();
+            Check(gptFrames.Length == 120 && gptFrames.Distinct(StringComparer.Ordinal).Count() == 120 && gptFrames.All(relative =>
+            {
+                byte[] data = File.ReadAllBytes(SceneFileAccess.ChildPath(gpt.RootDirectory, relative));
+                return BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(16, 4)) == 512 && BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(20, 4)) == 512 && data[25] == 6;
+            }), "GPT uses 120 distinct 512-square RGBA frame resources in the classic animation format.");
+            Check(gpt.Actions.All(entry => entry.Value.Audio == null && entry.Value.Thoughts == null) &&
+                PetPerformanceCatalog.Installed(gpt).OrderBy(name => name).SequenceEqual(new[] { "angry", "bashful", "happy", "startled" }),
+                "GPT advertises only its four expressions, without songs or unavailable independent performances.");
+            Check(gpt.Actions.All(entry =>
+            {
+                if (!builtIn.Actions.TryGetValue(entry.Key, out var legacyAction) || entry.Value.Repeat != legacyAction.Repeat) return false;
+                var actualClips = new[] { entry.Value.Start, entry.Value.Loop, entry.Value.End };
+                var expectedClips = new[] { legacyAction.Start, legacyAction.Loop, legacyAction.End };
+                return actualClips.Zip(expectedClips).All(pair => pair.First == null ? pair.Second == null :
+                    pair.Second != null && pair.First.Type == "frames" && pair.First.Frames.Length == pair.Second.Frames.Length &&
+                    pair.First.DurationsMs != null && pair.First.DurationsMs.SequenceEqual(pair.Second.DurationsMs ?? Array.Empty<int>()));
+            }),
+                "GPT preserves classic per-action frame counts, explicit timing, phases and repeat behavior.");
+            var gptMotion = DeepSeekMotionTimeline.ForPack(gpt);
+            Check(!gptMotion.IsLegacy && gptMotion.StandingFoot != null && gptMotion.Clips.Count == 6 &&
+                gptMotion.Clips.All(pair => pair.Value.FrameCount == 6 && pair.Value.DurationsMs.SequenceEqual(gpt.Actions[pair.Key].Loop.DurationsMs!)),
+                "GPT scripted movement uses its own calibrated six-frame contact metadata.");
+            var gptSelection = new DesktopSettings { SkinId = "gpt", ScenePackId = gpt.Id, DeepSeekAnimationPackId = BundledSceneAnimations.DeepSeekRedrawnId };
+            gptSelection.Normalize();
+            Check(gptSelection.ScenePackId == gpt.Id && gptSelection.DeepSeekAnimationPackId == BundledSceneAnimations.DeepSeekRedrawnId,
+                "Normalizing GPT selection retains the separate DeepSeek animation-version preference.");
             string[] newActions = { "happy", "angry", "startled", "bashful", "jump-left", "jump-right", "climb-left", "climb-right", "climb-top-left", "climb-top-right" };
             string[] gifActions = { "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks" };
-            Check(builtIn.Files.Count == 214 && builtIn.Actions.Count == 25 && builtIn.Actions.All(entry => entry.Value.Loop.Type == "frames" && entry.Value.Loop.Frames.Length == (gifActions.Contains(entry.Key) ? 12 : newActions.Contains(entry.Key) ? 6 : 8)), "Published DeepSeek preserves all 128 existing PNG frames and adds 84 GIF performance frames, one audio resource and the manifest.");
-            Check(builtIn.Actions["sing"].Audio?.File.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) == true && builtIn.Actions["sing"].Thoughts?.Lines.Length > 0 && builtIn.Actions.Where(entry => entry.Key != "sing").All(entry => entry.Value.Audio == null && entry.Value.Thoughts == null), "Only singing has the explicit music and thinking panel.");
+            Check(builtIn.Files.Count == 337 && builtIn.Actions.Count == 26 && builtIn.Actions.Where(entry => entry.Key != "bangyou-dance").All(entry => entry.Value.Loop.Type == "frames" && entry.Value.Loop.Frames.Length == (gifActions.Contains(entry.Key) ? 12 : newActions.Contains(entry.Key) ? 6 : 8)), "Published DeepSeek preserves all existing artwork and adds 122 Bangyou frames and its separate audio resource.");
+            var bangyou = builtIn.Actions["bangyou-dance"];
+            Check(bangyou.Start is { Type: "frames", Frames.Length: 87 } && bangyou.Loop is { Type: "frames", Frames.Length: 35 } && bangyou.End == null && !bangyou.Repeat,
+                "Bangyou plays the complete source once, then repeats only its continuous final dance segment until audio ends.");
+            var bangyouClips = new[] { bangyou.Start!, bangyou.Loop };
+            var bangyouFrames = bangyouClips.SelectMany(clip => clip.Frames).ToArray();
+            Check(bangyouFrames.SequenceEqual(Enumerable.Range(1, 122).Select(index => $"frames/bangyou-dance/{index:000}.png")) &&
+                bangyouClips.All(clip => clip.DurationsMs?.Length == clip.Frames.Length && clip.DurationsMs.All(ms => ms == 80)),
+                "Bangyou keeps all 122 original poses in source order at 80 ms each, without generated interpolation.");
+            Check(builtIn.Actions["sing"].Audio?.File.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) == true && builtIn.Actions["sing"].Thoughts?.Lines.Length > 0 &&
+                bangyou.Audio?.File == "audio/bangyou-de-jiu.mp3" && bangyou.Thoughts == null &&
+                builtIn.Actions.Where(entry => !PetPerformanceCatalog.IsMusicPerformance(entry.Key)).All(entry => entry.Value.Audio == null && entry.Value.Thoughts == null),
+                "Only the two musical performances have music; only Let Me Go has its thinking panel.");
             Check(builtIn.Actions["drag"].Start is { Type: "frames", Frames.Length: 4 } && builtIn.Actions["drag"].Repeat && builtIn.Actions["drag"].End == null, "Dragging must play a four-frame lift once before the eight-frame struggle loop, and release immediately without an end segment.");
             string[] oneShotActions = { "land", "happy", "angry", "startled", "bashful", "jump-left", "jump-right", "climb-top-left", "climb-top-right" };
-            Check(builtIn.Actions.All(entry => entry.Value.Repeat == !(oneShotActions.Contains(entry.Key) || gifActions.Contains(entry.Key))), "Reactions, GIF performances, jump and crest previews play once; ordinary states and climbing loop.");
+            Check(builtIn.Actions.All(entry => entry.Value.Repeat == !(oneShotActions.Contains(entry.Key) || gifActions.Contains(entry.Key) || entry.Key == "bangyou-dance")), "Reactions, GIF performances, jump and crest previews play once; Bangyou ends with its music, while ordinary states and climbing loop.");
             Check(gifActions.All(id => builtIn.Actions[id].Loop.DurationsMs is { Length: 12 } times && times.Sum() >= 1000 && times.Sum() <= 8000), "Each GIF performance has twelve timed frames and a bounded one-shot duration.");
             Check(newActions.All(id => builtIn.Actions[id].Loop.DurationsMs is { Length: 6 }), "Every new movement/reaction preserves its six explicit source frame durations.");
             Check(newActions.Where(id => id.StartsWith("jump-", StringComparison.Ordinal)).All(id => builtIn.Actions[id].Loop.DurationsMs!.Sum() == 850) &&
                 newActions.Where(id => id.StartsWith("climb-top-", StringComparison.Ordinal)).All(id => builtIn.Actions[id].Loop.DurationsMs!.Sum() == 1460) &&
                 new[] { "climb-left", "climb-right" }.All(id => builtIn.Actions[id].Loop.DurationsMs!.Sum() == 820), "Directional physical animation timing matches the reviewed source.");
-            foreach (string id in newActions.Concat(gifActions))
+            foreach (string id in newActions.Concat(gifActions).Append("bangyou-dance"))
             {
-                Check(builtIn.Actions[id].Loop.Frames.All(relative =>
+                Check(new[] { builtIn.Actions[id].Start, builtIn.Actions[id].Loop, builtIn.Actions[id].End }.OfType<SceneAnimationClip>().SelectMany(clip => clip.Frames).All(relative =>
                 {
                     byte[] data = File.ReadAllBytes(SceneFileAccess.ChildPath(builtIn.RootDirectory, relative));
                     return BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(16, 4)) == 512 && BinaryPrimitives.ReadUInt32BigEndian(data.AsSpan(20, 4)) == 512 && data[25] == 6;

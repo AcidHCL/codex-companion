@@ -86,6 +86,49 @@ internal static class OllamaClientChecks
         using (var client = new OllamaClient(new FakeHandler((_, _) => Task.FromResult(Json("{\"models\":[{\"name\":\"qwen3.5:9b-q8_0\",\"remote_model\":\"remote\"},{\"name\":\"qwen3.8:27b-q4_K_M\",\"remote_host\":\"https://example.invalid\"},{\"name\":\"gpt-oss:20b-cloud\"},{\"name\":\"https://example.invalid/model\"},{\"name\":\"../model\"}]}")), autoMetadata: false)))
             Check((await client.ListModelsAsync(CancellationToken.None)).Count == 0, "cloud_metadata_never_counts_as_installed_local_model");
 
+        var runningHandler = new FakeHandler((request, _) =>
+        {
+            Check(request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/api/ps" && request.Content == null,
+                "residency_only_reads_ps_without_inference_payload");
+            return Task.FromResult(Json("""
+                {"models":[
+                  {"name":"qwen3.5:9b-q8_0","size":9000000000,"size_vram":8000000000,"context_length":8192,"expires_at":"2026-10-29T10:00:00Z"},
+                  {"name":"qwen3.5:9b-q8_0","size":1},
+                  {"model":"llama3.1:8b","size":-1,"size_vram":"unknown","context_length":999999999999,"expires_at":"invalid"},
+                  {"name":"cpu:latest","size_vram":0,"context_length":0},
+                  {"name":"remote:cloud"},{"name":"../invalid"},{"name":"remote-model","remote_host":"https://remote.invalid"}
+                ]}
+                """));
+        }, autoMetadata: false);
+        using (var client = new OllamaClient(runningHandler))
+        {
+            var running = await client.ListRunningModelsAsync(CancellationToken.None);
+            var qwen = running.Single(item => item.Name == OllamaModels.FastModel);
+            var missing = running.Single(item => item.Name == "llama3.1:8b");
+            Check(runningHandler.Calls == 1 && running.Count == 3 && qwen.SizeBytes == 9000000000 && qwen.VramBytes == 8000000000 &&
+                qwen.ContextLength == 8192 && qwen.ExpiresAt == DateTimeOffset.Parse("2026-10-29T10:00:00Z"), "residency_parses_64_bit_memory_and_expiry_and_filters_invalid_duplicates");
+            Check(missing.SizeBytes == null && missing.VramBytes == null && missing.ContextLength == null && missing.ExpiresAt == null,
+                "residency_missing_negative_and_invalid_fields_are_unknown");
+            Check(running.Single(item => item.Name == "cpu:latest").VramBytes == 0 && running[0].ContextLength == null,
+                "residency_preserves_real_zero_vram_without_fabricating_context");
+        }
+        using (var client = new OllamaClient(new FakeHandler((_, _) => Task.FromResult(Json("{\"models\":[]}")), autoMetadata: false)))
+            Check((await client.ListRunningModelsAsync(CancellationToken.None)).Count == 0, "empty_residency_means_no_loaded_models");
+        using (var client = new OllamaClient(new FakeHandler((_, _) => Task.FromResult(Json("{}", HttpStatusCode.NotFound)), autoMetadata: false)))
+        {
+            bool unsupported = false;
+            try { await client.ListRunningModelsAsync(CancellationToken.None); } catch (NotSupportedException) { unsupported = true; }
+            Check(unsupported, "missing_ps_reports_unsupported_instead_of_unloaded");
+        }
+        using (var client = new OllamaClient(new FakeHandler((_, _) => Task.FromResult(Json("{\"models\":null}")), autoMetadata: false)))
+            Check((await FailureAsync(() => client.ListRunningModelsAsync(CancellationToken.None))).Length > 0,
+                "malformed_ps_is_not_treated_as_zero_memory");
+        using (var client = new OllamaClient(new FakeHandler(async (_, ct) => { await Task.Delay(Timeout.Infinite, ct); return Json("{}"); }, autoMetadata: false)))
+        {
+            using var cancelled = new CancellationTokenSource(30);
+            Check(await IsCanceledAsync(() => client.ListRunningModelsAsync(cancelled.Token)), "residency_poll_honors_cancellation");
+        }
+
         var blockedHandler = new FakeHandler((_, _) => throw new InvalidOperationException("must not send"));
         using (var client = new OllamaClient(blockedHandler))
         {

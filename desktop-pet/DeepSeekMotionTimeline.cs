@@ -31,7 +31,8 @@ internal static class DeepSeekMotionTimeline
 
     public static DeepSeekMotionProfile ForPack(SceneAnimationPack pack)
     {
-        if (pack.Id != RedrawnPackId) return Legacy;
+        bool gpt = pack.Id == BundledSceneAnimations.GptId;
+        if (pack.Id != RedrawnPackId && !gpt) return Legacy;
         string path = Path.Combine(pack.RootDirectory, "motion.json");
         using var stream = SceneFileAccess.OpenChecked(path);
         if (stream.Length > 256 * 1024) throw new InvalidDataException("Motion metadata is too large.");
@@ -51,7 +52,7 @@ internal static class DeepSeekMotionTimeline
         {
             var value = root.GetProperty("clips").GetProperty(action);
             int[] durations = value.GetProperty("durationsMs").EnumerateArray().Select(v => v.GetInt32()).ToArray();
-            int count = action.StartsWith("climb-top-", StringComparison.Ordinal) ? 36 : 20;
+            int count = gpt ? 6 : action.StartsWith("climb-top-", StringComparison.Ordinal) ? 36 : 20;
             if (!pack.Actions.TryGetValue(action, out var scene) || scene.Loop.Frames.Length != count
                 || durations.Length != count || durations.Any(ms => ms is < 17 or > 1000)
                 || scene.Loop.DurationsMs == null || !durations.SequenceEqual(scene.Loop.DurationsMs))

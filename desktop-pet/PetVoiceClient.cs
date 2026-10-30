@@ -19,9 +19,20 @@ internal interface IPetSpeechSynthesizer : IDisposable
     Task ReleaseAsync();
 }
 
+internal interface IPetVoiceDiagnostics
+{
+    // Observation only: implementations must never start a worker or load a model.
+    Task<PetVoiceHealth?> ReadHealthAsync(CancellationToken cancellationToken);
+}
+
+internal interface IPetVoiceProfileSelector
+{
+    Task SelectProfileAsync(PetVoiceProfile profile, CancellationToken cancellationToken);
+}
+
 // Owns a local worker and an ephemeral authentication token. No cloud service,
 // existing user's server, environment credential, or shell command is involved.
-internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeechSynthesizer, IPetVoiceLifecycle
+internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeechSynthesizer, IPetVoiceLifecycle, IPetVoiceDiagnostics, IPetVoiceProfileSelector
 {
     private readonly SemaphoreSlim _startup = new(1, 1);
     private readonly object _workerLock = new();
@@ -35,6 +46,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     private Process? _worker;
     private long _workerRevision;
     private bool _disposed;
+    private PetVoiceProfile _profile = PetVoiceProfiles.DefaultForSkin("deepseek");
     internal const int MaxWaveBytes = 32 * 1024 * 1024;
 
     internal PetVoiceClient(Func<(string Python, string Script)>? runtimeResolver = null, int port = 18766,
@@ -53,8 +65,37 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         get { lock (_workerLock) return _worker is { HasExited: false } worker ? worker.Id : null; }
     }
 
+    public async Task SelectProfileAsync(PetVoiceProfile profile, CancellationToken cancellationToken)
+    {
+        profile = PetVoiceProfiles.Normalize(profile, "deepseek");
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        await _startup.WaitAsync(lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_profile == profile) return;
+            // A single owned worker has one immutable voice configuration.
+            // Await its exit before publishing the replacement, including its CUDA graphs.
+            await RequestUnloadBestEffortAsync().ConfigureAwait(false);
+            await Task.Run(() => StopOwnedWorker(throwOnFailure: true)).ConfigureAwait(false);
+            lifetime.Token.ThrowIfCancellationRequested();
+            _profile = profile;
+        }
+        finally { _startup.Release(); }
+    }
+
+    private string VoiceId => _profile.ModelId switch
+    {
+        "base" => "deepseek-let-me-go",
+        "gpt-fixed" => "gpt-dragon-fixed-v1",
+        "saved-voice" => "saved-voice:" + _profile.ReferenceId,
+        "voice-design" => "voice-design",
+        "custom-voice" => "custom-voice:" + _profile.Speaker,
+        _ => throw new InvalidOperationException("当前角色尚未选择语音模型。")
+    };
+
     // Authenticated read-only state for diagnostics; never starts a worker.
-    internal async Task<PetVoiceHealth?> ReadHealthAsync(CancellationToken cancellationToken)
+    public async Task<PetVoiceHealth?> ReadHealthAsync(CancellationToken cancellationToken)
     {
         if (!WorkerRunning) return null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
@@ -62,10 +103,19 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         using var response = await _http.GetAsync("health", deadline.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         using var data = JsonDocument.Parse(await response.Content.ReadAsStringAsync(deadline.Token).ConfigureAwait(false));
-        var root = data.RootElement;
+        return ParseHealth(data.RootElement);
+    }
+
+    internal static PetVoiceHealth ParseHealth(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("语音引擎返回了无效的状态信息。");
         bool Flag(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
         string Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
-        return new PetVoiceHealth(Text("status"), Text("backend"), Flag("loaded"), Flag("retained"), Flag("retiring"));
+        long? Bytes(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt64(out long bytes) && bytes >= 0 ? bytes : null;
+        string device = Text("device");
+        return new PetVoiceHealth(Text("status"), Text("backend"), Flag("loaded"), Flag("retained"), Flag("retiring"),
+            Text("model"), device.Length == 0 ? null : device, Bytes("allocated_bytes"), Bytes("reserved_bytes"));
     }
 
     public bool SupportsStreaming
@@ -115,6 +165,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
         Process? createdThisAttempt = null;
         try
         {
+            if (!PetVoiceProfiles.IsEnabled(_profile)) throw new InvalidOperationException("当前角色尚未选择语音模型。");
             Process? existing;
             lock (_workerLock)
             {
@@ -152,6 +203,11 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             }
             process.BeginOutputReadLine(); process.BeginErrorReadLine();
             await process.StandardInput.WriteLineAsync(_token.AsMemory(), cancellationToken).ConfigureAwait(false);
+            var launchProfile = new Dictionary<string, object?> { ["model_id"] = _profile.ModelId, ["speaker"] = _profile.Speaker,
+                ["language"] = _profile.Language, ["instruct"] = _profile.Instruct };
+            if (_profile.ModelId == "saved-voice") launchProfile["reference_id"] = _profile.ReferenceId;
+            string profileJson = JsonSerializer.Serialize(launchProfile);
+            await process.StandardInput.WriteLineAsync(profileJson.AsMemory(), cancellationToken).ConfigureAwait(false);
             process.StandardInput.Close();
             var until = Stopwatch.StartNew();
             string lastFailure = "no_response";
@@ -285,7 +341,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         cancellationToken = lifetime.Token;
-        using var response = await SendVoiceRequestAsync("v1/audio/speech", new { input = text, voice = "deepseek-let-me-go", request_id = requestId }, cancellationToken).ConfigureAwait(false);
+        using var response = await SendVoiceRequestAsync("v1/audio/speech", new { input = text, voice = VoiceId, request_id = requestId }, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             string hint = response.StatusCode switch
@@ -318,7 +374,7 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     {
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         var token = lifetime.Token;
-        using var response = await SendVoiceRequestAsync("v1/audio/stream", new { input = text, voice = "deepseek-let-me-go", request_id = requestId }, token).ConfigureAwait(false);
+        using var response = await SendVoiceRequestAsync("v1/audio/stream", new { input = text, voice = VoiceId, request_id = requestId }, token).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException("本地流式语音暂不可用，请检查语音模型状态后重试。");
         if (response.Content.Headers.ContentType?.MediaType != "application/x-ndjson")
             throw new InvalidOperationException("语音服务未返回有效的音频流。");
@@ -458,4 +514,5 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     }
 }
 
-internal sealed record PetVoiceHealth(string Status, string Backend, bool Loaded, bool Retained, bool Retiring);
+internal sealed record PetVoiceHealth(string Status, string Backend, bool Loaded, bool Retained, bool Retiring,
+    string Model = "", string? Device = null, long? AllocatedBytes = null, long? ReservedBytes = null);

@@ -146,8 +146,8 @@ internal static class PetBehaviorMotionChecks
                 await Until(() => movement.Grounded && pet.CurrentSceneAction is "idle" or "working", 8);
                 await pet.SingAsync();
                 snapshot = await pet.GetSnapshotAsync(CancellationToken.None);
-                Require(snapshot.UserPerformance && snapshot.Performances.SequenceEqual(PetPerformanceCatalog.Names) && snapshot.Performances.Count == 12,
-                    "manual_singing_is_user_owned_and_all_twelve_first_category_performances_are_advertised");
+                Require(snapshot.UserPerformance && snapshot.Performances.SequenceEqual(PetPerformanceCatalog.Names) && snapshot.Performances.Count == 13,
+                    "manual_singing_is_user_owned_and_all_thirteen_first_category_performances_are_advertised");
                 Require(!(await pet.ExecuteAsync(new("stop_performance"), snapshot.Revision, CancellationToken.None)).Accepted &&
                     !(await pet.ExecuteAsync(new("play_performance", "sing"), snapshot.Revision, CancellationToken.None)).Accepted && pet.IsSinging,
                     "model_cannot_stop_or_replace_user_performance");
@@ -215,15 +215,15 @@ internal static class PetBehaviorMotionChecks
                         "gif_performance_completes_once_and_restores_automatic_renderer_" + action);
                 }
                 phase = "gif_settings_entry";
-                var preferences = new SettingsWindow(pet, skins) { ShowActivated = false, ShowInTaskbar = false, Topmost = false };
+                var preferences = new AppSettingsWindow(pet) { ShowActivated = false, ShowInTaskbar = false, Topmost = false };
                 try
                 {
                     preferences.Show();
                     preferences.UpdateLayout();
                     var choices = Descendants<ComboBox>(preferences).Single(control => control.Name == "PetEmotion");
                     var playButton = Descendants<Button>(preferences).Single(control => control.Name == "PlayPetEmotion");
-                    Require(choices.Items.OfType<ComboBoxItem>().Select(item => (string)item.Tag).SequenceEqual(PetPerformanceCatalog.Names.Where(id => id != "sing")),
-                        "settings_lists_all_eleven_installed_expressions_and_gif_performances");
+                    Require(choices.Items.OfType<ComboBoxItem>().Select(item => (string)item.Tag).SequenceEqual(PetPerformanceCatalog.Names),
+                        "settings_lists_all_installed_songs_expressions_and_performances");
                     choices.SelectedItem = choices.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "dance-2");
                     pet.SetSoundVolume(.42);
                     Require((choices.SelectedItem as ComboBoxItem)?.Tag as string == "dance-2" && playButton.IsEnabled,
@@ -254,6 +254,20 @@ internal static class PetBehaviorMotionChecks
                     "leaving_model_mode_revokes_only_model_actions");
                 await Until(() => pet.CurrentSceneAction is "idle" or "working", 6);
                 Require(!movement.HasScriptedMotion, "leaving_model_mode_clears_model_emotion_and_locomotion_ownership");
+                phase = "explicit_music_without_model_behavior";
+                pet.SetExplicitBehaviorCommandsActive(true);
+                snapshot = await pet.GetSnapshotAsync(CancellationToken.None);
+                Require(!(await pet.ExecuteAsync(new("play_performance", "happy"), snapshot.Revision, CancellationToken.None)).Accepted &&
+                    !(await pet.ExecuteAsync(new("play_performance", "bangyou-dance", Origin: PetBehaviorOrigin.PassiveReaction), snapshot.Revision, CancellationToken.None)).Accepted,
+                    "text_only_music_commands_do_not_enable_other_actions_or_passive_performances");
+                Require((await pet.ExecuteAsync(new("play_performance", "bangyou-dance"), snapshot.Revision, CancellationToken.None)).Accepted &&
+                    pet.CurrentSceneAction == "bangyou-dance" && !settings.SoundEnabled,
+                    "explicit_bangyou_request_starts_its_actual_renderer_without_enabling_sound_or_full_behavior_control");
+                snapshot = await pet.GetSnapshotAsync(CancellationToken.None);
+                Require(!snapshot.UserPerformance && (await pet.ExecuteAsync(new("stop_performance"), snapshot.Revision, CancellationToken.None)).Accepted,
+                    "text_only_command_can_stop_its_own_bangyou_performance");
+                await Until(() => pet.CurrentSceneAction is "idle" or "working", 6);
+                pet.SetExplicitBehaviorCommandsActive(false);
                 Finish(true);
             }
             catch (Exception ex) { Finish(false, ex.ToString()); }

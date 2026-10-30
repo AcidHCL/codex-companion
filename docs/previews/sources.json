@@ -435,5 +435,493 @@
         }
       ]
     }
+  ],
+  "gpt": [
+    {
+      "id": "idle",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        1400,
+        250,
+        160,
+        70,
+        110,
+        70,
+        160,
+        600
+      ],
+      "duration_ms": 2820,
+      "preview_bytes": 337599,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/01.png",
+          "sha256": "f0d7d359a7cc9d5c4655e457340226743fe4ef50583dbd385db5ebc603c0e2c3"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/02.png",
+          "sha256": "f5d3a24cd5274cd8c818530e6f84606b472002e8d943a4fa378b8ccd44f3536b"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/03.png",
+          "sha256": "d059c27cdc3c22c42aaa08c8159851d6fd06d192d1e2f3be63bfd230b0ca7784"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/04.png",
+          "sha256": "9993232822b06c15d95d98cd64a93229df96354899d8990960dad58a9c6fc47e"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/05.png",
+          "sha256": "ce0c558534a59654c45a69532d6d6a3b693262af6277f3d7211e479edf06c90c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/06.png",
+          "sha256": "18468fa10e093a4feec298bd973e270970c41e0fd3c91ff42d8649d7f364241f"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/07.png",
+          "sha256": "6094fd5bee5e949f2d2390df38bc5972eba07d2b0073eef7eff05f96f70feb92"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/idle/08.png",
+          "sha256": "8222a78a2ed6bf28dfbc06cf4f33e0b416a25137f4c7c6586e9538ddea9effa1"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": true,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "working",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        130,
+        90,
+        130,
+        90,
+        130,
+        90,
+        130,
+        90
+      ],
+      "duration_ms": 880,
+      "preview_bytes": 357395,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/01.png",
+          "sha256": "78070aa8e345a3ec25b004a84efcd68699c17652f52a5a2aea6c493dd8286fbb"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/02.png",
+          "sha256": "112ab64e288d3e0ad90a8da3bde1a46790c4c080b1525b97b90bb7f374555c83"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/03.png",
+          "sha256": "d2cb6cf5bd333477b25b5c8914f372b818e739bb4c453a800ec414aaa69d56a8"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/04.png",
+          "sha256": "1e524e1b5358b6e6214717b55436ef45f30387d9e4be7cf6fbaae679a91e8340"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/05.png",
+          "sha256": "89130a9dd05201605619cc7a8e3d3c8aa50d9644858f5c2a9b323edd3530964d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/06.png",
+          "sha256": "63cecffc6e07ab8dfadd23a6f4a4ea6593cf6630ba0f1e0adbe28eaa8602e04a"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/07.png",
+          "sha256": "701f6a8abf465bba5fad69e1ef34b501addafa432f774db752be55847cab38cc"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/working/08.png",
+          "sha256": "2bf2dcd38561f602008695af83da0bebbfe2a952420a859c0e1c3acc805b13fe"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": true,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "walk-right",
+      "phases": [
+        "loop"
+      ],
+      "frames": 8,
+      "durations_ms": [
+        120,
+        90,
+        120,
+        90,
+        120,
+        90,
+        120,
+        90
+      ],
+      "duration_ms": 840,
+      "preview_bytes": 290517,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/01.png",
+          "sha256": "5d6d772865cf6c2971e08f085e9545dcad4b45df137c1cf633d754a159ac1836"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/02.png",
+          "sha256": "0d5e01cbe374a2106c7f17f290bbbc9ecd33ef179d6d6686b14291609a49e58c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/03.png",
+          "sha256": "ff17cb932ace077c9cd44fe6851feb7fb08309ac702af7f6752bbbe33b8aa5f0"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/04.png",
+          "sha256": "d235e93df70852a9e1d8f174504436481293d52c525bcb237d9480d6fd18019a"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/05.png",
+          "sha256": "16bf1a2d0a02a6bfc6080a057d9691918460d2b74a68a6dd2268b45102f61067"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/06.png",
+          "sha256": "9ed3260541443dcd2b10e5bc8dda1fc2596662073146ae7a8bfcf94ca202f8a5"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/07.png",
+          "sha256": "1465e67e34357b6f56d322aa02c0d2b7d755a0a32611b274321e0fd42af6ec58"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/walk-right/08.png",
+          "sha256": "cd8cfb66b7adabfaac564e74587d07e0c3cdaf826ba7b0850c70536be7934391"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": true,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "drag",
+      "phases": [
+        "start",
+        "loop",
+        "loop"
+      ],
+      "frames": 20,
+      "durations_ms": [
+        100,
+        120,
+        120,
+        140,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110
+      ],
+      "duration_ms": 2240,
+      "preview_bytes": 830697,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/01.png",
+          "sha256": "b7644a1ec3df32e0e457b3209e07cb4f684e3c7061fb6cd02683d78ee599e8f8"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/02.png",
+          "sha256": "339d18009f8a572bf39fe5da066048615643cd343f317a9016e37c4257ca9c94"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/03.png",
+          "sha256": "90e1518af7ffebcd340075e93e7e15caaf0c3f3f691947d3c57c0c4982fdc3ca"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/04.png",
+          "sha256": "39927190703a22187adab2826148cbc53a3d00952d96827f48c8ad99b91f86a0"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/05.png",
+          "sha256": "fbe46674d15c1aecffacee4e1205909c91792274be55c17a57a70d105f5b7421"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/06.png",
+          "sha256": "957c8ffcacaa43681e59ae7ad87dfa145a446b034a735b99f8777986465f46dd"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/07.png",
+          "sha256": "4dc58d3138e215ca223f84b7a61b4329cdb55a396e5f135bbccb186286131d34"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/08.png",
+          "sha256": "4d7986014e9890d4bbf553fda2ad8b64983ac3430cf7900623adc7ca10c3c459"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/09.png",
+          "sha256": "89cde803d6f495bdb97d15e02e0a8cae75eb2eebf69e6bfa98be47fce9f3de05"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/10.png",
+          "sha256": "2e86ef4377bc2db67f7b724cf8231af730b8fff06919bbedefa7994937828f10"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/11.png",
+          "sha256": "4a0f3ffe0b28669ceb3da0dc98c38627ec4566a296fb3901dcb395ac1439cb1d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/12.png",
+          "sha256": "b7d1255bb1602d9dd4b45c6c4187b35301e274ed4ef9a15d9debb1bf3736f1dd"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/05.png",
+          "sha256": "fbe46674d15c1aecffacee4e1205909c91792274be55c17a57a70d105f5b7421"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/06.png",
+          "sha256": "957c8ffcacaa43681e59ae7ad87dfa145a446b034a735b99f8777986465f46dd"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/07.png",
+          "sha256": "4dc58d3138e215ca223f84b7a61b4329cdb55a396e5f135bbccb186286131d34"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/08.png",
+          "sha256": "4d7986014e9890d4bbf553fda2ad8b64983ac3430cf7900623adc7ca10c3c459"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/09.png",
+          "sha256": "89cde803d6f495bdb97d15e02e0a8cae75eb2eebf69e6bfa98be47fce9f3de05"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/10.png",
+          "sha256": "2e86ef4377bc2db67f7b724cf8231af730b8fff06919bbedefa7994937828f10"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/11.png",
+          "sha256": "4a0f3ffe0b28669ceb3da0dc98c38627ec4566a296fb3901dcb395ac1439cb1d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/drag/12.png",
+          "sha256": "b7d1255bb1602d9dd4b45c6c4187b35301e274ed4ef9a15d9debb1bf3736f1dd"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": true,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "happy",
+      "phases": [
+        "loop"
+      ],
+      "frames": 6,
+      "durations_ms": [
+        250,
+        140,
+        160,
+        430,
+        180,
+        500
+      ],
+      "duration_ms": 1660,
+      "preview_bytes": 268866,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/01.png",
+          "sha256": "4829de7ba4ac69d8db8b254a23576739f6098c2bf170990d11a06347f97e3bb5"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/02.png",
+          "sha256": "303b6c02f5f8c1f12ddcb514ee47d673bfe7e26f820c97480e7d735ee7e26465"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/03.png",
+          "sha256": "ab23bea77c7ce9d8e8f58f633291613052a79d1f552283ec4095e6b6abf2842f"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/04.png",
+          "sha256": "2f8daa84a65ca6966d56daeef75aad5cdf1f6fcdbcd518407339626584ab8a2d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/05.png",
+          "sha256": "bd202f3cfaf3a7cbbb1c280feffbceea2cc7416726ba86cb8f90ea48c023e22c"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/happy/06.png",
+          "sha256": "57ef27b6e3984513f9028f7aac3f905c81bae86925c7c912425e48af5a91c4fd"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": false,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "angry",
+      "phases": [
+        "loop"
+      ],
+      "frames": 6,
+      "durations_ms": [
+        220,
+        120,
+        180,
+        480,
+        180,
+        440
+      ],
+      "duration_ms": 1620,
+      "preview_bytes": 254341,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/01.png",
+          "sha256": "fc228213656945d8b352ed1e0ae3eccf421c5665195d2eab754c410de35812af"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/02.png",
+          "sha256": "da552a67291aa40ce5391ca3a5ded4d051388c255f12abd034be6be5c303ca6e"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/03.png",
+          "sha256": "6d40db43384fb244f4e26db51fb1524c776e085f81d3b79fcdf7595997af1958"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/04.png",
+          "sha256": "d9fe34f5ebb019ea78230f160f326152d2faaba800cd2a089784db700c588c15"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/05.png",
+          "sha256": "08a58e8c067a462fb6333a5fa2be6931a29f85f1c4bb09f2d5b0d65f0f29fb31"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/angry/06.png",
+          "sha256": "daf3d6b17af2ce7a83c8dd96ffae645cd2e5f0695875f7ea3225db8a4b3400fd"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": false,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "jump-right",
+      "phases": [
+        "loop"
+      ],
+      "frames": 6,
+      "durations_ms": [
+        170,
+        90,
+        130,
+        160,
+        120,
+        180
+      ],
+      "duration_ms": 850,
+      "preview_bytes": 200846,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/01.png",
+          "sha256": "ae55e8a828dd7e9e53103e22ba53c85db24208d576913b6bebee6f2068eddf98"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/02.png",
+          "sha256": "ab5ac4c40857411fc94bd6481352b35a869ae258773ee6fed7ec0d77b96a6559"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/03.png",
+          "sha256": "500b68ace3f6a025a8f4535d2de4329881e262b704af56de01310a9a1d14a2e3"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/04.png",
+          "sha256": "25e790e6c706658b7fc8b6c46e9432c44ac3860dd2c08a099bb9b940d3b5d9f7"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/05.png",
+          "sha256": "1b457db14154ea8e962fd7fa49f8b168ac4a3a54ac85ccda85ea003788682631"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/jump-right/06.png",
+          "sha256": "4c6928394f549f86ba76cd54583845d56d7511c81f737f4cde0138b2ddc5bf99"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": false,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    },
+    {
+      "id": "climb-right",
+      "phases": [
+        "loop"
+      ],
+      "frames": 6,
+      "durations_ms": [
+        150,
+        120,
+        140,
+        150,
+        120,
+        140
+      ],
+      "duration_ms": 820,
+      "preview_bytes": 207375,
+      "sources": [
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/01.png",
+          "sha256": "d1421a54f5f90b868dcb14a5274035627be77f91112ac0158396a19c66f01109"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/02.png",
+          "sha256": "b9e9ff8261d4f6e6008bda3f9d509975149083e62a725e65214c48d1cdb6ff43"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/03.png",
+          "sha256": "cd0380f4ed50efe12651c03474e603e786f349d79272258a001aedf7f6a2d5af"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/04.png",
+          "sha256": "463276afdb8c182a4e71abf8a329513bbdf21e091f19dbf25d7d619aee4a1c2d"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/05.png",
+          "sha256": "3da8194fee6763d2c39fad9b661e06bfe48402bffd79d42ef3f7f87320e0d805"
+        },
+        {
+          "file": "desktop-pet/assets/scenes/gpt-small/frames/climb-right/06.png",
+          "sha256": "46e9776d38484edbacaa2faf2bdf7230ff62cafed5931054e085b7d1c1bc5eb4"
+        }
+      ],
+      "manifest": "desktop-pet/assets/scenes/gpt-small/gpt-small.petanim.json",
+      "manifest_sha256": "6aaf53a4af045b472c9204bf82c488f289ae4fe4e47b0e0bcb3258f9ce322341",
+      "source_repeat": true,
+      "preview_repeats_forever": true,
+      "added_hold_ms": 0
+    }
   ]
 }

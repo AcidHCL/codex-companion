@@ -161,18 +161,26 @@ internal static class RedrawnAnimationIntegrationChecks
                 var packs = SceneAnimationLibrary.Load(out var issues);
                 var legacy = packs.Single(p => p.Id == BundledSceneAnimations.DeepSeekId);
                 var redrawn = packs.Single(p => p.Id == BundledSceneAnimations.DeepSeekRedrawnId);
-                Require(legacy.Actions.Count == 25 && redrawn.Actions.Count == 25, "both_bundles_have_all_25_actions");
-                Require(Clips(legacy).Count() == 26 && Clips(redrawn).Count() == 26, "both_bundles_have_26_start_loop_end_phases");
-                Require(Clips(legacy).Sum(c => c.Frames.Length) == 212 && Clips(redrawn).Sum(c => c.Frames.Length) == 1567,
-                    "legacy_212_and_redrawn_1567_png_frames");
+                Require(legacy.Actions.Count == 26 && redrawn.Actions.Count == 26 && legacy.Actions.Keys.Order().SequenceEqual(redrawn.Actions.Keys.Order()), "both_bundles_have_the_same_26_actions");
+                Require(Clips(legacy, "bangyou-dance").Count() == 26 && Clips(redrawn, "bangyou-dance").Count() == 26, "both_bundles_preserve_original_26_start_loop_end_phases");
+                Require(Clips(legacy, "bangyou-dance").Sum(c => c.Frames.Length) == 212 && Clips(redrawn, "bangyou-dance").Sum(c => c.Frames.Length) == 1567,
+                    "original_legacy_212_and_redrawn_1567_png_frames_are_preserved");
                 Require(redrawn.Actions["drag"].Start?.Frames.Length == 12 && redrawn.Actions["drag"].Loop.Frames.Length == 24
                     && Duration(redrawn.Actions["drag"].Start!) == 500 && Duration(redrawn.Actions["drag"].Loop) == 1000,
                     "drag_lift_12_frames_500ms_then_struggle_24_frames_1000ms");
                 Require(Duration(redrawn.Actions["dance"].Loop) == 9710 && Duration(redrawn.Actions["dance-2"].Loop) == 5670
                     && Duration(redrawn.Actions["dance-3"].Loop) == 19000 && redrawn.Actions["dance-3"].Loop.Frames.Length == 456,
                     "all_three_dances_preserve_full_reviewed_durations");
-                Require(Clips(redrawn).All(c => c.Type == "frames" && c.DurationsMs?.Length == c.Frames.Length
+                Require(Clips(redrawn, "bangyou-dance").All(c => c.Type == "frames" && c.DurationsMs?.Length == c.Frames.Length
                     && c.DurationsMs.All(ms => ms >= 40 && ms <= 43)), "all_redrawn_phases_use_explicit_near_24fps_timings");
+                var bangyou = legacy.Actions["bangyou-dance"];
+                Require(JsonSerializer.Serialize(bangyou) == JsonSerializer.Serialize(redrawn.Actions["bangyou-dance"]) &&
+                    bangyou.Start?.Frames.Length == 87 && Duration(bangyou.Start!) == 6960 && bangyou.Loop.Frames.Length == 35 &&
+                    Duration(bangyou.Loop) == 2800 && !bangyou.Repeat && bangyou.End == null && bangyou.Thoughts == null &&
+                    bangyou.Audio?.File == "audio/bangyou-de-jiu.mp3", "both_profiles_share_the_classic_bangyou_intro_loop_and_music_definition");
+                Require(bangyou.Start!.Frames.Concat(bangyou.Loop.Frames).Append(bangyou.Audio!.File).All(relative =>
+                    File.ReadAllBytes(Path.Combine(legacy.RootDirectory, relative)).SequenceEqual(File.ReadAllBytes(Path.Combine(redrawn.RootDirectory, relative)))),
+                    "bangyou_frames_and_music_are_byte_identical_in_both_profiles");
                 Require(redrawn.Actions.All(pair => pair.Value.Repeat == legacy.Actions[pair.Key].Repeat)
                     && redrawn.Actions["sing"].Audio?.File == legacy.Actions["sing"].Audio?.File
                     && redrawn.Actions["sing"].Thoughts!.Lines.SequenceEqual(legacy.Actions["sing"].Thoughts!.Lines),
@@ -180,7 +188,7 @@ internal static class RedrawnAnimationIntegrationChecks
                 Require(File.ReadAllBytes(Path.Combine(legacy.RootDirectory, legacy.Actions["sing"].Audio!.File))
                     .SequenceEqual(File.ReadAllBytes(Path.Combine(redrawn.RootDirectory, redrawn.Actions["sing"].Audio!.File))),
                     "singing_music_is_byte_identical_across_versions");
-                measurements.Add(new { kind = "catalog", legacyFrames = 212, redrawnFrames = 1567,
+                measurements.Add(new { kind = "catalog", legacyFrames = Clips(legacy).Sum(c => c.Frames.Length), redrawnFrames = Clips(redrawn).Sum(c => c.Frames.Length),
                     legacyFiles = legacy.Files.Count, redrawnFiles = redrawn.Files.Count, unrelatedLibraryIssueCount = issues.Count });
 
                 phase = "isolated-pet-startup";
@@ -306,8 +314,8 @@ internal static class RedrawnAnimationIntegrationChecks
         return result;
     }
 
-    private static IEnumerable<SceneAnimationClip> Clips(SceneAnimationPack pack) => pack.Actions.Values
-        .SelectMany(action => new[] { action.Start, action.Loop, action.End }).OfType<SceneAnimationClip>();
+    private static IEnumerable<SceneAnimationClip> Clips(SceneAnimationPack pack, string? excludedAction = null) => pack.Actions
+        .Where(pair => pair.Key != excludedAction).SelectMany(pair => new[] { pair.Value.Start, pair.Value.Loop, pair.Value.End }).OfType<SceneAnimationClip>();
 
     private static long Duration(SceneAnimationClip clip) => clip.DurationsMs?.Sum(ms => (long)ms)
         ?? (long)Math.Round(clip.Frames.Length * 1000 / clip.Fps);

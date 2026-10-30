@@ -17,6 +17,7 @@ internal sealed class DesktopSettings
     public double SoundVolume { get; set; } = .35;
     public bool SpeechEnabled { get; set; } = true;
     public double SpeechVolume { get; set; } = .6;
+    public Dictionary<string, PetVoiceProfile> CharacterVoices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool MovementEnabled { get; set; }
     public double Size { get; set; } = 240;
     // Physical virtual-desktop pixels. Negative coordinates are valid on secondary monitors.
@@ -59,12 +60,13 @@ internal sealed class DesktopSettings
     public void Normalize()
     {
         if (string.IsNullOrWhiteSpace(SkinId)) SkinId = "deepseek";
-        if (!BundledSceneAnimations.IsBuiltIn(DeepSeekAnimationPackId)) DeepSeekAnimationPackId = BundledSceneAnimations.DeepSeekId;
-        if (BundledSceneAnimations.IsBuiltIn(ScenePackId)) DeepSeekAnimationPackId = ScenePackId!;
+        if (!BundledSceneAnimations.IsDeepSeekBuiltIn(DeepSeekAnimationPackId)) DeepSeekAnimationPackId = BundledSceneAnimations.DeepSeekId;
+        if (BundledSceneAnimations.IsDeepSeekBuiltIn(ScenePackId)) DeepSeekAnimationPackId = ScenePackId!;
         RefreshSeconds = Math.Clamp(RefreshSeconds, 5, 120);
         Size = double.IsFinite(Size) ? Math.Clamp(Size, 160, 440) : 240;
         SoundVolume = double.IsFinite(SoundVolume) ? Math.Clamp(SoundVolume, 0, 1) : .35;
         SpeechVolume = double.IsFinite(SpeechVolume) ? Math.Clamp(SpeechVolume, 0, 1) : .6;
+        CharacterVoices = PetVoiceProfiles.NormalizeProfiles(CharacterVoices);
         if (Left.HasValue && (!double.IsFinite(Left.Value) || Left.Value < int.MinValue || Left.Value > int.MaxValue)) Left = null;
         if (Top.HasValue && (!double.IsFinite(Top.Value) || Top.Value < int.MinValue || Top.Value > int.MaxValue)) Top = null;
         TaskSourceOverrides = TaskSourcePolicy.NormalizeOverrides(TaskSourceOverrides);
@@ -92,5 +94,15 @@ internal sealed class DesktopSettings
         {
             if (File.Exists(tempPath)) File.Delete(tempPath);
         }
+    }
+
+    public PetVoiceProfile GetVoiceProfile(string skinId) => CharacterVoices != null && CharacterVoices.TryGetValue(skinId, out var profile)
+        ? PetVoiceProfiles.Normalize(profile, skinId) : PetVoiceProfiles.DefaultForSkin(skinId);
+
+    public void SetVoiceProfile(string skinId, PetVoiceProfile profile)
+    {
+        if (!PetVoiceProfiles.KnownSkin(skinId)) throw new ArgumentException("未知的桌宠角色。", nameof(skinId));
+        CharacterVoices ??= new(StringComparer.OrdinalIgnoreCase);
+        CharacterVoices[skinId.ToLowerInvariant()] = PetVoiceProfiles.Normalize(profile, skinId);
     }
 }

@@ -86,10 +86,78 @@ internal static class PetSpeechStreamingChecks
         require(!service.StatusText.Contains("已加载") && service.StatusText.Contains("按需加载"),
             "unretained_idle_status_does_not_claim_permanent_model_residency");
 
+        int beforeStudioPreloads = synth.Preloaded, beforeStudioSpeech = synth.Texts.Count;
+        service.SetStudioBusy(true);
+        await service.UnloadAsync();
+        service.SetChatSessionActive(true);
+        await service.PreloadAsync();
+        service.Speak("音色生成期间不要插入普通播报。", PetSpeechSource.Preset);
+        await Task.Delay(20);
+        require(synth.Preloaded == beforeStudioPreloads && synth.Texts.Count == beforeStudioSpeech && !synth.Retention.Last(),
+            "voice_studio_excludes_chat_retention_manual_preload_and_normal_synthesis");
+        service.SetStudioBusy(false);
+        await service.PreloadAsync();
+        require(synth.Preloaded == beforeStudioPreloads + 1 && synth.Retention.Last(),
+            "normal_voice_can_be_loaded_after_voice_studio_lease_is_released");
+
         var isolated = new StreamSynth();
         using var isolatedService = new PetSpeechService(settings, dispatcher, isolated, new LegacyOutput(), enabledForProcess: false, streamPlayer: new StreamOutput());
         isolatedService.SetChatSessionActive(true); await isolatedService.PreloadAsync(); await isolatedService.UnloadAsync();
         require(isolated.Preloaded == 0 && isolated.Unloaded == 0 && isolated.Retention.Count == 0, "isolated_ui_fixture_never_starts_or_unloads_real_voice_models");
+        await CheckStreamInterruptionAsync(dispatcher, require);
+    }
+
+    private static async Task CheckStreamInterruptionAsync(Dispatcher dispatcher, Action<bool, string> require)
+    {
+        var settings = new DesktopSettings { SkinId = "deepseek", SpeechEnabled = true };
+        var synth = new InterruptSynth(); var output = new InterruptOutput();
+        using var service = new PetSpeechService(settings, dispatcher, synth, new LegacyOutput(), streamPlayer: output);
+        var oldSynthesis = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var presetSynthesis = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        synth.Holds["旧模型回答。"] = oldSynthesis;
+        synth.Holds["新点击回应"] = presetSynthesis;
+        long oldId = service.BeginChatResponse();
+        service.AppendChatResponse(oldId, "旧模型回答。");
+        await Until(() => output.Chunks == 1 && service.IsSpeaking);
+        Action<bool> stalePlaybackState = output.LastState!;
+        int stops = output.Stops;
+        service.Speak("新点击回应。", PetSpeechSource.Preset);
+        require(output.Stops == stops + 1 && !output.Active && !service.IsSpeaking,
+            "new_preset_immediately_stops_older_pcm_and_cancels_its_reply");
+        await Until(() => output.Chunks == 2 && service.IsSpeaking);
+        require(!oldSynthesis.Task.IsCompleted && synth.Cancelled.Count > 0,
+            "new_pcm_starts_without_waiting_for_late_cancelled_backend_chunks");
+        stops = output.Stops;
+        service.AppendChatResponse(oldId, "旧回答迟到的后半句。");
+        service.CompleteChatResponse(oldId); service.CancelChatResponse(oldId);
+        stalePlaybackState(false); oldSynthesis.SetResult();
+        await Task.Delay(30);
+        require(output.Chunks == 2 && output.Stops == stops && service.IsSpeaking && !synth.Texts.Contains("旧回答迟到的后半句。"),
+            "old_reply_text_cancel_pcm_and_status_callbacks_cannot_modify_new_preset");
+
+        output.HoldAtEnd = true;
+        long latestId = service.BeginChatResponse();
+        require(output.Stops == stops + 1 && !output.Active, "new_chat_response_immediately_preempts_active_preset_pcm");
+        service.AppendChatResponse(latestId, "新回答第一句。");
+        await Until(() => output.Chunks == 3 && service.IsSpeaking);
+        int starts = output.Starts; stops = output.Stops;
+        service.AppendChatResponse(latestId, "新回答第二句。"); service.CompleteChatResponse(latestId);
+        await Until(() => output.Chunks == 4 && output.WaitingAtEnd);
+        service.CancelChatResponse(oldId); presetSynthesis.SetResult();
+        await Task.Delay(30);
+        require(output.Starts == starts && output.Stops == stops && service.IsSpeaking && output.Chunks == 4,
+            "same_reply_sentences_share_pcm_stream_and_older_cancel_does_not_interrupt_them");
+        service.CancelChatResponse(latestId);
+        require(!service.IsSpeaking && !output.Active && output.Stops == stops + 1,
+            "completed_chat_input_retains_ownership_of_audio_until_it_is_cancelled");
+        output.HoldAtEnd = false;
+        long newerId = service.BeginChatResponse(); service.AppendChatResponse(newerId, "另一条新回复。");
+        await Until(() => output.Chunks == 5 && service.IsSpeaking);
+        stops = output.Stops; service.CancelChatResponse(latestId);
+        require(service.IsSpeaking && output.Stops == stops, "late_cancel_of_previous_chat_cannot_stop_new_chat");
+        service.CompleteChatResponse(newerId);
+        await Until(() => !service.IsSpeaking && service.StatusText.Contains("待命"));
+        require(output.MaximumConcurrent == 1, "preempted_pcm_sessions_never_overlap_playback");
     }
 
     private static async Task Until(Func<bool> condition)
@@ -131,6 +199,50 @@ internal static class PetSpeechStreamingChecks
         public Task PlayAsync(byte[] wave, double volume, CancellationToken token) => throw new InvalidOperationException("Streaming must not reopen a WAV player.");
         public void SetVolume(double volume) { }
         public void Stop() { }
+        public void Dispose() { }
+    }
+
+    private sealed class InterruptSynth : IPetSpeechSynthesizer, IPetStreamingSpeechSynthesizer
+    {
+        internal readonly List<string> Texts = new();
+        internal readonly List<string> Cancelled = new();
+        internal readonly Dictionary<string, TaskCompletionSource> Holds = new();
+        public Task<byte[]> SynthesizeAsync(string text, string id, CancellationToken token) => throw new InvalidOperationException("Expected PCM.");
+        public async IAsyncEnumerable<PetPcmChunk> StreamAsync(string text, string id, [EnumeratorCancellation] CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested(); Texts.Add(text);
+            await Task.Delay(1, token);
+            yield return new(new(24000, 1), new byte[9600]);
+            if (Holds.TryGetValue(text, out var held))
+            {
+                await held.Task; // Model a late backend that ignores cancellation.
+                yield return new(new(24000, 1), new byte[9600]);
+            }
+        }
+        public Task CancelAsync(string id) { Cancelled.Add(id); return Task.CompletedTask; }
+        public Task ReleaseAsync() => Task.CompletedTask;
+        public void Dispose() { }
+    }
+
+    private sealed class InterruptOutput : IPetPcmStreamPlayer
+    {
+        internal int Starts, Stops, Chunks, MaximumConcurrent;
+        private int _concurrent;
+        internal bool Active, HoldAtEnd, WaitingAtEnd;
+        internal Action<bool>? LastState;
+        public async Task PlayAsync(IAsyncEnumerable<PetPcmChunk> source, double volume, Action<bool> state, CancellationToken token)
+        {
+            Starts++; Active = true; WaitingAtEnd = false; LastState = state;
+            MaximumConcurrent = Math.Max(MaximumConcurrent, ++_concurrent);
+            try
+            {
+                await foreach (var chunk in source.WithCancellation(token)) { Chunks++; state(true); }
+                if (HoldAtEnd) { WaitingAtEnd = true; await Task.Delay(Timeout.Infinite, token); }
+            }
+            finally { Active = false; _concurrent--; }
+        }
+        public void SetVolume(double volume) { }
+        public void Stop() { Stops++; Active = false; }
         public void Dispose() { }
     }
 }

@@ -24,7 +24,12 @@ internal static class PetSpeechChecks
             string? error = null;
             try
             {
+                await PetVoiceHealthChecks.RunAsync(app.Dispatcher, Require);
                 await PetSpeechStreamingChecks.RunAsync(app.Dispatcher, Require);
+                await PetVoiceProfileChecks.RunAsync(app.Dispatcher, Require);
+                PetVoiceLibraryChecks.Run(Require);
+                await PetVoiceStudioChecks.RunAsync(app.Dispatcher, Require);
+                await CheckLatestUtteranceAsync(app.Dispatcher, Require);
                 string fence = new((char)96, 3);
                 string normalized = PetSpeechText.Normalize("<think>秘密思考</think> **任务完成**。[1]\n[天气](https://example.com)\n" + fence + "python\nprint('代码')\n" + fence + "\n![图](https://example.com/a.png)");
                 Require(normalized == "任务完成。天气", "only_visible_prose_no_thought_code_citations_urls_or_images");
@@ -115,10 +120,10 @@ internal static class PetSpeechChecks
                 settings.SpeechEnabled = true; voice.ApplySettings();
 
                 int calls = synth.Texts.Count;
-                voice.Speak("这次任务已经完成啦！", PetSpeechSource.Preset);
-                voice.Speak("这次任务已经完成啦！", PetSpeechSource.Preset);
+                voice.Speak("这次任务已经完成啦！", PetSpeechSource.Preset, "completed-task-fixture");
+                voice.Speak("这次任务已经完成啦！", PetSpeechSource.Preset, "completed-task-fixture");
                 await Until(() => synth.Texts.Count > calls && voice.StatusText.Contains("待命"));
-                Require(synth.Texts.Count == calls + 1, "duplicate_notice_is_not_read_twice");
+                Require(synth.Texts.Count == calls + 1, "explicitly_identified_duplicate_notice_is_not_read_twice");
 
                 synth.Hold = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
                 int before = player.Played;
@@ -168,6 +173,51 @@ internal static class PetSpeechChecks
         app.Run(); return result;
     }
 
+    private static async Task CheckLatestUtteranceAsync(Dispatcher dispatcher, Action<bool, string> require)
+    {
+        var settings = new DesktopSettings { SkinId = "deepseek", SpeechEnabled = true };
+        var synth = new Synth(); var player = new Player { Hold = true };
+        using var voice = new PetSpeechService(settings, dispatcher, synth, player);
+        voice.Speak("旧的完整回答正在播放。", PetSpeechSource.Chat);
+        await Until(() => voice.IsSpeaking && player.Played == 1);
+        voice.Speak("新的点击提示。", PetSpeechSource.Preset);
+        require(!voice.IsSpeaking && player.Active == 0, "new_preset_immediately_stops_an_older_chat_wav");
+        await Until(() => voice.IsSpeaking && player.Played == 2);
+        voice.Speak("现在播放新的试听。", PetSpeechSource.Preview);
+        require(player.Active == 0, "preview_immediately_replaces_active_preset_wav");
+        await Until(() => voice.IsSpeaking && player.Played == 3);
+        voice.Speak("重复点击也要重新回答。", PetSpeechSource.Preset);
+        await Until(() => voice.IsSpeaking && player.Played == 4);
+        voice.Speak("重复点击也要重新回答。", PetSpeechSource.Preset);
+        require(player.Active == 0, "same_text_click_interrupts_and_restarts_without_implicit_deduplication");
+        await Until(() => voice.IsSpeaking && player.Played == 5);
+        require(synth.Texts.Count(text => text == "重复点击也要重新回答") == 1 && player.MaximumConcurrent == 1,
+            "repeated_preset_reuses_voice_cache_without_overlapping_playback");
+        voice.Stop(); await Task.Delay(20);
+
+        var lateWave = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        synth.Hold = lateWave; synth.HoldAtCall = synth.Texts.Count + 1; synth.Held = false;
+        int before = player.Played;
+        voice.Speak("旧合成忽略取消并很晚才返回。", PetSpeechSource.Chat);
+        await Until(() => synth.Held);
+        synth.Hold = null;
+        voice.Speak("被更新提示替换的待播消息。", PetSpeechSource.Preset);
+        voice.Speak("只应播放最新消息。", PetSpeechSource.Preset);
+        await Until(() => voice.IsSpeaking && player.Played == before + 1);
+        require(!lateWave.Task.IsCompleted && synth.Cancelled > 0,
+            "latest_message_bypasses_cancelled_synthesis_and_sends_backend_cancellation");
+        // The dispatcher may resume the cancelled pump inline. In that case
+        // the intermediate message legitimately starts preparing immediately;
+        // the next call must cancel it before it ever reaches playback.
+        bool middleCancelled = !synth.RequestTokens.TryGetValue("被更新提示替换的待播消息", out var middleToken) || middleToken.IsCancellationRequested;
+        require(middleCancelled && synth.Texts.Last() == "只应播放最新消息" && player.Played == before + 1,
+            "intermediate_message_is_discarded_or_cancelled_and_only_latest_reaches_playback");
+        lateWave.SetResult(Synth.Wave); await Task.Delay(30);
+        require(player.Played == before + 1 && voice.IsSpeaking,
+            "late_cancelled_wave_cannot_restart_or_stop_the_newer_utterance");
+        voice.Stop();
+    }
+
     private static async Task Until(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -178,6 +228,7 @@ internal static class PetSpeechChecks
     {
         internal static readonly byte[] Wave = MakeWave();
         internal List<string> Texts = new();
+        internal readonly Dictionary<string, CancellationToken> RequestTokens = new();
         internal bool Fail, Held, Disposed;
         internal int Cancelled;
         internal int? HoldAtCall;
@@ -185,7 +236,7 @@ internal static class PetSpeechChecks
         internal TaskCompletionSource? ReleaseHold;
         public async Task<byte[]> SynthesizeAsync(string text, string id, CancellationToken token)
         {
-            Texts.Add(text);
+            Texts.Add(text); RequestTokens[text] = token;
             if (Hold != null && (HoldAtCall == null || Texts.Count == HoldAtCall)) { Held = true; return await Hold.Task; } // Deliberately ignore cancellation to model a late backend.
             await Task.Delay(5, token);
             if (Fail) throw new InvalidOperationException("模拟合成失败");

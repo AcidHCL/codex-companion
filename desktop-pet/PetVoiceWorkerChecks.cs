@@ -95,6 +95,38 @@ internal static class PetVoiceWorkerChecks
             Require(Gone(previous) && client.OwnedWorkerProcessId != previous,
                 "health_retiring_flag_prevents_reuse_during_exit_grace_period");
             previous = client.OwnedWorkerProcessId!.Value;
+            var customProfile = new PetVoiceProfile("custom-voice", "Serena", "Chinese", "温柔自然");
+            await client.SelectProfileAsync(customProfile, deadline.Token);
+            Require(Gone(previous) && client.OwnedWorkerProcessId == null,
+                "changing_voice_profile_releases_previous_worker_without_loading_the_next_model");
+            await client.PreloadAsync("custom-profile", deadline.Token);
+            var profileHealth = await client.ReadHealthAsync(deadline.Token);
+            Require(profileHealth?.Model == "custom-voice" && profileHealth.Loaded,
+                "new_worker_receives_immutable_custom_voice_profile_over_stdin");
+            previous = client.OwnedWorkerProcessId!.Value;
+            await client.SelectProfileAsync(customProfile, deadline.Token);
+            Require(client.OwnedWorkerProcessId == previous,
+                "selecting_unchanged_voice_profile_keeps_warm_worker");
+            await client.SelectProfileAsync(new("voice-design", "Vivian", "Chinese", "清亮自信的女声"), deadline.Token);
+            Require(Gone(previous), "voice_design_switch_awaits_custom_voice_worker_exit");
+            await client.PreloadAsync("designed-profile", deadline.Token);
+            Require((await client.ReadHealthAsync(deadline.Token))?.Model == "voice-design",
+                "voice_design_profile_is_used_by_replacement_worker");
+            previous = client.OwnedWorkerProcessId!.Value;
+            await client.SelectProfileAsync(new("gpt-fixed", "Vivian", "Chinese", "unused original design"), deadline.Token);
+            Require(Gone(previous), "fixed_gpt_voice_switch_awaits_design_worker_exit");
+            chunks = 0;
+            await foreach (var chunk in client.StreamAsync("新的固定音色台词", "gpt-fixed-stream", deadline.Token)) chunks++;
+            Require(chunks == 1 && (await client.ReadHealthAsync(deadline.Token))?.Model == "gpt-fixed",
+                "fixed_gpt_voice_sends_dedicated_wire_id_and_no_design_instruction");
+            previous = client.OwnedWorkerProcessId!.Value;
+            await client.SelectProfileAsync(new("saved-voice", "Vivian", "Chinese", "", "abcdef0123456789abcdef0123456789"), deadline.Token);
+            Require(Gone(previous), "saved_voice_switch_releases_previous_reference_worker");
+            chunks = 0;
+            await foreach (var chunk in client.StreamAsync("我的固定音色", "saved-voice-stream", deadline.Token)) chunks++;
+            Require(chunks == 1 && (await client.ReadHealthAsync(deadline.Token))?.Model == "saved-voice",
+                "saved_voice_passes_reference_id_over_stdin_and_correct_authenticated_wire_id");
+            previous = client.OwnedWorkerProcessId!.Value;
             client.Dispose();
             Require(Gone(previous), "dispose_waits_for_owned_worker_exit_without_touching_other_processes");
             using (var stopEntered = new ManualResetEventSlim())
@@ -163,7 +195,7 @@ import argparse, base64, ctypes, hmac, json, os, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--port',type=int);p.add_argument('--parent-pid',type=int);a=p.parse_args()
-token=sys.stdin.readline().strip(); root=Path(__file__).parent; state={'retiring':False,'loaded':False}
+token=sys.stdin.readline().strip(); profile=json.loads(sys.stdin.readline() or '{}'); root=Path(__file__).parent; state={'retiring':False,'loaded':False}
 def watch_parent():
     k=ctypes.WinDLL('kernel32',use_last_error=True)
     k.OpenProcess.argtypes=[ctypes.c_ulong,ctypes.c_int,ctypes.c_ulong];k.OpenProcess.restype=ctypes.c_void_p
@@ -189,7 +221,7 @@ class H(BaseHTTPRequestHandler):
             hold.unlink();(root/'health-entered').write_text('entered')
             until=time.monotonic()+5
             while not (root/'health-release').exists() and time.monotonic()<until:time.sleep(.01)
-        self.reply(200,{'status':'unloading' if state['retiring'] else 'ready','retiring':state['retiring'],'loaded':state['loaded']})
+        self.reply(200,{'status':'unloading' if state['retiring'] else 'ready','retiring':state['retiring'],'loaded':state['loaded'],'model':profile.get('model_id','base')})
     def do_POST(self):
         if not self.auth():return
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));rid=body.get('request_id','control')
@@ -211,6 +243,10 @@ class H(BaseHTTPRequestHandler):
             if rid=='retire-on-health':retire()
             return
         if self.path=='/v1/audio/stream':
+            if rid=='saved-voice-stream' and (body.get('voice')!='saved-voice:abcdef0123456789abcdef0123456789' or profile.get('reference_id')!='abcdef0123456789abcdef0123456789'):
+                self.reply(400,{'error':'incorrect_saved_reference'});return
+            if rid=='gpt-fixed-stream' and (body.get('voice')!='gpt-dragon-fixed-v1' or profile.get('instruct')):
+                self.reply(400,{'error':'incorrect_fixed_voice_profile'});return
             self.send_response(200);self.send_header('Content-Type','application/x-ndjson');self.end_headers()
             for item in ({'type':'format','sample_rate':24000,'channels':1,'sample_format':'s16le'}, {'type':'audio','data':base64.b64encode(bytes(8)).decode()}):
                 self.wfile.write((json.dumps(item)+'\n').encode());self.wfile.flush()

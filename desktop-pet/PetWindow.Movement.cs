@@ -75,7 +75,7 @@ internal sealed partial class PetWindow
     public void ClimbNearbyWindow(int direction)
     {
         InvalidateLlmBehavior();
-        if (!UsesBuiltInScenes) { Say("当前只有 DeepSeek 的默认动画支持攀爬。"); return; }
+        if (!UsesBuiltInScenes) { Say("请先选择带有攀爬动作的内置角色动画。"); return; }
         if (DisplayRenderingPaused || !IsVisible) return;
         if (!Settings.MovementEnabled) { SetMovement(true); Say("已开启桌面移动。把我放在窗口侧边附近，落稳后再试攀爬。"); return; }
         if (!_motionPreferences().AllowsAnimation) { Say("请先允许系统显示动态效果。"); return; }

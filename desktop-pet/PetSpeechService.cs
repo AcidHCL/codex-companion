@@ -38,9 +38,18 @@ internal sealed class PetSpeechService : IDisposable
     private int _chatInputCharacters;
     private long _epoch;
     private Task _pendingRelease = Task.CompletedTask;
+    private PetVoiceProfile? _selectedProfile;
+    private string? _profileSkin;
     public event Action? Changed;
     public string StatusText { get; private set; } = "本地参考音色待命";
     public bool IsSpeaking { get; private set; }
+
+    internal Task<PetVoiceHealth?> ReadModelHealthAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return !_disposed && _synthesizer is IPetVoiceDiagnostics diagnostics
+            ? diagnostics.ReadHealthAsync(cancellationToken) : Task.FromResult<PetVoiceHealth?>(null);
+    }
 
     public PetSpeechService(DesktopSettings settings, Dispatcher dispatcher, bool enabledForProcess = true)
         : this(settings, dispatcher, new PetVoiceClient(), new PetSpeechPlayer(dispatcher), enabledForProcess) { }
@@ -57,16 +66,17 @@ internal sealed class PetSpeechService : IDisposable
         ApplySettings();
     }
 
-    private bool Allowed => !_disposed && _enabledForProcess && _settings.SpeechEnabled &&
-        string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase) && !_suspended;
-    private bool ModelAllowed => !_disposed && _enabledForProcess && _settings.SpeechEnabled &&
-        string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase);
+    private bool _studioBusy;
+    private bool Allowed => !_disposed && !_studioBusy && _enabledForProcess && _settings.SpeechEnabled &&
+        PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) && !_suspended;
+    private bool ModelAllowed => !_disposed && !_studioBusy && _enabledForProcess && _settings.SpeechEnabled &&
+        PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId));
 
     private string IdleStatus => !_settings.SpeechEnabled ? "语音已关闭" :
-        !string.Equals(_settings.SkinId, "deepseek", StringComparison.OrdinalIgnoreCase) ? "当前角色未启用语音" :
+        !PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) ? "当前角色未选择语音模型" :
         _suspended ? "语音已暂停" : !_enabledForProcess ? "测试模式：不播放声音" :
         _manualUnload ? "语音模型已卸载，下次朗读时加载" :
-        _modelReady && _chatSessionActive ? "参考音色已加载，待命" : "本地参考音色待命，按需加载";
+        _modelReady && _chatSessionActive ? "语音模型已加载，待命" : "本地语音待命，按需加载";
 
     private void SetStatus(string value, bool speaking = false)
     {
@@ -77,22 +87,25 @@ internal sealed class PetSpeechService : IDisposable
     public void Speak(string text, PetSpeechSource source, string? dedupeKey = null)
     {
         if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(() => Speak(text, source, dedupeKey)); return; }
+        if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         if (!Allowed) return;
         string normalized;
         try { normalized = PetSpeechText.Normalize(text); }
         catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { SetStatus("这段文本过于复杂，暂未朗读。"); return; }
         if (normalized.Length == 0) return;
-        if (source == PetSpeechSource.Preset)
+        // Only callers that identify the same underlying notice opt into
+        // deduplication. Separate clicks can legitimately say the same words.
+        if (source == PetSpeechSource.Preset && !string.IsNullOrEmpty(dedupeKey))
         {
             var now = DateTime.UtcNow;
-            string key = dedupeKey ?? normalized;
+            string key = dedupeKey;
             if (_recent.TryGetValue(key, out var last) && now - last < TimeSpan.FromSeconds(5)) return;
             if (_recent.Count >= 64) _recent.Clear();
             _recent[key] = now;
-            // Notifications should not become a long stale backlog.
-            if (_queue.Count >= 3) return;
         }
-        else StopCore();
+        // A new utterance replaces synthesis, queued sentences and playback
+        // from the previous one. AppendChatResponse remains within one epoch.
+        StopCore();
         _manualUnload = false;
         _queue.Enqueue(new Utterance(normalized, source, _epoch));
         if (!_pumping) _ = PumpAsync();
@@ -101,6 +114,7 @@ internal sealed class PetSpeechService : IDisposable
     public long BeginChatResponse()
     {
         _dispatcher.VerifyAccess();
+        if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         if (!Allowed) return -1;
         StopCore(); _manualUnload = false;
         _chatInput = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
@@ -129,6 +143,14 @@ internal sealed class PetSpeechService : IDisposable
         _dispatcher.VerifyAccess();
         if (id < 0 || id != _chatInputId) return;
         _chatInput?.Writer.TryComplete(); _chatInput = null; _chatInputId = -1;
+    }
+
+    public void CancelChatResponse(long id)
+    {
+        _dispatcher.VerifyAccess();
+        // Complete only closes the input: its audio may still be playing.
+        // A late cancel from an older reply must never stop a newer message.
+        if (!_disposed && id > 0 && id == _epoch) StopCore();
     }
 
     private async Task PumpAsync()
@@ -230,7 +252,7 @@ internal sealed class PetSpeechService : IDisposable
                 });
                 try
                 {
-                    await foreach (var chunk in streaming.StreamAsync(part, id, token).ConfigureAwait(false))
+                    await foreach (var chunk in ReadCancelableChunksAsync(streaming.StreamAsync(part, id, token), token).ConfigureAwait(false))
                     { token.ThrowIfCancellationRequested(); yield return chunk; }
                     await _dispatcher.InvokeAsync(() => { if (item.Epoch == _epoch) _modelReady = true; });
                 }
@@ -243,6 +265,37 @@ internal sealed class PetSpeechService : IDisposable
         }
     }
 
+    private static async IAsyncEnumerable<PetPcmChunk> ReadCancelableChunksAsync(IAsyncEnumerable<PetPcmChunk> source,
+        [EnumeratorCancellation] CancellationToken token)
+    {
+        var reader = source.GetAsyncEnumerator(token);
+        Task<bool>? pending = null;
+        try
+        {
+            while (true)
+            {
+                token.ThrowIfCancellationRequested();
+                pending = reader.MoveNextAsync().AsTask();
+                if (!await pending.WaitAsync(token).ConfigureAwait(false)) break;
+                pending = null;
+                token.ThrowIfCancellationRequested();
+                yield return reader.Current;
+            }
+        }
+        finally
+        {
+            // A backend may deliver a final chunk after cancellation. Do not
+            // let that delay the new message or dispose an active MoveNext.
+            if (token.IsCancellationRequested)
+                _ = IgnoreFailureAsync(async () =>
+                {
+                    try { if (pending != null) await pending.ConfigureAwait(false); }
+                    finally { await reader.DisposeAsync().ConfigureAwait(false); }
+                });
+            else await reader.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private async Task<byte[]> GenerateChunkAsync(string part, PetSpeechSource source, CancellationToken token)
     {
         if (source == PetSpeechSource.Preset && _presetCache.TryGetValue(part, out var cached)) return cached;
@@ -250,7 +303,7 @@ internal sealed class PetSpeechService : IDisposable
         _requestId = id;
         try
         {
-            var wave = await _synthesizer.SynthesizeAsync(part, id, token);
+            var wave = await _synthesizer.SynthesizeAsync(part, id, token).WaitAsync(token);
             token.ThrowIfCancellationRequested();
             // Preset cache stays in memory; private chat speech is never archived.
             if (source == PetSpeechSource.Preset && wave.Length <= 4 * 1024 * 1024)
@@ -260,15 +313,22 @@ internal sealed class PetSpeechService : IDisposable
             }
             return wave;
         }
-        finally { if (_requestId == id) _requestId = null; }
+        finally
+        {
+            if (token.IsCancellationRequested) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(id));
+            if (_requestId == id) _requestId = null;
+        }
     }
 
     private void StopCore()
     {
+        // Cancellation can resume the old pump inline and clear _requestId.
+        // Capture its identity before signalling, so the server still receives
+        // the cancellation even when the local wait has already unwound.
+        string? requestId = _requestId;
         _epoch++; _queue.Clear();
         _chatInput?.Writer.TryComplete(); _chatInput = null; _chatInputId = -1;
         _current?.Cancel(); _player.Stop(); _streamPlayer?.Stop();
-        string? requestId = _requestId;
         if (requestId != null) _ = IgnoreFailureAsync(() => _synthesizer.CancelAsync(requestId));
         SetStatus(IdleStatus);
     }
@@ -283,6 +343,18 @@ internal sealed class PetSpeechService : IDisposable
     {
         if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(ApplySettings); return; }
         if (_disposed) return;
+        PetVoiceProfile profile = _settings.GetVoiceProfile(_settings.SkinId);
+        bool profileChanged = _selectedProfile != profile || _profileSkin != _settings.SkinId;
+        if (profileChanged || _pendingRelease.IsFaulted || _pendingRelease.IsCanceled)
+        {
+            bool hadProfile = _selectedProfile != null;
+            _selectedProfile = profile; _profileSkin = _settings.SkinId;
+            StopCore(); CancelPreload(); _preloading = null; _modelReady = false;
+            _presetCache.Clear(); _cachedBytes = 0; _recent.Clear();
+            _manualUnload = false;
+            if (_enabledForProcess)
+                _pendingRelease = ConfigureProfileAfterAsync(_pendingRelease, profile, hadProfile);
+        }
         _player.SetVolume(_settings.SpeechVolume);
         _streamPlayer?.SetVolume(_settings.SpeechVolume);
         if (!Allowed)
@@ -318,6 +390,7 @@ internal sealed class PetSpeechService : IDisposable
     public Task PreloadAsync()
     {
         _dispatcher.VerifyAccess();
+        if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         if (!ModelAllowed || _synthesizer is not IPetVoiceLifecycle) return Task.CompletedTask;
         if (_preloading is { IsCompleted: false }) return _preloading;
         _manualUnload = false;
@@ -353,6 +426,7 @@ internal sealed class PetSpeechService : IDisposable
     {
         _dispatcher.VerifyAccess();
         if (_disposed) return;
+        if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         _manualUnload = true; StopCore(); CancelPreload();
         if (!_enabledForProcess) return;
         SetStatus("正在卸载语音模型…");
@@ -366,7 +440,8 @@ internal sealed class PetSpeechService : IDisposable
         }
         catch (Exception ex)
         { if (!_disposed) SetStatus(ex is InvalidOperationException ? ex.Message : "语音模型卸载未完成，请重试。"); throw; }
-        finally { if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) _pendingRelease = Task.CompletedTask; }
+        // Keep a failed configuration/release barrier visible. The next explicit
+        // request retries selection before speaking instead of reusing an old voice.
     }
 
     private async Task UnloadCoreAsync(Task previous)
@@ -406,6 +481,14 @@ internal sealed class PetSpeechService : IDisposable
         ApplySettings();
     }
 
+    internal void SetStudioBusy(bool busy)
+    {
+        _dispatcher.VerifyAccess();
+        if (_disposed || _studioBusy == busy) return;
+        _studioBusy = busy;
+        ApplySettings();
+    }
+
     private static async Task IgnoreFailureAsync(Func<Task> action)
     {
         try { await action(); } catch (Exception) { /* Best effort cancellation/unload, never a UI crash. */ }
@@ -415,6 +498,17 @@ internal sealed class PetSpeechService : IDisposable
     {
         await previous;
         if (!_disposed) await IgnoreFailureAsync(_synthesizer.ReleaseAsync);
+    }
+
+    private async Task ConfigureProfileAfterAsync(Task previous, PetVoiceProfile profile, bool hadProfile)
+    {
+        try { await previous; }
+        catch (Exception) { /* Explicit retry still asks the owner to stop its old worker. */ }
+        if (_disposed) return;
+        if (_synthesizer is IPetVoiceProfileSelector selector)
+            await selector.SelectProfileAsync(profile, CancellationToken.None);
+        else if (hadProfile)
+            await _synthesizer.ReleaseAsync();
     }
 
     public void Dispose()

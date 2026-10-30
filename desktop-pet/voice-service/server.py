@@ -125,7 +125,8 @@ def make_handler(engine, token, port):
                     if set(body) != {"input", "voice", "request_id"}:
                         raise ValueError()
                     text = body.get("input")
-                    if body.get("voice") != VOICE or not isinstance(text, str) or not 1 <= len(text.strip()) <= 2000 or "\x00" in text:
+                    expected_voice = getattr(getattr(engine, "config", None), "voice_id", VOICE)
+                    if body.get("voice") != expected_voice or not isinstance(text, str) or not 1 <= len(text.strip()) <= 2000 or "\x00" in text:
                         raise ValueError()
                     if self.path == "/v1/audio/stream":
                         if not hasattr(engine, "stream"):
@@ -204,6 +205,14 @@ def watch_parent(pid, server):
     os._exit(0)
 
 
+def read_launch_profile(stream):
+    """The private stdin payload is bounded and never exposed in argv or logs."""
+    raw = stream.readline(8193)
+    if len(raw) > 8192:
+        raise ValueError("Voice profile is too large")
+    return json.loads(raw) if raw.strip() else None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=18766)
@@ -214,7 +223,11 @@ def main():
     token = sys.stdin.readline(1024).strip()
     if not 32 <= len(token) <= 256 or not token.isascii():
         raise SystemExit("Missing session token")
-    config = Config.load(Path(__file__).resolve().parent)
+    try:
+        config = Config.load(Path(__file__).resolve().parent).with_profile(read_launch_profile(sys.stdin))
+    except (ValueError, TypeError, UnicodeError):
+        # Instructions and paths must never appear in a startup traceback.
+        raise SystemExit("Invalid local voice profile") from None
     if config.backend == "faster":
         from faster_engine import FasterVoiceEngine
         engine = FasterVoiceEngine(config)

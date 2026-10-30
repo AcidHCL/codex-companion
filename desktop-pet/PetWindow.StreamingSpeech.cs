@@ -6,6 +6,6 @@ internal sealed partial class PetWindow
         () => { RefreshSpeechSuspension(); return _voice?.BeginChatResponse() ?? 0; },
         (id, text) => _voice?.AppendChatResponse(id, text),
         id => _voice?.CompleteChatResponse(id),
-        StopSpeech,
+        id => _voice?.CancelChatResponse(id),
         ShowSpeechBubble);
 }

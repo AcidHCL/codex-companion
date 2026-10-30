@@ -418,6 +418,8 @@ internal sealed partial class OllamaChatWindow : Window
 
     internal event Action? BehaviorAvailabilityChanged;
     internal event Action? BehaviorContextInvalidated;
+    internal event Action? ModelSelectionChanged;
+    internal string SelectedModel => _model;
 
     // Readiness describes the connection and capabilities, independently of a
     // foreground generation. Controllers must not mistake user priority for a disconnect.
@@ -856,6 +858,7 @@ internal sealed partial class OllamaChatWindow : Window
         if (_generating || _userSendPending || _switching || _preparingImage || _shutdown || _configuring || _sessionSwitching || VoiceInputBusy || ModelMemoryBusy) return;
         var (operation, revision) = BeginConfiguration();
         var client = _client;
+        bool committed = false;
         SetStatus("正在刷新 " + ConnectionTarget() + " 的模型列表…");
         try
         {
@@ -875,10 +878,15 @@ internal sealed partial class OllamaChatWindow : Window
             SetModelList(installed, selected); _model = selected; _capabilities = capabilities; _connected = true; RefreshWelcome();
             _contextNote.Text = ConnectionNote();
             SetStatus(ModelReadyMessage("Ollama 已连接 · " + installed.Count + " 个已安装模型 · " + client.Endpoint.GetLeftPart(UriPartial.Authority)), capabilities.SupportsChat == false || installed.Count == 0);
+            committed = true;
         }
         catch (OperationCanceledException) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetStatus("连接检查已取消或超时，请确认服务器地址后刷新。", true); } }
         catch (Exception ex) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetModelList(Array.Empty<string>(), ""); SetStatus(ex is OllamaException ? ex.Message : "无法连接 " + ConnectionTarget() + "，请检查地址和端口后刷新。", true); } }
-        finally { FinishConfiguration(operation); }
+        finally
+        {
+            FinishConfiguration(operation);
+            if (committed && !_shutdown) ModelSelectionChanged?.Invoke();
+        }
     }
 
     private async Task ChangeModelAsync()
@@ -886,33 +894,70 @@ internal sealed partial class OllamaChatWindow : Window
         if (_selectionSync || _shutdown || _models.SelectedValue is not string selected || selected == _model) return;
         if (ModelMemoryBusy) { _selectionSync = true; _models.SelectedValue = _model; _selectionSync = false; return; }
         if (_switching || _configuring || !_connected || !_installedModels.Contains(selected, StringComparer.Ordinal)) return;
+        await SwitchModelAsync(selected);
+    }
+
+    // Both model selectors commit through this path. The dashboard may create
+    // this window without showing it or starting any generation/voice session.
+    internal Task<string> SelectDashboardModelAsync(string selected)
+    {
+        if (DashboardModelControlBlockedReason is { } blocked) return Task.FromResult(blocked);
+        if (!OllamaModels.IsSupported(selected)) return Task.FromResult("请选择此 Ollama 服务器已安装的聊天模型。");
+        return SwitchModelAsync(selected);
+    }
+
+    private async Task<string> SwitchModelAsync(string selected)
+    {
         InvalidateBehaviorContext();
         var (operation, revision) = BeginConfiguration();
         var previous = _model;
         var client = _client;
+        bool entered = false, committed = false;
         SetStatus("正在停止回复并释放旧模型显存…");
         try
         {
             await StopGenerationAsync();
             CheckConfiguration(operation, revision);
-            if (_lastUsedModel == previous)
+            await _modelCallGate.WaitAsync(operation.Token); entered = true;
+            CheckConfiguration(operation, revision);
+            var installed = await client.ListModelsAsync(operation.Token);
+            CheckConfiguration(operation, revision);
+            if (!installed.Contains(selected, StringComparer.Ordinal))
+                throw new OllamaException("所选模型未安装在此 Ollama 服务器，请刷新模型列表后重试。");
+            var capabilities = await client.GetModelInfoAsync(selected, operation.Token);
+            CheckConfiguration(operation, revision);
+            if (selected != previous && _lastUsedModel == previous)
             {
                 await client.UnloadAsync(previous, operation.Token);
                 CheckConfiguration(operation, revision);
                 _lastUsedModel = null;
             }
-            var capabilities = await client.GetModelInfoAsync(selected, operation.Token);
-            CheckConfiguration(operation, revision);
             PersistModelChoice(selected);
-            _model = selected; _capabilities = capabilities; RefreshWelcome();
-            SetStatus(ModelReadyMessage("模型已切换，保留当前对话"), capabilities.SupportsChat == false || capabilities.SupportsImages == false && _pendingImages.Count > 0);
+            _model = selected; _capabilities = capabilities; _connected = true;
+            SetModelList(installed, selected); RefreshWelcome();
+            string result = ModelReadyMessage(selected == previous ? "当前模型已确认，保留当前对话" : "模型已切换，保留当前对话");
+            SetStatus(result, capabilities.SupportsChat == false || capabilities.SupportsImages == false && _pendingImages.Count > 0);
+            committed = true;
+            return result;
         }
-        catch (OperationCanceledException) { if (!_shutdown && revision == _configurationRevision) SetStatus("切换已取消或超时，已保留原模型。请刷新后重试。", true); }
-        catch (Exception ex) { if (!_shutdown && revision == _configurationRevision) SetStatus(ex is OllamaException ? ex.Message + " 已保留原模型。" : "切换失败，已保留原模型。请检查连接后重试。", true); }
+        catch (OperationCanceledException)
+        {
+            const string result = "切换已取消或超时，已保留原模型。请刷新后重试。";
+            if (!_shutdown && revision == _configurationRevision) SetStatus(result, true);
+            return result;
+        }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
+        {
+            string result = ex is OllamaException ? ex.Message + " 已保留原模型。" : "切换失败，已保留原模型。请检查连接后重试。";
+            if (!_shutdown && revision == _configurationRevision) SetStatus(result, true);
+            return result;
+        }
         finally
         {
+            if (entered) _modelCallGate.Release();
             if (revision == _configurationRevision) { _selectionSync = true; _models.SelectedValue = _model; _selectionSync = false; }
             FinishConfiguration(operation);
+            if (committed && !_shutdown) ModelSelectionChanged?.Invoke();
         }
     }
 
@@ -992,7 +1037,11 @@ internal sealed partial class OllamaChatWindow : Window
             if (!adopted && revision == _configurationRevision) _connected = previousConnected;
             throw;
         }
-        finally { FinishConfiguration(operation); }
+        finally
+        {
+            FinishConfiguration(operation);
+            if (adopted && !_shutdown) ModelSelectionChanged?.Invoke();
+        }
     }
 
     private async Task StopGenerationAsync()

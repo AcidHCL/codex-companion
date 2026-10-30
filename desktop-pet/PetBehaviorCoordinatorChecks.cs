@@ -29,7 +29,7 @@ internal static class PetBehaviorCoordinatorChecks
         var client = new FixtureClient();
         PetWindow? pet = null;
         OllamaChatWindow? session = null;
-        SettingsWindow? settingsWindow = null;
+        AppSettingsWindow? settingsWindow = null;
         PetBehaviorCoordinator? coordinator = null;
         ChatMemoryStore? store = null;
         int result = 1, sessionsCreated = 0, preferenceChanges = 0;
@@ -79,7 +79,7 @@ internal static class PetBehaviorCoordinatorChecks
                         client, webClient: new ForbiddenWeb(), chatStore: store, behaviorHost: pet);
                     return session;
                 });
-                settingsWindow = new SettingsWindow(pet, skins, setLlmBehavior: enabled =>
+                settingsWindow = new AppSettingsWindow(pet, setLlmBehavior: enabled =>
                 {
                     preferenceChanges++;
                     settings.LlmBehaviorEnabled = enabled;

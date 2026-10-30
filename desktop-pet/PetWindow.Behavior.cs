@@ -108,8 +108,9 @@ internal sealed partial class PetWindow : IPetBehaviorHost
         if (!BehaviorAvailable) return Reject("模型行为控制当前未启用，或桌宠暂不可见。");
         if (!Enum.IsDefined(command.Origin)) return Reject("不支持的动作来源。");
         if (!IsLlmBehaviorActive && !(command.Origin == PetBehaviorOrigin.Conversation &&
-            (command.Action == "play_performance" && command.Name == "sing" || command.Action == "stop_performance" && _manualSceneAction == "sing")))
-            return Reject("当前模型只支持明确的唱歌和停止唱歌请求，其他动作控制尚未启用。");
+            (command.Action == "play_performance" && PetPerformanceCatalog.IsMusicPerformance(command.Name) ||
+             command.Action == "stop_performance" && PetPerformanceCatalog.IsMusicPerformance(_manualSceneAction))))
+            return Reject("当前模型只支持明确播放或停止音乐表演的请求，其他动作控制尚未启用。");
         switch (command.Action)
         {
             case "play_performance":
@@ -146,7 +147,8 @@ internal sealed partial class PetWindow : IPetBehaviorHost
                 BehaviorStateChanged?.Invoke();
                 return new(true, command.Name == "sing"
                     ? Settings.SoundEnabled ? "已开始唱歌。" : "已播放唱歌动画；声音当前关闭。"
-                    : "已开始播放：" + PetPerformanceCatalog.Label(command.Name) + "。", command.Action);
+                    : "已开始播放：" + PetPerformanceCatalog.Label(command.Name) +
+                      (PetPerformanceCatalog.IsMusicPerformance(command.Name) && !Settings.SoundEnabled ? "；声音当前关闭。" : "。"), command.Action);
             case "stop_performance":
                 if (command.Name != null || command.Direction != null) return Reject("停止演出不接受其他参数。");
                 if (_manualScene && !_llmPerformance && !_clickPerformance) return Reject("这段演出由用户手动启动，模型不能停止它。");

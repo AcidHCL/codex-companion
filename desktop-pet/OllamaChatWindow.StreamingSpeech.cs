@@ -4,7 +4,7 @@ namespace DesktopPet;
 
 internal sealed record PetChatSpeechCallbacks(
     Func<long> Begin, Action<long, string> Append, Action<long> Complete,
-    Action Cancel, Action<string> Bubble);
+    Action<long> Cancel, Action<string> Bubble);
 
 internal sealed partial class OllamaChatWindow
 {
@@ -53,7 +53,9 @@ internal sealed partial class OllamaChatWindow
 
     private void CancelStreamingSpeechCore()
     {
-        try { _streamingSpeech?.Cancel(); }
+        // A delayed failure from an older LLM response must not stop a newer
+        // click, notification, or reply that now owns the voice output.
+        try { if (_spokenResponse > 0) _streamingSpeech?.Cancel(_spokenResponse); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { Program.Log(ex); }
         _spokenText = null; _spokenResponse = 0;
     }

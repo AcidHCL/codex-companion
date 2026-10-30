@@ -27,6 +27,7 @@ internal static class SceneAudioUiChecks
         int result = 1;
         bool finished = false;
         bool realMp3DecodedMuted = false;
+        bool bangyouMp3DecodedMuted = false;
         bool supportAvailable = true;
         var app = new Application { Resources = Ui.CreateResources(), ShutdownMode = ShutdownMode.OnExplicitShutdown };
         var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(120) };
@@ -45,7 +46,7 @@ internal static class SceneAudioUiChecks
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "scene-audio-ui-validation.json"), JsonSerializer.Serialize(new
             {
                 passed, assertions = checks.Count, checks, captures, error, fixtures = output,
-                silentPcmFixtures = true, realMp3DecodedMuted, browserProfileIsolated = true, realAccountRequests = 0,
+                silentPcmFixtures = true, realMp3DecodedMuted, bangyouMp3DecodedMuted, browserProfileIsolated = true, realAccountRequests = 0,
                 userSettingsWrites = 0, realSessionChanged = false, syntheticMouseOrKeyboardInput = false
             }, new JsonSerializerOptions { WriteIndented = true }));
             result = passed ? 0 : 1;
@@ -228,6 +229,52 @@ internal static class SceneAudioUiChecks
                 }
                 pet.StopSinging(); await WaitAction(pet, "idle");
                 Require(!(await Read(pet)).GetProperty("audioActive").GetBoolean(), "Stopping the real track releases music and restores DeepSeek idle");
+
+                // Decode the actual new track through the production renderer,
+                // with both its saved preference and browser media at mute.
+                // The short silent fixture above separately tests audio-ended
+                // completion, so this check need not wait for the full song.
+                double volumeBeforeBangyou = settings.SoundVolume;
+                pet.SetSoundEnabled(false); pet.SetSoundVolume(0);
+                Point footBeforeBangyou = WorldFoot(pet);
+                var beforeBangyou = await Read(pet);
+                await pet.PreviewSceneAsync("bangyou-dance"); await WaitAction(pet, "bangyou-dance");
+                var bangyouStart = await Read(pet);
+                Require(bangyouStart.GetProperty("phase").GetString() == "start" &&
+                    bangyouStart.GetProperty("audioActive").GetBoolean() && bangyouStart.GetProperty("audioMuted").GetBoolean() &&
+                    !bangyouStart.GetProperty("audioEnabled").GetBoolean() && bangyouStart.GetProperty("audioVolume").GetDouble() == 0 &&
+                    !bangyouStart.GetProperty("thoughtVisible").GetBoolean() && !pet.IsSinging,
+                    "Bangyou starts its own intro and real MP3 muted without borrowing Let Me Go state or thoughts");
+                pet.SetChatBusy(true);
+                await WaitFor(async () =>
+                {
+                    var state = await Read(pet);
+                    return state.GetProperty("action").GetString() == "bangyou-dance" && state.GetProperty("phase").GetString() == "loop" &&
+                        state.GetProperty("cycles").GetInt32() >= 1 && state.GetProperty("audioTime").GetDouble() >= 11 &&
+                        !state.GetProperty("waitingFrame").GetBoolean();
+                }, "muted Bangyou intro and first loop wrap");
+                var bangyouLoop = await Read(pet);
+                Require(bangyouLoop.GetProperty("audioDuration").GetDouble() is > 189 and < 192 &&
+                    !bangyouLoop.GetProperty("audioPaused").GetBoolean() && bangyouLoop.GetProperty("audioMuted").GetBoolean() &&
+                    !bangyouLoop.GetProperty("audioEnabled").GetBoolean() && bangyouLoop.GetProperty("audioVolume").GetDouble() == 0 &&
+                    bangyouLoop.GetProperty("renderedFrame").GetInt32() is >= 0 and < 35 &&
+                    pet.CurrentSceneAction == "bangyou-dance" && pet.IsChatBusy && !settings.SoundEnabled,
+                    "Bangyou continues its 35 frame loop and full 190 second audio clock while muted and chat is working");
+                Require(pet.SceneHeadroomDip == 0 && (WorldFoot(pet) - footBeforeBangyou).Length <= 1.5 &&
+                    Math.Abs(bangyouLoop.GetProperty("bodyViewportHeight").GetDouble() - beforeBangyou.GetProperty("bodyViewportHeight").GetDouble()) <= .01,
+                    "Bangyou preserves the ordinary body size and screen-space foot position");
+                string bangyouCapture = Path.Combine(output, "deepseek-bangyou-muted-loop.png");
+                await pet.SceneRenderer!.CaptureAsync(bangyouCapture);
+                captures.Add(new { kind = "bangyou-muted-intro-loop", file = bangyouCapture, introPhase = bangyouStart.GetProperty("phase").GetString(),
+                    loopPhase = bangyouLoop.GetProperty("phase").GetString(), cycles = bangyouLoop.GetProperty("cycles").GetInt32(),
+                    audioTime = bangyouLoop.GetProperty("audioTime").GetDouble(), audioDuration = bangyouLoop.GetProperty("audioDuration").GetDouble(), audioMuted = true });
+                bangyouMp3DecodedMuted = true;
+                pet.StopScenePreview(); await WaitAction(pet, "working");
+                Require(!(await Read(pet)).GetProperty("audioActive").GetBoolean() && !settings.SoundEnabled,
+                    "Generic stop releases Bangyou music and resumes current working state without enabling sound");
+                pet.SetChatBusy(false); await WaitAction(pet, "idle");
+                pet.SetSoundVolume(volumeBeforeBangyou);
+
                 var imported = new SceneAnimationCatalog().Validate(pack.ManifestPath, "custom-audio-layout-check");
                 Require(await pet.SelectScenePackAsync(imported), "An imported-style action pack uses the generic contact measurement path");
                 // Imported packs may use the static skin for automatic idle.

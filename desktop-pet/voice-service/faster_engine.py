@@ -1,4 +1,4 @@
-"""Offline CUDA-graph speech generation with the existing DeepSeek reference."""
+"""Offline CUDA-graph speech generation for reference, designed and preset voices."""
 from __future__ import annotations
 
 import io
@@ -32,13 +32,14 @@ class FasterVoiceEngine(VoiceEngine):
             self._unload()
             if self.retiring:
                 raise VoiceError("retiring", "语音引擎正在卸载，请稍后重新加载。", 409)
-        if self.model is not None and self.prompt is not None:
+        if self.is_loaded:
             return
         if self.model is not None:
             self._unload()
             if self.retiring:
                 raise VoiceError("retiring", "语音引擎正在卸载，请稍后重新加载。", 409)
-        self._set("loading", "正在加载参考音色并预热语音加速引擎。")
+        self._check_assets()
+        self._set("loading", "正在加载所选音色并预热语音加速引擎。")
         import torch
         self.torch = torch
         if not torch.cuda.is_available():
@@ -54,17 +55,30 @@ class FasterVoiceEngine(VoiceEngine):
             local_files_only=True,
         )
         self._check_cancel(cancelled)
-        import soundfile as sf
-        audio, rate = sf.read(str(self.config.reference_path), dtype="float32")
-        # Preserve the original conditioning mode and reference exactly. Do not
-        # switch to the library's default ICL mode or modify pitch/rate.
-        self.prompt = self.model.model.create_voice_clone_prompt(
-            ref_audio=(audio, rate), x_vector_only_mode=True,
-        )
+        if self.config.requires_reference:
+            import soundfile as sf
+            audio, rate = sf.read(str(self.config.reference_path), dtype="float32")
+            # Base keeps its singing reference; fixed voices use their own
+            # audio/transcript pair in ICL mode.
+            self.prompt = self.model.model.create_voice_clone_prompt(
+                ref_audio=(audio, rate), **self._clone_prompt_options(),
+            )
         self._check_cancel(cancelled)
         self.model.warmup()
         self._check_cancel(cancelled)
-        self._set("ready", "参考音色已预热，支持连续流式播放。")
+        self.prepared = True
+        self._set("ready", "所选音色已预热，支持连续流式播放。")
+
+    def _generate_stream(self, text):
+        options = {"text": text, "language": self.config.language, "non_streaming_mode": True,
+                   "chunk_size": self.config.stream_chunk_size,
+                   "max_new_tokens": min(1600, max(200, len(text) * 14))}
+        if self.config.model_id == "voice-design":
+            return self.model.generate_voice_design_streaming(**options, instruct=self.config.instruct)
+        if self.config.model_id == "custom-voice":
+            return self.model.generate_custom_voice_streaming(**options, speaker=self.config.speaker, instruct=self.config.instruct)
+        return self.model.generate_voice_clone_streaming(**options, voice_clone_prompt=self.prompt,
+                                                         xvec_only=self.config.x_vector_only)
 
     def stream(self, text, request_id):
         with self.guard:
@@ -87,17 +101,13 @@ class FasterVoiceEngine(VoiceEngine):
             self._check_cancel(event)
             self._load(event)
             self._check_cancel(event)
-            self._set("synthesizing", "正在连续生成参考音色。")
+            self._set("synthesizing", "正在连续生成语音。")
             yield {"type": "format", "sample_rate": 24000, "channels": 1, "sample_format": "s16le"}
             import numpy as np
             total_bytes = 0
             for part in split_text(text):
                 self._check_cancel(event)
-                generator = self.model.generate_voice_clone_streaming(
-                    text=part, language="Chinese", voice_clone_prompt=self.prompt,
-                    xvec_only=True, non_streaming_mode=True, chunk_size=self.config.stream_chunk_size,
-                    max_new_tokens=min(1600, max(200, len(part) * 14)),
-                )
+                generator = self._generate_stream(part)
                 try:
                     for samples, sample_rate, _ in generator:
                         self._check_cancel(event)
@@ -120,10 +130,10 @@ class FasterVoiceEngine(VoiceEngine):
                 yield {"type": "audio", "pcm": bytes(int(24000 * .12) * 2)}
             if total_bytes == 0:
                 raise VoiceError("invalid_audio", "语音模型未返回声音。")
-            self._set("ready", "本地参考音色已就绪。")
+            self._set("ready", "本地音色已就绪。")
             yield {"type": "done"}
         except VoiceError as exc:
-            if exc.code == "cancelled" and self.prompt is None and self.model is not None:
+            if exc.code == "cancelled" and self.model is not None and not self.is_loaded:
                 self._unload()
             if exc.code not in ("cancelled", "duplicate_request", "queue_full"):
                 self._set("error", exc.message)
@@ -140,7 +150,7 @@ class FasterVoiceEngine(VoiceEngine):
             self.last_used = time.monotonic()
             if acquired:
                 if self.status == "synthesizing" and self.model is not None:
-                    self._set("ready", "朗读已结束，本地参考音色仍可使用。")
+                    self._set("ready", "朗读已结束，本地音色仍可使用。")
                 self.generation_lock.release()
             with self.guard:
                 self.requests.pop(request_id, None)

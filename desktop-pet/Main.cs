@@ -62,6 +62,7 @@ internal static class Program
             if (args.Contains("--streaming-text-test")) return PetStreamingTextChecks.Run();
             if (args.Contains("--speech-test")) return PetSpeechChecks.Run();
             if (args.Contains("--speech-ui-test")) return SpeechUiChecks.Run();
+            if (args.Contains("--model-dashboard-test")) return ModelDashboardChecks.Run();
             if (args.Contains("--speech-live-test")) return PetSpeechLiveChecks.Run();
             if (args.Contains("--voice-input-test")) return PetVoiceInputChecks.Run();
             if (args.Contains("--voice-input-ui-test")) return VoiceInputUiChecks.Run();
@@ -79,6 +80,8 @@ internal static class Program
             if (args.Contains("--deepseek-motion-test")) return DeepSeekMotionIntegrationChecks.Run();
             if (args.Contains("--redrawn-motion-test")) return DeepSeekMotionIntegrationChecks.Run(true);
             if (args.Contains("--redrawn-animation-test")) return RedrawnAnimationIntegrationChecks.Run();
+            if (args.Contains("--gpt-animation-test")) return GptAnimationIntegrationChecks.Run();
+            if (args.Contains("--gpt-motion-test")) return DeepSeekMotionIntegrationChecks.Run(gpt: true);
             if (args.Contains("--pet-behavior-chat-test")) return PetBehaviorChatChecks.Run();
             if (args.Contains("--pet-behavior-coordinator-test")) return PetBehaviorCoordinatorChecks.Run();
             if (args.Contains("--pet-behavior-live-test")) return RunBehaviorLiveCheck().GetAwaiter().GetResult();
@@ -432,7 +435,8 @@ internal sealed class PetApplication : Application
     private EventWaitHandle? _exitSignal;
     private RegisteredWaitHandle? _exitRegistration;
     private PetWindow? _pet;
-    private SettingsWindow? _settingsWindow;
+    private AppSettingsWindow? _settingsWindow;
+    private SettingsWindow? _wardrobeWindow;
     private OllamaChatWindow? _chatWindow;
     private PetBehaviorCoordinator? _behavior;
     private PetCompanionUi? _companionUi;
@@ -512,6 +516,7 @@ internal sealed class PetApplication : Application
         _tray.ShowRequested += () => Dispatcher.Invoke(() => { _pet.Show(); _pet.ClampPosition(); });
         _tray.HideRequested += () => Dispatcher.Invoke(() => _pet.Hide());
         _tray.SettingsRequested += () => Dispatcher.Invoke(ShowSettings);
+        _tray.SkinsRequested += () => Dispatcher.Invoke(ShowWardrobe);
         _tray.DashboardRequested += () => Dispatcher.Invoke(ShowDashboard);
         _tray.ChatRequested += () => Dispatcher.Invoke(ShowChat);
         _tray.ExitRequested += () => Dispatcher.Invoke(() => RequestExit(LifecycleEvent.ExitTrayMenu));
@@ -679,13 +684,35 @@ internal sealed class PetApplication : Application
         if (_pet == null) return;
         if (_settingsWindow == null)
         {
-            _settingsWindow = new SettingsWindow(_pet, _skins, ShowDashboard, ShowChat, SetLlmBehaviorMode);
+            _settingsWindow = new AppSettingsWindow(_pet, ShowWardrobe, ShowDashboard, ShowChat, SetLlmBehaviorMode,
+                modelServices: CreateModelSettingsServices());
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
         if (_settingsWindow.WindowState == WindowState.Minimized) _settingsWindow.WindowState = WindowState.Normal;
         _settingsWindow.Activate();
     }
+
+    private void ShowWardrobe()
+    {
+        if (_pet == null) return;
+        if (_wardrobeWindow == null)
+        {
+            _wardrobeWindow = new SettingsWindow(_pet, _skins, ShowDashboard, ShowChat, openSettings: ShowSettings);
+            _wardrobeWindow.Closed += (_, _) => _wardrobeWindow = null;
+        }
+        _wardrobeWindow.Show();
+        if (_wardrobeWindow.WindowState == WindowState.Minimized) _wardrobeWindow.WindowState = WindowState.Normal;
+        _wardrobeWindow.Activate();
+    }
+
+    private DashboardModelServices CreateModelSettingsServices() => DashboardModelServices.Create(_pet,
+        load => EnsureChatWindow(showErrors: false)?.SetDashboardModelLoadedAsync(load) ??
+            Task.FromResult("无法打开聊天模型控制器，请检查本地聊天记录是否可用。"),
+        () => _chatWindow?.ModelMemoryOperationText,
+        () => _chatWindow?.DashboardModelControlBlockedReason,
+        selected => EnsureChatWindow(showErrors: false)?.SelectDashboardModelAsync(selected) ??
+            Task.FromResult("无法打开聊天模型控制器，请检查本地聊天记录是否可用。"));
 
     private void ShowChat()
     {
@@ -733,6 +760,7 @@ internal sealed class PetApplication : Application
                 return null;
             }
             _chatWindow.Closed += (_, _) => { _chatWindow = null; _behavior?.RefreshMode(); };
+            _chatWindow.ModelSelectionChanged += () => _settingsWindow?.ModelSelectionChanged();
         }
         return _chatWindow;
     }
@@ -742,7 +770,7 @@ internal sealed class PetApplication : Application
         if (_monitor == null || _pet == null) { ShowSettings(); return; }
         if (_dashboard == null)
         {
-            _dashboard = new CodexDashboard(_monitor, _pet.Settings, ShowSettings, speechHost: _pet);
+            _dashboard = new CodexDashboard(_monitor, _pet.Settings, ShowWardrobe, speechHost: _pet, openSettings: ShowSettings);
             _dashboard.Closed += (_, _) => _dashboard = null;
         }
         _dashboard.Show();
@@ -768,6 +796,9 @@ internal sealed class PetApplication : Application
         _smokeTimer?.Stop();
         _behavior?.Dispose();
         _companionUi?.Dispose();
+        _settingsWindow?.Close();
+        _wardrobeWindow?.Close();
+        _dashboard?.Close();
         _chatWindow?.Shutdown();
         _monitor?.Dispose();
         _exitRegistration?.Unregister(null);

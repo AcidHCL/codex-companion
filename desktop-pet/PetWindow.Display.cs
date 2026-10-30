@@ -91,7 +91,8 @@ internal sealed partial class PetWindow
             }
             else if (string.IsNullOrWhiteSpace(modelId))
             {
-                var pack = BundledSceneAnimations.FindForSkin(CurrentSkin.Id, Settings.DeepSeekAnimationPackId);
+                var pack = BundledSceneAnimations.FindForSkin(CurrentSkin.Id,
+                    CurrentSkin.Id == "deepseek" ? Settings.DeepSeekAnimationPackId : null);
                 if (pack != null && !await SelectScenePackAsync(pack)) return false;
             }
             if (_closed || token.IsCancellationRequested) return false;
@@ -147,7 +148,7 @@ internal sealed partial class PetWindow
         _displayResumePack = pack;
         CurrentScenePack = pack;
         Settings.ScenePackId = pack.Id;
-        if (BundledSceneAnimations.IsBuiltIn(pack.Id)) Settings.DeepSeekAnimationPackId = pack.Id;
+        if (BundledSceneAnimations.IsDeepSeekBuiltIn(pack.Id)) Settings.DeepSeekAnimationPackId = pack.Id;
         if (BundledSceneAnimations.IsBuiltIn(pack.Id)) { Settings.Live2DModelId = null; CurrentLive2DModel = null; _displayResumeModel = null; }
         SceneStatus = GraphicsRecovery.CompatibilityMode ? "图形兼容模式 · 已保留动作选择" : "显示恢复后载入所选动作";
         Changed();

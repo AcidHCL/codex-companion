@@ -13,11 +13,10 @@ using System.Windows.Threading;
 
 namespace DesktopPet;
 
-internal sealed class CodexDashboard : Window
+internal sealed partial class CodexDashboard : Window
 {
     private readonly CodexMonitor _monitor;
     private readonly DesktopSettings _settings;
-    private readonly PetWindow? _speechHost;
     private readonly Grid _root = new();
     private readonly TextBlock _connection = Ui.Text("正在连接", 12, "#42644A", true);
     private readonly Border _connectionBadge = new();
@@ -49,22 +48,16 @@ internal sealed class CodexDashboard : Window
     private readonly Button _older = new();
     private readonly CheckBox _notifications = new();
     private readonly ComboBox _interval = new();
-    private readonly CheckBox _speechEnabled = new() { Name = "SpeechEnabled" };
-    private readonly Slider _speechVolume = new() { Name = "SpeechVolume", Minimum = 0, Maximum = 100, Width = 140, TickFrequency = 5, IsSnapToTickEnabled = true };
-    private readonly TextBlock _speechLevel = Ui.Text("60%", 11, "#647A5C");
-    private readonly TextBlock _speechStatus = Ui.Text("", 10, "#71826D");
-    private readonly Button _speechPreview = new() { Name = "SpeechPreview", Content = "试听" };
-    private readonly Button _speechPreload = new() { Name = "SpeechPreload", Content = "预加载语音" };
-    private readonly Button _speechUnload = new() { Name = "SpeechUnload", Content = "卸载语音" };
-    private bool _speechModelOperation;
-    private readonly Button _speechStop = new() { Name = "SpeechStop", Content = "停止朗读" };
+    private readonly Button _settingsButton = new() { Name = "DashboardSettings", Content = "设置" };
+    private readonly Action? _openSettings;
     private bool _rendering, _closed, _loadingOlder;
     private string? _bucketId, _uiError, _lastConversationTask;
     private string _taskRenderKey = "", _messageRenderKey = "";
 
-    public CodexDashboard(CodexMonitor monitor, DesktopSettings settings, Action openSkins, PetWindow? speechHost = null)
+    public CodexDashboard(CodexMonitor monitor, DesktopSettings settings, Action openSkins, PetWindow? speechHost = null,
+        Action? openSettings = null)
     {
-        _monitor = monitor; _settings = settings; _speechHost = speechHost;
+        _monitor = monitor; _settings = settings; _openSettings = openSettings;
         Title = AppVersion.WindowTitle("Codex 工作看板");
         Width = 1180; Height = 850; MinWidth = 1000; MinHeight = 720;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -76,11 +69,9 @@ internal sealed class CodexDashboard : Window
         BuildHeader(openSkins); BuildUsage(); BuildNotice(); BuildWorkspace(); BuildPreferences();
         Content = _root; _rendering = false;
         _monitor.Changed += MonitorChanged;
-        if (_speechHost != null) _speechHost.SettingsChanged += SpeechSettingsChanged;
         Closed += (_, _) =>
         {
             _closed = true; _monitor.Changed -= MonitorChanged; _monitor.ClearSelection();
-            if (_speechHost != null) _speechHost.SettingsChanged -= SpeechSettingsChanged;
         };
         Loaded += async (_, _) => { if (_monitor.Snapshot.LastUpdated is null) await RunActionAsync(() => _monitor.RefreshAsync(true)); };
         KeyDown += async (_, e) =>
@@ -107,6 +98,11 @@ internal sealed class CodexDashboard : Window
         intro.Margin = new Thickness(1, 7, 0, 0); heading.Children.Add(intro); header.Children.Add(heading);
         var actions = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        _settingsButton.Margin = new Thickness(0, 0, 8, 0);
+        _settingsButton.IsEnabled = _openSettings != null;
+        _settingsButton.Click += (_, _) => _openSettings?.Invoke();
+        AutomationProperties.SetName(_settingsButton, "设置");
+        buttons.Children.Add(_settingsButton);
         var skins = Ui.Button("给桌宠换装", (_, _) => openSkins());
         skins.Margin = new Thickness(0, 0, 8, 0); buttons.Children.Add(skins);
         _refresh.Content = "立即刷新"; _refresh.Background = Ui.Brush("#28563C"); _refresh.Foreground = Brushes.White;
@@ -258,79 +254,7 @@ internal sealed class CodexDashboard : Window
         var privacyHint = Ui.Text("默认关闭；开启后可查看消息并核验完成提醒。关闭时仅查询额度和任务列表。", 10, "#71826D");
         privacyHint.Margin = new Thickness(14, 0, 0, 0); privacyHint.VerticalAlignment = VerticalAlignment.Center;
         privacyHint.TextWrapping = TextWrapping.Wrap; privacy.Children.Add(privacyHint); preferences.Children.Add(privacy);
-        var speechPanel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        var speechRow = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
-        _speechEnabled.Content = "DeepSeek 语音播报";
-        _speechEnabled.VerticalAlignment = VerticalAlignment.Center; _speechEnabled.Margin = new Thickness(0, 0, 20, 0);
-        _speechEnabled.ToolTip = "朗读预设提示和本地模型的完整回答；与唱歌音量分别控制。";
-        _speechEnabled.Checked += (_, _) => { if (!_rendering) _speechHost?.SetSpeechEnabled(true); };
-        _speechEnabled.Unchecked += (_, _) => { if (!_rendering) _speechHost?.SetSpeechEnabled(false); };
-        speechRow.Children.Add(_speechEnabled);
-        var volumeLabel = Ui.Text("语音音量", 11, "#647A5C"); volumeLabel.VerticalAlignment = VerticalAlignment.Center;
-        volumeLabel.Margin = new Thickness(0, 0, 8, 0); speechRow.Children.Add(volumeLabel);
-        _speechVolume.VerticalAlignment = VerticalAlignment.Center;
-        _speechVolume.ValueChanged += (_, _) => { if (!_rendering) _speechHost?.SetSpeechVolume(_speechVolume.Value / 100); };
-        AutomationProperties.SetName(_speechVolume, "DeepSeek 语音音量"); speechRow.Children.Add(_speechVolume);
-        _speechLevel.Width = 42; _speechLevel.Margin = new Thickness(8, 0, 14, 0); _speechLevel.VerticalAlignment = VerticalAlignment.Center;
-        speechRow.Children.Add(_speechLevel);
-        _speechPreview.Margin = new Thickness(0, 0, 8, 0); _speechPreview.MinWidth = 64;
-        _speechPreview.Click += (_, _) => _speechHost?.PreviewSpeech(); speechRow.Children.Add(_speechPreview);
-        _speechStop.MinWidth = 90; _speechStop.Click += (_, _) => _speechHost?.StopSpeech(); speechRow.Children.Add(_speechStop);
-        _speechPreload.Margin = new Thickness(8, 0, 8, 0);
-        _speechPreload.ToolTip = "提前加载 DeepSeek 语音模型与参考音色；不加载或修改 Ollama 聊天模型";
-        _speechUnload.ToolTip = "停止播报并释放语音模型显存；下一次主动播报或预加载时再加载";
-        _speechPreload.Click += async (_, _) => await ChangeSpeechModelLoadAsync(true);
-        _speechUnload.Click += async (_, _) => await ChangeSpeechModelLoadAsync(false);
-        speechRow.Children.Add(_speechPreload); speechRow.Children.Add(_speechUnload);
-        speechPanel.Children.Add(speechRow);
-        _speechStatus.Name = "SpeechStatus"; _speechStatus.TextWrapping = TextWrapping.Wrap;
-        _speechStatus.Margin = new Thickness(0, 5, 0, 0); speechPanel.Children.Add(_speechStatus);
-        preferences.Children.Add(speechPanel);
         Grid.SetRow(preferences, 4); _root.Children.Add(preferences);
-    }
-
-    private void SpeechSettingsChanged()
-    {
-        if (_closed) return;
-        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(SpeechSettingsChanged)); return; }
-        RenderSpeechControls();
-    }
-
-    private void RenderSpeechControls()
-    {
-        bool wasRendering = _rendering;
-        _rendering = true;
-        try
-        {
-            _speechEnabled.IsChecked = _settings.SpeechEnabled;
-            _speechEnabled.IsEnabled = _speechHost != null;
-            _speechVolume.Value = _settings.SpeechVolume * 100;
-            _speechVolume.IsEnabled = _speechHost != null && _settings.SpeechEnabled;
-            _speechLevel.Text = (_settings.SpeechVolume * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
-            _speechPreview.IsEnabled = _speechHost != null && _settings.SpeechEnabled && _settings.SpeechVolume > 0 && _settings.SkinId == "deepseek";
-            _speechStop.IsEnabled = _speechHost != null;
-            _speechPreload.IsEnabled = !_speechModelOperation && _speechHost != null && _settings.SpeechEnabled && _settings.SkinId == "deepseek";
-            _speechUnload.IsEnabled = !_speechModelOperation && _speechHost != null;
-            _speechStatus.Text = "本地音色合成 · " + (_speechHost?.SpeechStatusText ?? "请从桌宠打开看板使用语音") + " · 唱歌、锁屏时暂停，不补读旧消息";
-        }
-        finally { _rendering = wasRendering; }
-    }
-
-    private async System.Threading.Tasks.Task ChangeSpeechModelLoadAsync(bool load)
-    {
-        if (_speechModelOperation || _speechHost == null) return;
-        _speechModelOperation = true; RenderSpeechControls();
-        string? failure = null;
-        try
-        {
-            if (load) await _speechHost.PreloadSpeechModelAsync();
-            else await _speechHost.UnloadSpeechModelAsync();
-        }
-        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
-        {
-            failure = "语音模型操作未完成：" + ex.Message;
-        }
-        finally { _speechModelOperation = false; if (!_closed) { RenderSpeechControls(); if (failure != null) _speechStatus.Text = failure; } }
     }
 
     private void ChangeMessageAccess(bool enabled)
@@ -380,7 +304,6 @@ internal sealed class CodexDashboard : Window
             _notifications.IsEnabled = _monitor.MessagesEnabled;
             _notifications.ToolTip = _monitor.MessagesEnabled ? "依据实际任务结果提醒" : "开启对话读取后才能核验任务完成；当前不会读取详情";
             _notifications.IsChecked = _settings.NotificationsEnabled;
-            RenderSpeechControls();
             _interval.SelectedItem = _interval.Items.Cast<IntervalOption>().FirstOrDefault(x => x.Seconds == _settings.RefreshSeconds);
             _sourceFilter.SelectedValue = _monitor.DashboardFilter;
             RenderUsage();

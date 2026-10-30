@@ -65,7 +65,7 @@ internal sealed class SceneAnimationCatalog
     private const int MaxFiles = 2048;
     private static readonly string[] ActionNames = { "working", "attention", "complete", "walk", "walk-left", "walk-right", "drag", "fall", "land", "jump", "idle", "sing",
         "happy", "angry", "startled", "bashful", "jump-left", "jump-right", "climb-left", "climb-right", "climb-top-left", "climb-top-right",
-        "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks" };
+        "token-come", "bowl-tap", "bowl-tap-eager", "dance", "dance-2", "dance-3", "fireworks", "bangyou-dance" };
     private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true, MaxDepth = 16 };
     public static string DefaultRootDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AIPet", "Scenes");
     public string RootDirectory { get; }

@@ -149,7 +149,7 @@ internal sealed partial class PetWindow : Window
             DisplayLifecycle?.SetHostVisible(IsVisible);
             if (GraphicsRecovery.CompatibilityMode) { SuspendDisplayRendering(); ResumeDisplayRendering(); }
             else if (!string.IsNullOrWhiteSpace(Settings.Live2DModelId) || !string.IsNullOrWhiteSpace(Settings.ScenePackId) ||
-                CurrentSkin.Id == "deepseek") DisplayLifecycle?.RequestRecovery();
+                BundledSceneAnimations.SupportsSkin(CurrentSkin.Id)) DisplayLifecycle?.RequestRecovery();
         };
         IsVisibleChanged += (_, _) =>
         {
@@ -266,7 +266,7 @@ internal sealed partial class PetWindow : Window
             AddMenu(menu, "向右侧窗沿攀爬", () => ClimbNearbyWindow(1));
         }
         AddMenu(menu, "Codex 工作看板…", () => OpenDashboardRequested?.Invoke());
-        AddMenu(menu, "外观与设置…", () => OpenSettingsRequested?.Invoke());
+        AddMenu(menu, "设置…", () => OpenSettingsRequested?.Invoke());
         AddMenu(menu, "放大一点", () => SetSize(Settings.Size + 20));
         AddMenu(menu, "缩小一点", () => SetSize(Settings.Size - 20));
         var top = new MenuItem { Header = "始终置顶", IsCheckable = true, IsChecked = Settings.Topmost };
@@ -313,6 +313,7 @@ internal sealed partial class PetWindow : Window
         CurrentSkin = skin;
         Settings.SkinId = id;
         StopSpeech();
+        _voice?.ApplySettings();
         RefreshSpeechSuspension();
         Live2DStatus = "当前使用 PNG：" + skin.Name;
         _image.Source = LoadDefaultSkinImage(skin);
@@ -327,8 +328,17 @@ internal sealed partial class PetWindow : Window
 
     private static BitmapImage LoadDefaultSkinImage(SkinInfo skin)
     {
-        string idle = Path.Combine(AppContext.BaseDirectory, "assets", "scenes", "deepseek-small", "frames", "idle", "01.png");
-        return AssetLoader.Load(skin.Id == "deepseek" && File.Exists(idle) ? idle : skin.ImagePath);
+        if (BundledSceneAnimations.SupportsSkin(skin.Id))
+        {
+            string folder = skin.Id == "gpt" ? "gpt-small" : "deepseek-small";
+            string directory = Path.Combine(AppContext.BaseDirectory, "assets", "scenes", folder, "frames", "idle");
+            foreach (string name in new[] { "01.png", "001.png" })
+            {
+                string idle = Path.Combine(directory, name);
+                if (File.Exists(idle)) return AssetLoader.Load(idle);
+            }
+        }
+        return AssetLoader.Load(skin.ImagePath);
     }
 
     public void OpenLive2DLibrary() => OpenLive2DRequested?.Invoke();
@@ -353,7 +363,7 @@ internal sealed partial class PetWindow : Window
         InvalidateLlmBehavior();
         if (!_displayRestoreInProgress) DisplayLifecycle?.ResetRendererFailureBudget();
         if (DeferModelSelection(model)) return true;
-        if (UsesBuiltInScenes || (IsSceneLoading && CurrentSkin.Id == "deepseek"))
+        if (UsesBuiltInScenes || (IsSceneLoading && BundledSceneAnimations.SupportsSkin(CurrentSkin.Id)))
         { ReleaseScene(); Settings.ScenePackId = null; }
         else StopScenePreview();
         int generation = ++_modelGeneration;
