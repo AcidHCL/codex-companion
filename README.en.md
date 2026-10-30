@@ -1,10 +1,12 @@
-# AI Pet 1.31.1
+# Codex Companion · 蓝色大肥鱼 1.31.1
 
 [简体中文](README.md) | **English**
 
 Bring AI characters to your Windows desktop: change their appearance, let them walk and interact with windows, chat with them, and receive reminders when work is finished.
 
-AI Pet combines desktop character animation, **local chat through Ollama**, a **Codex task dashboard**, and **local speech**. Enable the connections you need; the pet and local animations also work without Codex or an AI model.
+Codex Companion combines desktop character animation, **local chat through Ollama**, a **Codex task dashboard**, and **local speech**. Enable the connections you need; the pet and local animations also work without Codex or an AI model.
+
+The current application interface still displays **AI Pet**, and its executable is `DesktopPet.exe`.
 
 The application supports English and Simplified Chinese. Key Chinese labels are included below so you can also follow these instructions before switching languages.
 
