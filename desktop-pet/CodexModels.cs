@@ -32,7 +32,13 @@ internal sealed record CodexSnapshot(bool Connected, bool Refreshing, string Sta
     public IReadOnlyList<CodexTaskInfo> DotTasks => Tasks.Where(task => task.Source == TaskSource.Dot).ToArray();
     public IReadOnlyList<CodexTaskInfo> UnknownTasks => Tasks.Where(task => task.Source == TaskSource.Unknown).ToArray();
 }
-internal sealed record PetNotice(string Title, string Message, string Kind);
+internal sealed record PetNotice(string Title, string Message, string Kind)
+{
+    public bool IsScheduled { get; init; }
+    public string? ScheduledOutput { get; init; }
+    public string? TaskKey { get; init; }
+    public string? TurnId { get; init; }
+}
 
 internal static class CodexParser
 {

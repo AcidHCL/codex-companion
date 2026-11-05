@@ -1,3 +1,22 @@
+1.34.0 Ollama 运行活动
+设置 → 模型与语音：新增“Ollama 运行活动”，结合该本机服务的推理进程 GPU 运算负载和桌宠自身请求，显示桌宠正在请求、疑似外部推理、暂无明显 GPU 活动、观察中或无法判断。页面可见时每 5 秒读取；隐藏或切换页面后停止采样。
+桌宠请求包含聊天、行为反应和定时任务摘要；加载、卸载、预热以及请求刚结束的缓冲期单独处理。连续多次检测到 GPU 活动且桌宠没有请求时，才提示“疑似外部推理”。
+这是整个 Ollama 服务的活动提示，不代表当前选中模型的独占负载，也不能确定具体外部任务。仅占用显存不算推理；远程服务、无法关联进程或无法读取 GPU 统计时明确提示无法判断。此功能只读取状态，不会加载、卸载模型或更改 Ollama 设置。
+English: Open Settings → Models & speech → Ollama activity. The panel combines the local Ollama runner's GPU activity with AI Pet's own in-flight requests. It shows pet requests, suspected external inference, observation, no significant GPU activity, or unavailable status. Readings refresh every five seconds while the page is visible. This is a service-wide estimate, not proof of a particular model or external task. Reading status never loads or unloads a model or changes Ollama settings.
+
+1.33.0 模型自动卸载
+设置 → 模型与语音：在语音和 Ollama 的加载／卸载按钮下分别选择“自动卸载”。可选空闲 1、5、10、30、60 分钟或“永不自动卸载”，选择后自动保存。
+语音默认保留原逻辑：聊天窗口打开期间保持加载，关闭后空闲约 1 分钟卸载；选择具体时长后，即使聊天窗口仍打开也会按空闲时长卸载。语音设置会更新已运行引擎，并用于以后启动的引擎。选择“永不自动卸载”仍可手动卸载，退出桌宠也会释放其语音进程。
+Ollama 默认 5 分钟，新时长从下一次聊天、行为请求、定时摘要或手动预加载时应用；仅改变本桌宠请求的保留参数，不修改 Ollama 全局设置。选择设置本身不会发送推理请求或加载模型；想立即更新当前模型的时长，可以点击“加载 LLM”。其他软件共用模型时，其请求仍可能影响同一模型的保留状态。
+English: Open Settings → Models & speech and choose Auto-unload below the speech or Ollama load controls. Options are 1, 5, 10, 30 or 60 idle minutes, or Never auto-unload. Preferences save automatically. Speech also retains the legacy “Keep loaded while chatting” default. Ollama changes apply on the next request or manual preload; selecting an option alone does not load a model or alter server-wide settings. Manual unloading remains available.
+
+1.32.0 对话内定时任务播报
+Codex 看板开启“读取对话内容”和通知后，对话内定时检查完成会提醒“定时任务完成”。普通手动任务仍使用原来的完成提示。
+400 字以内的结果完整放入气泡并朗读；气泡可滚动，鼠标停留时暂停自动隐藏。较长结果优先使用当前选中且已加载的 Ollama 模型，否则使用其他已加载的本地聊天模型，生成最多约 240 字摘要。
+没有可用的已加载模型、服务离线或摘要失败时，仅提醒“定时任务完成 + 对话名”。摘要使用独立请求，不创建 AI Pet 对话，不读取或写入聊天历史、共享记忆；不主动预加载或下载 LLM，也不改变 Ollama 设置。语音开关和角色音色沿用现有设置。
+同一次定时检查只提醒一次；打开或重连桌宠不会补播旧结果。目前识别本机 Codex 的对话内定时任务，依赖本机调度元数据与接口中的实际触发标记。
+English: Scheduled checks inside a Codex chat use “Scheduled task completed”. Results up to 400 characters are shown in full in a scrollable bubble and read aloud. Longer results are summarized to about 240 characters using an already-loaded local Ollama chat model. Without an available loaded model, only the completion and chat title are announced. These independent requests never read or write AI Pet chat history or shared memory, and do not change Ollama settings. Existing notification, message-access and speech switches still apply.
+
 1.31.1 一键重启
 语言选择右侧新增“重启桌宠 / Restart AI Pet”，保存设置后正常退出并重新打开设置页，应用所选语言。
 
@@ -31,7 +50,7 @@ Let Me Go 和 GPT 龙娘固定音色分别作为 DeepSeek 与 GPT 的内置默�
 角色声音（1.27.0）
 在看板 → 模型与显存 → 每个角色的声音中，分别为九个角色选择声音模型、预置音色或文字音色描述并保存。编辑对象不会切换当前角色或 Ollama 模型。DeepSeek 默认保留原参考音色，其他角色配置后启用。
 
-AI Pet 1.31.1 · 使用说明
+AI Pet 1.34.0 · 使用说明
 
 1.27.0 · GPT 小白龙人设与基础动画
 选择 GPT 皮肤即启用独立的旧版规格动画：待机、工作、左右走路、拎起挣扎、下落、落地、开心、生气、受惊、害羞，以及左右跳跃、攀爬和翻上窗沿，共 17 个动作、120 张透明 PNG。

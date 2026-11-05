@@ -21,7 +21,9 @@ internal sealed record DashboardModelServices(
     Func<string?>? LlmOperation = null,
     Func<string?>? LlmBlockedReason = null,
     Func<string, CancellationToken, Task<IReadOnlyList<string>>>? ReadInstalledModels = null,
-    Func<string, Task<string>>? SelectLlmModel = null)
+    Func<string, Task<string>>? SelectLlmModel = null,
+    Func<string, CancellationToken, Task<OllamaGpuActivity>>? ReadOllamaActivity = null,
+    Func<string, OllamaRequestSnapshot>? ReadOwnActivity = null)
 {
     internal static DashboardModelServices Create(PetWindow? pet,
         Func<bool, Task<string>>? setLlmLoaded = null, Func<string?>? operation = null,
@@ -37,7 +39,7 @@ internal sealed record DashboardModelServices(
         {
             using var client = new OllamaClient(OllamaEndpoint.Parse(address));
             return await client.ListModelsAsync(ct);
-        }, selectLlmModel);
+        }, selectLlmModel, OllamaActivityTelemetry.ReadAsync, OllamaRequestActivity.Snapshot);
 }
 
 internal sealed partial class ModelSettingsView
@@ -61,6 +63,12 @@ internal sealed partial class ModelSettingsView
     private readonly TextBlock _voiceBackend = ModelText("", "DashboardVoiceBackend");
     private readonly TextBlock _voiceMemory = ModelText("", "DashboardVoiceMemory");
     private readonly TextBlock _voiceModelAction = ModelText("", "DashboardVoiceAction");
+    private readonly ComboBox _llmIdleUnload = new() { Name = "DashboardLlmIdleUnload" };
+    private readonly ComboBox _voiceIdleUnload = new() { Name = "DashboardVoiceIdleUnload" };
+    private readonly TextBlock _llmIdleHint = ModelText("", "DashboardLlmIdleHint");
+    private readonly TextBlock _voiceIdleHint = ModelText("", "DashboardVoiceIdleHint");
+    private bool _syncIdleUnload;
+    private sealed record ModelIdleChoice(int Minutes, string Label);
     private readonly ComboBox _voiceCharacter = new() { Name = "DashboardVoiceCharacter" };
     private readonly ComboBox _voiceModel = new() { Name = "DashboardVoiceModel" };
     private readonly ComboBox _voiceSpeaker = new() { Name = "DashboardVoiceSpeaker" };
@@ -124,6 +132,7 @@ internal sealed partial class ModelSettingsView
         var voiceButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 10) };
         _voiceLoad.Margin = new Thickness(0, 0, 8, 0); voiceButtons.Children.Add(_voiceLoad); voiceButtons.Children.Add(_voiceUnload);
         voice.Children.Add(voiceButtons); voice.Children.Add(_voiceModelAction);
+        BuildIdleUnloadChoice(voice, _voiceIdleUnload, _voiceIdleHint, speech: true);
         _voiceLoad.ToolTip = L.T("加载当前桌宠角色保存的声音模型；需要开启语音播报", "Load the current pet's speech model; Pet speech must be enabled");
         _voiceUnload.ToolTip = L.T("停止播报并释放语音显存；下次主动播报时可以重新加载", "Stop speech and release GPU memory; the next speech request can reload it");
         _voiceLoad.Click += async (_, _) => await ChangeSpeechModelLoadAsync(true);
@@ -144,14 +153,17 @@ internal sealed partial class ModelSettingsView
         llm.Children.Add(_llmMemory);
         var llmButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 10) };
         _llmLoad.Margin = new Thickness(0, 0, 8, 0); llmButtons.Children.Add(_llmLoad); llmButtons.Children.Add(_llmUnload);
-        llm.Children.Add(llmButtons); llm.Children.Add(_llmModelAction); llm.Children.Add(_llmOthers);
+        llm.Children.Add(llmButtons); llm.Children.Add(_llmModelAction);
+        BuildIdleUnloadChoice(llm, _llmIdleUnload, _llmIdleHint, speech: false);
+        llm.Children.Add(_llmOthers);
         llm.Children.Add(ModelText(L.T("操作聊天中当前选中的模型。卸载不会删除文件；其他软件共用此模型时也会受影响。", "Controls the selected chat model. Unloading keeps its files, but also affects other apps using the same model."), "LlmMemoryHint"));
-        _llmLoad.ToolTip = L.T("提前加载当前聊天模型；沿用 Ollama 原有保留时长，不发送消息", "Preload the chat model without sending a message; preserve Ollama's retention setting");
+        _llmLoad.ToolTip = L.T("提前加载当前聊天模型，使用下方的自动卸载设置；不发送聊天消息", "Preload the chat model using the auto-unload setting below, without sending a chat message");
         _llmUnload.ToolTip = L.T("仅卸载当前选中的模型，不删除模型文件", "Unload only the selected model without deleting its files");
         _llmLoad.Click += async (_, _) => await ChangeLlmModelLoadAsync(true);
         _llmUnload.Click += async (_, _) => await ChangeLlmModelLoadAsync(false);
         var llmCard = Card(llm); llmCard.Margin = new Thickness(7, 0, 0, 0); Grid.SetColumn(llmCard, 1); cards.Children.Add(llmCard);
         body.Children.Add(cards);
+        BuildOllamaActivityCard(body);
         BuildVoiceProfileEditor(body);
         var gpu = new StackPanel(); gpu.Children.Add(ModelText(L.T("本机显卡", "Local GPUs"), "GpuModelLabel", 16, true));
         gpu.Children.Add(_gpuRows);
@@ -169,6 +181,7 @@ internal sealed partial class ModelSettingsView
 
     private void RenderModelButtons()
     {
+        SyncIdleUnloadChoices();
         bool llmBusy = _llmModelOperation || _modelServices.LlmOperation?.Invoke() != null;
         string? blocked = _modelServices.LlmBlockedReason?.Invoke();
         _llmLoad.IsEnabled = _llmUnload.IsEnabled = !llmBusy && blocked == null && _modelServices.SetLlmLoaded != null;
@@ -188,6 +201,69 @@ internal sealed partial class ModelSettingsView
         _voiceCurrentRole.Text = L.T("当前桌宠：", "Current pet: ") + PetVoiceProfiles.CharacterName(_settings.SkinId);
         SyncVoiceProfileEditor();
         RenderVoiceStudio();
+    }
+
+    private void BuildIdleUnloadChoice(StackPanel parent, ComboBox selector, TextBlock hint, bool speech)
+    {
+        parent.Children.Add(ModelText(L.T("空闲后自动卸载", "Unload after inactivity"),
+            speech ? "DashboardVoiceIdleLabel" : "DashboardLlmIdleLabel", 11, true));
+        ConfigureCombo(selector);
+        selector.MinHeight = 34; selector.Margin = new Thickness(0, 0, 0, 8);
+        selector.HorizontalAlignment = HorizontalAlignment.Stretch;
+        selector.DisplayMemberPath = nameof(ModelIdleChoice.Label);
+        selector.SelectedValuePath = nameof(ModelIdleChoice.Minutes);
+        var choices = new List<ModelIdleChoice>();
+        if (speech) choices.Add(new(0, L.T("聊天期间保持加载（默认）", "Keep loaded while chatting (default)")));
+        choices.AddRange(new[] { 1, 5, 10, 30, 60 }.Select(minutes => new ModelIdleChoice(minutes,
+            L.T($"空闲 {minutes} 分钟后", $"After {minutes} minute{(minutes == 1 ? "" : "s")} idle"))));
+        choices.Add(new(-1, L.T("永不自动卸载", "Never unload automatically")));
+        selector.ItemsSource = choices;
+        AutomationProperties.SetName(selector, speech
+            ? L.T("语音模型自动卸载时间", "Speech model auto-unload time")
+            : L.T("聊天模型自动卸载时间", "Chat model auto-unload time"));
+        selector.SelectionChanged += (_, _) => ChangeIdleUnloadChoice(speech);
+        parent.Children.Add(selector); parent.Children.Add(hint);
+    }
+
+    private void SyncIdleUnloadChoices()
+    {
+        _syncIdleUnload = true;
+        try
+        {
+            _llmIdleUnload.SelectedValue = _settings.OllamaKeepAliveMinutes;
+            _voiceIdleUnload.SelectedValue = _settings.SpeechIdleUnloadMinutes;
+            _llmIdleUnload.IsEnabled = _voiceIdleUnload.IsEnabled = _speechHost != null;
+            _llmIdleHint.Text = L.T(
+                "保存后，从下一次使用模型或手动加载开始生效；空闲时间从该次请求结束计算。仅控制桌宠发给 Ollama 的请求，不修改服务器全局设置；其他软件的请求也可能影响卸载时间。仍可手动卸载。",
+                "Saved for the next model request or manual load. Idle time starts after that request finishes. Applies only to AI Pet requests, without changing Ollama's global settings; requests from other apps may also affect unloading. Manual unload remains available.");
+            _voiceIdleHint.Text = _settings.SpeechIdleUnloadMinutes switch
+            {
+                0 => L.T("聊天窗口打开期间保持加载；关闭后按最近一次使用起算，空闲满 1 分钟即可卸载。手动卸载后不会因聊天窗口仍打开而重新加载。",
+                    "Keep loaded while chat is open. After closing it, unload once 1 minute has passed since the last use. Leaving chat open does not undo a manual unload."),
+                -1 => L.T("桌宠运行期间不因空闲自动卸载；手动卸载、关闭语音或退出桌宠仍会释放模型。选择本项不会主动加载模型。",
+                    "No idle unload while AI Pet is running. Manual unload, disabling speech, or exiting still releases the model. Selecting this does not load it."),
+                int minutes => L.T($"最后一次合成或预加载结束后，空闲 {minutes} 分钟自动卸载，即使聊天窗口仍打开。下次朗读时按需重新加载；选择时不会主动加载模型。",
+                    $"Unload after {minutes} minute{(minutes == 1 ? "" : "s")} idle following synthesis or preloading, even with chat open. Reload on the next readout; choosing a setting does not load it.")
+            };
+        }
+        finally { _syncIdleUnload = false; }
+    }
+
+    private void ChangeIdleUnloadChoice(bool speech)
+    {
+        if (_syncIdleUnload || _rendering || _closed || _speechHost == null) return;
+        var selector = speech ? _voiceIdleUnload : _llmIdleUnload;
+        if (selector.SelectedValue is not int minutes ||
+            minutes == (speech ? _settings.SpeechIdleUnloadMinutes : _settings.OllamaKeepAliveMinutes)) return;
+        try
+        {
+            if (speech) _speechHost.SetSpeechIdleUnloadMinutes(minutes);
+            else _speechHost.SetOllamaKeepAliveMinutes(minutes);
+            (speech ? _voiceModelAction : _llmModelAction).Text = L.T("自动卸载设置已保存。", "Auto-unload setting saved.");
+        }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
+        { (speech ? _voiceModelAction : _llmModelAction).Text = L.T("设置未保存：", "Could not save setting: ") + ex.Message; }
+        finally { SyncIdleUnloadChoices(); }
     }
 
     private void BuildVoiceProfileEditor(StackPanel body)
@@ -380,7 +456,7 @@ internal sealed partial class ModelSettingsView
     {
         if (_closed) return;
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(ModelSelectionChanged)); return; }
-        InvalidateModelRead(); _modelSnapshotKey = null;
+        InvalidateModelRead(); _modelSnapshotKey = null; ResetOllamaActivity();
         if (_installedModelsEndpoint != _settings.OllamaAddress)
         {
             _dashboardInstalledModels = Array.Empty<string>(); _installedListAvailable = false;
@@ -476,6 +552,7 @@ internal sealed partial class ModelSettingsView
         if (_modelSnapshotKey != snapshotKey)
         {
             _modelSnapshotKey = snapshotKey;
+            ResetOllamaActivity();
             _llmState.Text = L.T("正在查询…", "Reading status…"); _llmMemory.Text = ""; _llmOthers.Text = "";
         }
         if (!_selectingLlm && !string.Equals(_llmSelector.SelectedValue as string, model, StringComparison.Ordinal)) SyncModelSelector();
@@ -489,12 +566,18 @@ internal sealed partial class ModelSettingsView
             var llmTask = ReadSafely(() => _modelServices.ReadOllama(endpoint, read.Token), read.Token);
             var voiceTask = ReadSafely(() => _modelServices.ReadVoice(read.Token), read.Token);
             var gpuTask = ReadSafely(() => _modelServices.ReadGpu(read.Token), read.Token);
+            var activityTask = ReadSafely(() => remote
+                ? Task.FromResult(new OllamaGpuActivity(false, L.T("远程 Ollama 无法读取服务器进程的 GPU 活动。", "GPU activity of a remote Ollama server cannot be read locally."), null, Array.Empty<OllamaGpuProcess>(), DateTimeOffset.UtcNow))
+                : _modelServices.ReadOllamaActivity?.Invoke(endpoint, read.Token) ??
+                    Task.FromResult(new OllamaGpuActivity(false, L.T("当前未提供进程 GPU 监测。", "Process GPU monitoring is not available."), null, Array.Empty<OllamaGpuProcess>(), DateTimeOffset.UtcNow)), read.Token);
             var installedTask = ReadSafely(() => _modelServices.ReadInstalledModels?.Invoke(endpoint, read.Token) ??
                 Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>()), read.Token);
-            await Task.WhenAll(llmTask, voiceTask, gpuTask, installedTask);
+            await Task.WhenAll(llmTask, voiceTask, gpuTask, installedTask, activityTask);
             if (_closed || !_showModelPage || epoch != _modelReadEpoch) return;
             if (endpoint != _settings.OllamaAddress || model != _settings.OllamaModel) { _modelRefreshPending = true; return; }
             RenderLlmRuntime(llmTask.Result.Value, llmTask.Result.Error, model);
+            RenderOllamaActivity(endpoint, llmTask.Result.Value, llmTask.Result.Error,
+                activityTask.Result.Value, activityTask.Result.Error, _modelServices.ReadOwnActivity?.Invoke(endpoint));
             RenderVoiceRuntime(voiceTask.Result.Value, voiceTask.Result.Error);
             RenderInstalledModels(installedTask.Result.Value, installedTask.Result.Error, endpoint);
             _gpuRows.Children.Clear();
@@ -563,7 +646,7 @@ internal sealed partial class ModelSettingsView
 
     private void PauseModelReads()
     {
-        _modelTimer.Stop(); _modelRefreshPending = false; InvalidateModelRead();
+        _modelTimer.Stop(); _modelRefreshPending = false; InvalidateModelRead(); ResetOllamaActivity();
     }
 
     private void InvalidateModelRead() { _modelReadEpoch++; _modelReadCancellation?.Cancel(); }

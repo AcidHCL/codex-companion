@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -75,6 +76,7 @@ internal sealed class OllamaClient : IOllamaClient
     private static readonly Regex ToolNamePattern = new(@"^[A-Za-z_][A-Za-z0-9_-]{0,63}$", RegexOptions.CultureInvariant);
     private static readonly JsonSerializerOptions JsonOptions = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly HttpClient http;
+    private readonly Func<int>? keepAliveMinutes;
     private readonly object cacheLock = new();
     private readonly SemaphoreSlim modelInfoGate = new(1, 1);
     private HashSet<string>? installedModels;
@@ -83,18 +85,28 @@ internal sealed class OllamaClient : IOllamaClient
     public Uri Endpoint { get; }
 
     public OllamaClient() : this(LocalEndpoint) { }
-    public OllamaClient(Uri endpoint) : this(endpoint, CreateLocalHandler()) { }
+    public OllamaClient(Uri endpoint, Func<int>? keepAliveMinutes = null) : this(endpoint, CreateLocalHandler(), keepAliveMinutes) { }
 
     // The injectable handler supports protocol checks without sockets or real inference.
     internal OllamaClient(HttpMessageHandler handler) : this(LocalEndpoint, handler) { }
-    internal OllamaClient(Uri endpoint, HttpMessageHandler handler)
+    internal OllamaClient(Uri endpoint, HttpMessageHandler handler, Func<int>? keepAliveMinutes = null)
     {
+        this.keepAliveMinutes = keepAliveMinutes;
         Endpoint = OllamaEndpoint.Parse(endpoint?.OriginalString ?? "");
         http = new HttpClient(handler, disposeHandler: true)
         {
             BaseAddress = Endpoint,
             Timeout = Timeout.InfiniteTimeSpan
         };
+    }
+
+    // Read the saved preference when submitting each request. Merely changing
+    // the setting never sends a load request or alters the server environment.
+    private object? RequestKeepAlive(bool configuredOnly = false)
+    {
+        if (configuredOnly && keepAliveMinutes == null) return null;
+        int minutes = ModelRetentionPolicy.NormalizeOllama(keepAliveMinutes?.Invoke() ?? 5);
+        return minutes == -1 ? (object)(-1) : minutes.ToString(CultureInfo.InvariantCulture) + "m";
     }
 
     internal static SocketsHttpHandler CreateLocalHandler() => new()
@@ -250,6 +262,75 @@ internal sealed class OllamaClient : IOllamaClient
     public IAsyncEnumerable<OllamaChatDelta> ChatWithToolsAsync(string model, IReadOnlyList<OllamaMessage> messages,
         IReadOnlyList<OllamaToolDefinition> tools, CancellationToken ct) => ChatCoreAsync(model, messages, tools, ct);
 
+    // A one-off, history-free summary. Unlike ordinary chat this must not choose,
+    // preload or resize a runner. Retention is sent only when the caller supplies
+    // an explicit app preference; legacy read-only clients leave it unspecified.
+    // The caller owns
+    // this dedicated client's lifetime and a short overall cancellation deadline.
+    internal async Task<string?> SummarizeResidentAsync(string model, string instruction, string source, CancellationToken ct)
+    {
+        RequireSupportedModel(model);
+        ct.ThrowIfCancellationRequested();
+        var info = await ReadModelInfoAsync(model, ct).ConfigureAwait(false);
+        if (info.Capabilities.SupportsChat != true || info.Think is string) return null;
+
+        // Metadata reads can take time. Recheck immediately before submitting,
+        // and avoid an expiring runner. Ollama has no atomic "resident only" flag;
+        // another client can still evict it between this observation and POST.
+        var resident = (await ListRunningModelsAsync(ct).ConfigureAwait(false))
+            .FirstOrDefault(item => string.Equals(item.Name, model, StringComparison.Ordinal));
+        if (resident?.ContextLength is not >= 2048 ||
+            resident.ExpiresAt is { } expiry && expiry <= DateTimeOffset.UtcNow.AddSeconds(3)) return null;
+
+        // Match the already allocated context exactly. A conservative UTF-8
+        // budget also leaves room for instructions, template, and a short reply.
+        int inputBytes = Math.Min(36_000, resident.ContextLength.Value - 1024 - Encoding.UTF8.GetByteCount(instruction));
+        if (inputBytes < 512) return null;
+        source = BoundSummarySource(source, inputBytes);
+        using var request = JsonRequest("api/chat", new
+        {
+            model,
+            messages = new[] { new { role = "system", content = instruction }, new { role = "user", content = source } },
+            stream = false,
+            think = false,
+            keep_alive = RequestKeepAlive(configuredOnly: true),
+            options = new { num_ctx = resident.ContextLength.Value, num_predict = 512, temperature = 0.2 }
+        });
+        using var activity = OllamaRequestActivity.Begin(Endpoint);
+        using var response = await SendAsync(request, ct, ct).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, ct, ct).ConfigureAwait(false);
+        string body = await ReadBodyAsync(response, 64 * 1024, truncate: false, ct, ct).ConfigureAwait(false);
+        using var document = ParseDocument(body);
+        var root = document.RootElement;
+        ThrowResponseError(root);
+        if (root.TryGetProperty("done", out var summaryDone) && summaryDone.ValueKind == JsonValueKind.True)
+            activity.CompleteResponse();
+        if (!root.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True ||
+            StringProperty(root, "done_reason") == "length" ||
+            !root.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object ||
+            StringProperty(message, "role") != "assistant" ||
+            message.TryGetProperty("tool_calls", out var calls) && calls.ValueKind != JsonValueKind.Null &&
+                (calls.ValueKind != JsonValueKind.Array || calls.GetArrayLength() > 0)) return null;
+        // The separate thinking field is deliberately never read or returned.
+        return StringProperty(message, "content");
+    }
+
+    private static string BoundSummarySource(string source, int byteLimit)
+    {
+        if (Encoding.UTF8.GetByteCount(source) <= byteLimit) return source;
+        const string omission = "\n[Middle of long source omitted; summarize only the excerpts shown.]\n";
+        int partLimit = (byteLimit - Encoding.UTF8.GetByteCount(omission)) / 2;
+        var runes = source.EnumerateRunes().ToArray();
+        int start = 0, end = runes.Length, bytes = 0;
+        while (start < runes.Length && bytes + runes[start].Utf8SequenceLength <= partLimit)
+            bytes += runes[start++].Utf8SequenceLength;
+        bytes = 0;
+        while (end > start && bytes + runes[end - 1].Utf8SequenceLength <= partLimit)
+            bytes += runes[--end].Utf8SequenceLength;
+        return string.Concat(runes.Take(start).Select(rune => rune.ToString())) + omission +
+            string.Concat(runes.Skip(end).Select(rune => rune.ToString()));
+    }
+
     private async IAsyncEnumerable<OllamaChatDelta> ChatCoreAsync(string model, IReadOnlyList<OllamaMessage> messages,
         IReadOnlyList<OllamaToolDefinition>? tools, [EnumeratorCancellation] CancellationToken ct)
     {
@@ -282,12 +363,13 @@ internal sealed class OllamaClient : IOllamaClient
             }).ToArray() : null,
             stream = true,
             think = info.Think,
-            keep_alive = "5m",
+            keep_alive = RequestKeepAlive(),
             options = new { num_ctx = ContextTokens, num_predict = ResponseTokens, temperature = 0.6 }
         };
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(10));
         using var request = JsonRequest("api/chat", payload);
+        using var activity = OllamaRequestActivity.Begin(Endpoint);
         using var response = await SendAsync(request, deadline.Token, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, deadline.Token, ct).ConfigureAwait(false);
         using var stream = await OpenStreamAsync(response, deadline.Token, ct).ConfigureAwait(false);
@@ -307,6 +389,7 @@ internal sealed class OllamaClient : IOllamaClient
                     if (final != null)
                     {
                         BoundDelta(final, ref replyChars, ref toolCalls);
+                        if (final.Done) activity.CompleteResponse();
                         yield return final;
                         if (final.Done) yield break;
                     }
@@ -324,6 +407,7 @@ internal sealed class OllamaClient : IOllamaClient
                     if (delta != null)
                     {
                         BoundDelta(delta, ref replyChars, ref toolCalls);
+                        if (delta.Done) activity.CompleteResponse();
                         yield return delta;
                         if (delta.Done) yield break;
                     }
@@ -346,10 +430,12 @@ internal sealed class OllamaClient : IOllamaClient
         if (info.Capabilities.SupportsChat == false) throw new OllamaException(L.T("当前模型不支持聊天，请选择其他模型。", "This model does not support chat. Please choose another."));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(3));
-        // Empty prompt is Ollama's explicit load operation. Do not override its
-        // automatic retention policy or global settings. Match the existing chat
+        // Empty prompt is Ollama's explicit load operation. Apply an explicitly
+        // configured app retention policy without changing global settings. Match the existing chat
         // context allocation so the next chat need not reload a different runner.
-        using var request = JsonRequest("api/generate", new { model, prompt = "", stream = false, options = new { num_ctx = ContextTokens } });
+        using var request = JsonRequest("api/generate", new { model, prompt = "", stream = false,
+            keep_alive = RequestKeepAlive(configuredOnly: true), options = new { num_ctx = ContextTokens } });
+        using var activity = OllamaRequestActivity.Begin(Endpoint, maintenance: true);
         using var response = await SendAsync(request, deadline.Token, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, deadline.Token, ct).ConfigureAwait(false);
         string body = await ReadBodyAsync(response, MaxDocumentChars, truncate: false, deadline.Token, ct).ConfigureAwait(false);
@@ -357,6 +443,7 @@ internal sealed class OllamaClient : IOllamaClient
         ThrowResponseError(document.RootElement);
         if (!document.RootElement.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True)
             throw new OllamaException(L.T("Ollama 未确认加载完成，请稍后重试。", "Ollama did not confirm that loading finished. Please retry shortly."));
+        activity.CompleteResponse();
     }
 
     public async Task UnloadAsync(string model, CancellationToken ct)
@@ -368,12 +455,14 @@ internal sealed class OllamaClient : IOllamaClient
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         using var request = JsonRequest("api/generate", new { model, keep_alive = 0, stream = false });
+        using var activity = OllamaRequestActivity.Begin(Endpoint, maintenance: true);
         using var response = await SendAsync(request, deadline.Token, ct).ConfigureAwait(false);
         // A previously selected model may never have been installed, or may have been
         // removed in Ollama. It cannot retain VRAM, so it must not block a model switch.
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             ct.ThrowIfCancellationRequested();
+            activity.CompleteResponse();
             return;
         }
         await EnsureSuccessAsync(response, deadline.Token, ct).ConfigureAwait(false);
@@ -382,6 +471,7 @@ internal sealed class OllamaClient : IOllamaClient
         ThrowResponseError(document.RootElement);
         if (!document.RootElement.TryGetProperty("done", out var done) || done.ValueKind != JsonValueKind.True)
             throw new OllamaException(L.T("Ollama 未确认释放模型，请稍后重试。", "Ollama did not confirm that the model was released. Please retry shortly."));
+        activity.CompleteResponse();
     }
 
     private static void RequireSupportedModel(string? model)

@@ -29,7 +29,7 @@ internal sealed partial class OllamaChatWindow
         label.Margin = new Thickness(0, 0, 8, 0); row.Children.Add(label);
         _modelPreload = Ui.Button(L.T("预加载", "Preload"), async (_, _) => await SetModelLoadedAsync(true));
         _modelPreload.Name = "OllamaPreloadModel";
-        _modelPreload.ToolTip = L.T("提前加载当前选中的聊天模型；不改变 Ollama 自动保留时长，不发送对话", "Load the selected chat model in advance without sending a message or changing Ollama's retention setting");
+        _modelPreload.ToolTip = L.T("提前加载当前选中的聊天模型；使用设置中的自动卸载时间，不发送对话", "Load the selected chat model in advance using the auto-unload time in Settings, without sending a message");
         _modelUnload = Ui.Button(L.T("卸载", "Unload"), async (_, _) => await SetModelLoadedAsync(false));
         _modelUnload.Name = "OllamaUnloadModel";
         _modelUnload.ToolTip = L.T("释放当前聊天模型占用的内存/显存；不会删除模型，下次发送消息时仍可自动加载", "Release the chat model's RAM/GPU memory without deleting it; the next message can load it again");
@@ -113,7 +113,11 @@ internal sealed partial class OllamaChatWindow
                 return L.T("模型操作的目标已改变，请刷新状态确认结果。", "The model operation's target changed. Refresh its status to confirm the result.");
             if (load) _lastUsedModel = model;
             else if (_lastUsedModel == model) _lastUsedModel = null;
-            string result = load ? L.T("聊天模型已预加载；自动保留时长沿用 Ollama 原有设置。", "Chat model preloaded. Ollama's existing retention setting is unchanged.") : L.T("聊天模型已卸载；下次发送消息会按原有方式自动加载。", "Chat model unloaded. The next message will load it as usual.");
+            int retention = ModelRetentionPolicy.NormalizeOllama(_settings.OllamaKeepAliveMinutes);
+            string result = load ? retention == -1
+                ? L.T("聊天模型已预加载；不自动卸载，可随时手动卸载。", "Chat model preloaded; automatic unloading is off. You can unload it manually.")
+                : L.T($"聊天模型已预加载；空闲 {retention} 分钟后自动卸载。", $"Chat model preloaded; it will unload after {retention} idle minutes.")
+                : L.T("聊天模型已卸载；下次发送消息会按原有方式自动加载。", "Chat model unloaded. The next message will load it as usual.");
             if (IsVisible) SetStatus(result);
             return result;
         }

@@ -99,8 +99,8 @@ internal static class SpeechUiChecks
                 await chat.SendAsync();
                 Require(answers.Count == 0 && input.Text == beforeLoadDraft, "model_load_never_submits_a_chat_or_changes_draft");
                 client.PreloadRelease.TrySetResult(); await preload;
-                Require(chat.CurrentConversationId == beforeLoadConversation && Named<TextBlock>(chat, "OllamaChatStatus").Text.Contains("原有设置"),
-                    "manual_preload_keeps_conversation_and_reports_existing_retention_policy");
+                Require(chat.CurrentConversationId == beforeLoadConversation && Named<TextBlock>(chat, "OllamaChatStatus").Text.Contains("空闲 5 分钟"),
+                    "manual_preload_keeps_conversation_and_reports_configured_retention_policy");
                 int unloads = client.Unloads; await chat.SetModelLoadedAsync(false);
                 Require(client.Unloads == unloads + 1 && input.Text == beforeLoadDraft && Named<Button>(chat, "OllamaSend").IsEnabled,
                     "manual_unload_releases_only_model_and_keeps_chat_available");

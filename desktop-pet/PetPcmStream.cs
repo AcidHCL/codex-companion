@@ -29,6 +29,12 @@ internal interface IPetVoiceLifecycle
     Task SetRetentionAsync(bool active, CancellationToken cancellationToken);
     Task UnloadAsync(CancellationToken cancellationToken);
 }
+internal interface IPetVoiceRetentionPolicy
+{
+    // Updates an existing worker or remembers the policy for its next explicit
+    // use. This operation must never start a worker or load a model.
+    Task SetRetentionAsync(bool active, int idleMinutes, CancellationToken cancellationToken);
+}
 internal interface IPetPcmStreamPlayer : IDisposable
 {
     Task PlayAsync(IAsyncEnumerable<PetPcmChunk> source, double volume, Action<bool> playbackState, CancellationToken cancellationToken);

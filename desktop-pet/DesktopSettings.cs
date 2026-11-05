@@ -18,6 +18,7 @@ internal sealed class DesktopSettings
     public double SoundVolume { get; set; } = .35;
     public bool SpeechEnabled { get; set; } = true;
     public double SpeechVolume { get; set; } = .6;
+    public int SpeechIdleUnloadMinutes { get; set; } = ModelRetentionPolicy.SpeechChatSession;
     public Dictionary<string, PetVoiceProfile> CharacterVoices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public bool MovementEnabled { get; set; }
     public double Size { get; set; } = 240;
@@ -35,6 +36,7 @@ internal sealed class DesktopSettings
     public bool ShowStatusBadge { get; set; } = true;
     public string OllamaAddress { get; set; } = OllamaEndpoint.DefaultAddress;
     public string OllamaModel { get; set; } = OllamaModels.FastModel;
+    public int OllamaKeepAliveMinutes { get; set; } = ModelRetentionPolicy.DefaultOllama;
     public bool WebSearchEnabled { get; set; } = true;
     public bool SharedMemoryEnabled { get; set; } = true;
     public bool LlmBehaviorEnabled { get; set; } = false;
@@ -84,6 +86,8 @@ internal sealed class DesktopSettings
         Size = double.IsFinite(Size) ? Math.Clamp(Size, 160, 440) : 240;
         SoundVolume = double.IsFinite(SoundVolume) ? Math.Clamp(SoundVolume, 0, 1) : .35;
         SpeechVolume = double.IsFinite(SpeechVolume) ? Math.Clamp(SpeechVolume, 0, 1) : .6;
+        SpeechIdleUnloadMinutes = ModelRetentionPolicy.NormalizeSpeech(SpeechIdleUnloadMinutes);
+        OllamaKeepAliveMinutes = ModelRetentionPolicy.NormalizeOllama(OllamaKeepAliveMinutes);
         CharacterVoices = PetVoiceProfiles.NormalizeProfiles(CharacterVoices);
         if (Left.HasValue && (!double.IsFinite(Left.Value) || Left.Value < int.MinValue || Left.Value > int.MaxValue)) Left = null;
         if (Top.HasValue && (!double.IsFinite(Top.Value) || Top.Value < int.MinValue || Top.Value > int.MaxValue)) Top = null;

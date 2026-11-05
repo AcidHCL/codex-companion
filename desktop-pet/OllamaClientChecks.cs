@@ -335,8 +335,63 @@ internal static class OllamaClientChecks
             Check(await IsCanceledAsync(() => pending), "capability_lookup_respects_cancellation");
         }
 
+        await CheckRetentionAsync(Check);
         await CheckToolsAsync(Check);
         return new { passed = true, assertions = checks.Count, checks, syntheticOnly = true, networkRequestsSent = 0, modelDownloads = 0, gpuInferenceRequests = 0 };
+    }
+
+    private static async Task CheckRetentionAsync(Action<bool, string> check)
+    {
+        int minutes = 5, preferenceReads = 0;
+        var requests = new List<(string Path, JsonElement Body)>();
+        var handler = new FakeHandler(async (request, ct) =>
+        {
+            string path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/ps")
+            {
+                check(request.Content == null, "retention_status_poll_never_sends_a_model_preference_or_prompt");
+                return Json(JsonSerializer.Serialize(new { models = new[] { new { name = OllamaModels.FastModel, context_length = 4096 } } }));
+            }
+            check(path is "/api/chat" or "/api/generate", "retention_changes_only_requested_chat_or_model_operation_payloads");
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            requests.Add((path, document.RootElement.Clone()));
+            return Json(path == "/api/chat" ? "{\"message\":{\"role\":\"assistant\",\"content\":\"合成结果。\"},\"done\":true}\n" : "{\"done\":true}");
+        });
+        using var client = new OllamaClient(OllamaClient.LocalEndpoint, handler, () => { preferenceReads++; return minutes; });
+        minutes = 30;
+        check(handler.Calls == 0 && preferenceReads == 0, "constructing_client_and_changing_retention_never_loads_or_requests_a_model");
+        await client.ListRunningModelsAsync(CancellationToken.None);
+        check(requests.Count == 0 && preferenceReads == 0, "metadata_reads_do_not_apply_or_refresh_retention");
+        await CollectAsync(client, OllamaModels.FastModel, UserMessage());
+        check(requests[^1].Body.GetProperty("keep_alive").GetString() == "30m" &&
+            requests[^1].Body.GetProperty("options").GetProperty("num_ctx").GetInt32() == OllamaClient.ContextTokens,
+            "finite_retention_is_applied_without_changing_chat_context");
+        minutes = -1;
+        var definitions = new[] { new OllamaToolDefinition("test_action", "synthetic", "{\"type\":\"object\",\"properties\":{}}") };
+        await CollectToolsAsync(client, OllamaModels.FastModel, UserMessage(), definitions);
+        check(requests[^1].Body.GetProperty("keep_alive").GetInt32() == -1 && requests[^1].Body.GetProperty("tools").GetArrayLength() == 1,
+            "same_client_observes_never_unload_preference_on_next_tool_or_behavior_chat");
+        await client.PreloadAsync(OllamaModels.FastModel, CancellationToken.None);
+        check(requests[^1].Path == "/api/generate" && requests[^1].Body.GetProperty("keep_alive").GetInt32() == -1 &&
+            requests[^1].Body.GetProperty("prompt").GetString() == "" && !requests[^1].Body.TryGetProperty("messages", out _),
+            "manual_preload_applies_never_unload_without_sending_chat_content");
+        minutes = 10;
+        await client.PreloadAsync(OllamaModels.FastModel, CancellationToken.None);
+        check(requests[^1].Body.GetProperty("keep_alive").GetString() == "10m", "manual_preload_uses_latest_finite_preference");
+        minutes = -1;
+        string? summary = await client.SummarizeResidentAsync(OllamaModels.FastModel, "Summarize only the source.", "Synthetic result", CancellationToken.None);
+        var summaryRequest = requests[^1].Body;
+        check(summary == "合成结果。" && summaryRequest.GetProperty("keep_alive").GetInt32() == -1 &&
+            summaryRequest.GetProperty("options").GetProperty("num_ctx").GetInt32() == 4096 &&
+            summaryRequest.GetProperty("messages").GetArrayLength() == 2 && !summaryRequest.TryGetProperty("tools", out _),
+            "configured_scheduled_summary_honors_retention_while_preserving_resident_context_and_no_history");
+        minutes = 12345;
+        await CollectAsync(client, OllamaModels.FastModel, UserMessage());
+        check(requests[^1].Body.GetProperty("keep_alive").GetString() == "5m", "invalid_retention_is_normalized_to_safe_five_minute_default");
+        minutes = -1;
+        await client.UnloadAsync(OllamaModels.FastModel, CancellationToken.None);
+        check(requests[^1].Body.GetProperty("keep_alive").GetInt32() == 0 && !requests[^1].Body.TryGetProperty("prompt", out _),
+            "manual_unload_overrides_never_unload_without_followup_reload");
     }
 
     private static async Task CheckToolsAsync(Action<bool, string> check)

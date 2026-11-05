@@ -103,7 +103,7 @@ internal sealed partial class OllamaChatWindow : Window
         _voiceInputActive = voiceInputActive;
         _voiceChatSessionActive = voiceChatSessionActive;
         _streamingSpeech = streamingSpeech;
-        _clientFactory = clientFactory ?? (endpoint => new OllamaClient(endpoint));
+        _clientFactory = clientFactory ?? (endpoint => new OllamaClient(endpoint, () => _settings.OllamaKeepAliveMinutes));
         _client = client ?? _clientFactory(OllamaEndpoint.Parse(settings.OllamaAddress));
         _webClient = webClient ?? new PetWebClient();
         _chatStore = chatStore ?? new ChatMemoryStore(":memory:");

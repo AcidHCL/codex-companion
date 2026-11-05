@@ -75,6 +75,19 @@ internal sealed partial class PetWindow
         SettingsChanged?.Invoke();
     }
 
+    public void SetSpeechIdleUnloadMinutes(int minutes)
+    {
+        Dispatcher.VerifyAccess();
+        int normalized = ModelRetentionPolicy.NormalizeSpeech(minutes);
+        int previous = Settings.SpeechIdleUnloadMinutes;
+        if (previous == normalized) return;
+        Settings.SpeechIdleUnloadMinutes = normalized;
+        try { if (_persist) Settings.Save(); }
+        catch { Settings.SpeechIdleUnloadMinutes = previous; throw; }
+        _voice?.ApplyRetentionPolicy();
+        SettingsChanged?.Invoke();
+    }
+
     public void SetCharacterVoiceProfile(string skinId, PetVoiceProfile profile)
     {
         var previous = Settings.GetVoiceProfile(skinId);

@@ -40,6 +40,7 @@ internal sealed partial class PetWindow : Window
     public bool IsLive2DLoading { get; private set; }
     internal Live2DView? Live2DRenderer => _live2D;
     private readonly TextBlock _speech;
+    private readonly ScrollViewer _speechScroll;
     private readonly Border _bubble;
     private readonly TextBlock _stateLabel;
     private readonly Border _stateBadge;
@@ -53,6 +54,7 @@ internal sealed partial class PetWindow : Window
     internal TopmostController? TopmostGuard { get; private set; }
     public DesktopSettings Settings { get; }
     public SkinInfo CurrentSkin { get; private set; }
+    internal long SpeechBubbleRevision { get; private set; }
 
     public PetWindow(IReadOnlyList<SkinInfo> skins, DesktopSettings settings, bool persist,
         Func<MotionPreferences>? motionPreferences = null, Func<WindowsSessionSnapshot>? querySession = null,
@@ -96,15 +98,25 @@ internal sealed partial class PetWindow : Window
         _character.SizeChanged += (_, _) => QueueFootGeometryRefresh();
         root.Children.Add(_character);
         _speech = new TextBlock { FontSize = 12, Foreground = Ui.Brush("#EAF5EE"), FontFamily = new FontFamily("Microsoft YaHei UI"), TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, MaxHeight = 62, TextTrimming = TextTrimming.CharacterEllipsis };
+        _speechScroll = new ScrollViewer
+        {
+            Content = _speech, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Focusable = false
+        };
         _bubble = new Border
         {
             Background = Ui.Brush("#183F35"), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(13, 8, 13, 8), Child = _speech,
+            Padding = new Thickness(13, 8, 13, 8), Child = _speechScroll,
             VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Center,
             Margin = new Thickness(8, 20, 8, 0), MaxWidth = 270, Visibility = Visibility.Collapsed,
             IsHitTestVisible = false
         };
         root.Children.Add(_bubble);
+        // Scrolling a long result must not count as a pet click or drag.
+        _bubble.MouseLeftButtonDown += (_, e) => e.Handled = true;
+        _bubble.MouseLeftButtonUp += (_, e) => e.Handled = true;
+        _bubble.MouseEnter += (_, _) => _speechTimer?.Stop();
+        _bubble.MouseLeave += (_, _) => { if (_bubble.Visibility == Visibility.Visible) _speechTimer?.Start(); };
         _stateLabel = Ui.Text(L.T("连接 Codex…", "Connect Codex…"), 10, "#EAF5EE");
         _stateLabel.TextTrimming = TextTrimming.CharacterEllipsis;
         _stateBadge = new Border { Child = _stateLabel, Background = Ui.Brush("#214F38"), CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 5, 10, 5), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(12, 0, 12, 2), Cursor = Cursors.Hand, ToolTip = AppVersion.ProductLabel + L.T("\n点击打开 Codex 工作看板", "\nClick to open the Codex dashboard") };
@@ -523,8 +535,26 @@ internal sealed partial class PetWindow : Window
         _bounce.BeginAnimation(TranslateTransform.YProperty, animation);
     }
 
-    private void ShowSpeechBubble(string text) { _speech.Text = text; _bubble.Visibility = Visibility.Visible; UpdateBadgePlacement(); _speechTimer.Stop(); _speechTimer.Start(); }
+    private void ShowSpeechBubble(string text) => ShowSpeechBubble(text, expanded: false);
+    private void ShowSpeechBubble(string text, bool expanded)
+    {
+        ++SpeechBubbleRevision;
+        _speech.Text = text;
+        _speech.MaxHeight = expanded ? double.PositiveInfinity : 62;
+        _speech.TextTrimming = expanded ? TextTrimming.None : TextTrimming.CharacterEllipsis;
+        _speech.TextAlignment = expanded ? TextAlignment.Left : TextAlignment.Center;
+        _speechScroll.MaxHeight = expanded ? Math.Clamp(Height * .38, 96, 160) : double.PositiveInfinity;
+        _speechScroll.VerticalScrollBarVisibility = expanded ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+        _speechScroll.ScrollToHome();
+        _bubble.IsHitTestVisible = expanded;
+        _bubble.Visibility = Visibility.Visible;
+        UpdateBadgePlacement();
+        _speechTimer.Stop();
+        _speechTimer.Interval = TimeSpan.FromSeconds(expanded ? Math.Clamp(text.Length / 5.0 + 12, 20, 120) : 3.3);
+        _speechTimer.Start();
+    }
     public void Say(string text) { ShowSpeechBubble(text); SpeakText(text, PetSpeechSource.Preset); }
+    public void SayScheduledTask(string text) { ShowSpeechBubble(text, expanded: true); SpeakText(text, PetSpeechSource.Preset); }
     private void Changed() { QueueSave(); SettingsChanged?.Invoke(); }
     private void QueueSave() { if (!_persist || _restoring) return; _saveTimer.Stop(); _saveTimer.Start(); }
     public void SaveNow()

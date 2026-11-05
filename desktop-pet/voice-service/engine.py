@@ -288,6 +288,7 @@ class VoiceEngine:
         self.stop = threading.Event()
         self.unload_requested = threading.Event()
         self.retention_until = 0.0
+        self.idle_seconds_override = None
         if not self.config.model_path.joinpath("model.safetensors").is_file():
             self.status, self.message = "error", "所选语音模型尚未下载完成。"
         elif self.config.requires_reference and not self.config.reference_path.is_file():
@@ -338,6 +339,7 @@ class VoiceEngine:
                     "message": self.message, "queued": len(self.requests),
                     "backend": self.config.backend, "loaded": self.is_loaded,
                     "retained": time.monotonic() < self.retention_until,
+                    "idle_seconds": getattr(self, "idle_seconds_override", None) or getattr(self.config, "idle_seconds", 60),
                     "streaming": self.config.backend == "faster",
                     "retiring": retiring, "device": device,
                     "allocated_bytes": allocated, "reserved_bytes": reserved,
@@ -365,10 +367,12 @@ class VoiceEngine:
             for event in self.requests.values():
                 event.set()
 
-    def retain(self, active):
-        # The client renews this lease while a chat is open. If it dies or stops
-        # renewing, the ordinary idle policy still releases GPU memory.
+    def retain(self, active, idle_seconds=None):
+        # Chat retention and the explicit "never" choice use a renewable lease.
+        # A missing/dead client still releases memory. Policy updates never move
+        # last_used: polling must not restart a finite idle countdown.
         with self.guard:
+            self.idle_seconds_override = idle_seconds
             self.retention_until = time.monotonic() + 45 if active else 0.0
 
     def preload(self, request_id):
@@ -418,12 +422,22 @@ class VoiceEngine:
         self._set("idle", "语音模型已释放显存，下一次朗读时自动加载。")
         self.unload_requested.clear()
 
+    def _idle_due(self):
+        with self.guard:
+            idle_seconds = self.idle_seconds_override or self.config.idle_seconds
+            now = time.monotonic()
+            return self.unload_requested.is_set() or (self.model is not None and
+                now >= self.retention_until and now - self.last_used >= idle_seconds)
+
     def _idle_loop(self):
         while not self.stop.wait(1):
-            if self.unload_requested.is_set() or (self.model is not None and time.monotonic() >= self.retention_until and time.monotonic() - self.last_used >= self.config.idle_seconds):
+            if self._idle_due():
                 if self.generation_lock.acquire(blocking=False):
                     try:
-                        self._unload()
+                        # A policy change or completed request may have renewed
+                        # eligibility between the first check and acquiring it.
+                        if self._idle_due():
+                            self._unload()
                     finally:
                         self.generation_lock.release()
 

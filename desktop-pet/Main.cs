@@ -60,6 +60,9 @@ internal static class Program
         {
             if (args.Contains("--localization-test")) return LocalizationChecks.Run();
             if (args.Contains("--localization-ui-test")) return LocalizationUiChecks.Run();
+            if (args.Contains("--scheduled-announcement-test")) return RunScheduledAnnouncementCheck().GetAwaiter().GetResult();
+            if (args.Contains("--scheduled-monitor-test")) return RunScheduledMonitorCheck().GetAwaiter().GetResult();
+            if (args.Contains("--scheduled-notice-ui-test")) return ScheduledNoticeUiChecks.Run();
             if (args.Contains("--speech-pcm-live-test")) return PetPcmLiveChecks.Run();
             if (args.Contains("--speech-stream-live-test")) return PetStreamingSpeechLiveChecks.Run();
             if (args.Contains("--voice-worker-lifecycle-test")) return PetVoiceWorkerChecks.Run();
@@ -67,6 +70,10 @@ internal static class Program
             if (args.Contains("--speech-test")) return PetSpeechChecks.Run();
             if (args.Contains("--speech-ui-test")) return SpeechUiChecks.Run();
             if (args.Contains("--model-dashboard-test")) return ModelDashboardChecks.Run();
+            if (args.Contains("--model-retention-ui-test")) return ModelRetentionUiChecks.Run();
+            if (args.Contains("--ollama-activity-ui-test")) return OllamaActivityUiChecks.Run();
+            if (args.Contains("--ollama-activity-test")) return OllamaActivityValidation.RunAsync(false).GetAwaiter().GetResult();
+            if (args.Contains("--ollama-activity-probe-test")) return OllamaActivityValidation.RunAsync(true).GetAwaiter().GetResult();
             if (args.Contains("--speech-live-test")) return PetSpeechLiveChecks.Run();
             if (args.Contains("--voice-input-test")) return PetVoiceInputChecks.Run();
             if (args.Contains("--voice-input-ui-test")) return VoiceInputUiChecks.Run();
@@ -235,6 +242,38 @@ internal static class Program
         catch (Exception ex)
         {
             File.WriteAllText(output, JsonSerializer.Serialize(new { passed = false, version = AppVersion.Number, error = DiagnosticError(ex), detail = ex.Message }));
+            return 1;
+        }
+    }
+
+    private static async Task<int> RunScheduledMonitorCheck()
+    {
+        string output = Path.Combine(AppContext.BaseDirectory, "scheduled-monitor-validation.json");
+        try
+        {
+            object checks = await CodexScheduledTaskChecks.RunAsync();
+            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = true, version = AppVersion.Number, checks }, new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex), detail = ex.Message }));
+            return 1;
+        }
+    }
+
+    private static async Task<int> RunScheduledAnnouncementCheck()
+    {
+        string output = Path.Combine(AppContext.BaseDirectory, "scheduled-announcement-validation.json");
+        try
+        {
+            object checks = await ScheduledTaskAnnouncementChecks.RunAsync();
+            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = true, version = AppVersion.Number, checks }, new JsonSerializerOptions { WriteIndented = true }));
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(output, JsonSerializer.Serialize(new { passed = false, error = DiagnosticError(ex), detail = ex.Message }));
             return 1;
         }
     }
@@ -483,6 +522,7 @@ internal sealed class PetApplication : Application
     private bool _errorDialogOpen;
     private DateTimeOffset _lastErrorDialog;
     internal bool RestartRequested { get; private set; }
+    private CodexNoticePresenter? _noticePresenter;
 
     public PetApplication(IReadOnlyList<SkinInfo> skins, bool smoke, bool integration, bool live2DTest = false, string? live2DTestModel = null, string? sceneTestManifest = null, bool movementTest = false, bool deepSeekStateTest = false, bool fallLandTest = false, bool dragStateTest = false)
     {
@@ -532,7 +572,7 @@ internal sealed class PetApplication : Application
         _pet.OpenScenesRequested += ShowScenes;
         _pet.OpenDashboardRequested += ShowDashboard;
         _pet.OpenChatRequested += ShowChat;
-        _pet.SettingsChanged += () => { _chatWindow?.RefreshCharacter(); _chatWindow?.RefreshBehaviorConfiguration(); _behavior?.RefreshMode(); };
+        _pet.SettingsChanged += () => { _chatWindow?.RefreshCharacter(); _chatWindow?.RefreshBehaviorConfiguration(); _behavior?.RefreshMode(); _noticePresenter?.Revalidate(); };
         _companionUi = new PetCompanionUi(_pet, ShowChat, ShowSettings, ShowDashboard);
         _pet.OpenQuickActionsRequested += _companionUi.ToggleActions;
         _pet.ExitRequested += () => RequestExit(LifecycleEvent.ExitPetMenu);
@@ -556,13 +596,21 @@ internal sealed class PetApplication : Application
             _monitor = new CodexMonitor(settings);
             _monitor.Changed += () =>
             {
+                _noticePresenter?.Revalidate();
                 _companionTasks.Observe(_monitor.Snapshot);
                 _pet.SetCodexStatus(_companionTasks.MainPetSnapshot);
                 // Dot state is maintained independently; its visual companion
                 // remains disabled until a later release supplies that surface.
             };
             _monitor.VerifiedTransition += _pet.OnVerifiedSceneNotice;
-            _monitor.Notice += notice => { _pet.Say(notice.Title + "：" + notice.Message); _tray.ShowBalloon(notice.Title, notice.Message); if (notice.Kind == "complete") _pet.Bounce(); };
+            _noticePresenter = new CodexNoticePresenter((notice, presentation) =>
+            {
+                if (presentation.Expanded) _pet.SayScheduledTask(presentation.Text);
+                else _pet.Say(presentation.Text);
+                _tray.ShowBalloon(notice.Title, presentation.Body);
+                if (notice.Kind == "complete") _pet.Bounce();
+            }, () => settings.OllamaKeepAliveMinutes);
+            _monitor.Notice += PresentCodexNotice;
             if (!_smoke) _monitor.Start();
         }
         _pet.Show();
@@ -803,6 +851,23 @@ internal sealed class PetApplication : Application
         if (_dashboard.WindowState == WindowState.Minimized) _dashboard.WindowState = WindowState.Normal;
         _dashboard.Activate();
     }
+    private async void PresentCodexNotice(PetNotice notice)
+    {
+        if (_monitor == null || _pet == null || _noticePresenter == null) return;
+        var monitor = _monitor;
+        var settings = _pet.Settings;
+        var context = monitor.NoticeContext;
+        long bubbleRevision = _pet.SpeechBubbleRevision;
+        string address = settings.OllamaAddress, model = settings.OllamaModel, language = settings.Language;
+        bool Eligible() => monitor.MessagesEnabled && monitor.Snapshot.Connected && settings.NotificationsEnabled &&
+            monitor.NoticeContext == context && _pet.SpeechBubbleRevision == bubbleRevision &&
+            settings.OllamaAddress == address && settings.OllamaModel == model &&
+            settings.Language == language && (notice.TaskKey == null ||
+                monitor.Snapshot.Tasks.Any(task => task.Key == notice.TaskKey && task.Source == TaskSource.Codex));
+        try { await _noticePresenter.ShowAsync(notice, model, address, Eligible); }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { Program.Log(ex); }
+    }
+
     private void RequestRestart()
     {
         if (RestartRequested || _pet == null || _smoke) return;
@@ -831,6 +896,7 @@ internal sealed class PetApplication : Application
         LifecycleLog.Record(LifecycleEvent.ApplicationExit, e.ApplicationExitCode);
         GraphicsFailure.FatalHandler = null;
         _smokeTimer?.Stop();
+        _noticePresenter?.Dispose();
         _behavior?.Dispose();
         _companionUi?.Dispose();
         _settingsWindow?.Close();

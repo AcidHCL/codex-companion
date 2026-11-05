@@ -26,6 +26,7 @@ internal static class PetSpeechChecks
             {
                 await PetVoiceHealthChecks.RunAsync(app.Dispatcher, Require);
                 await PetSpeechStreamingChecks.RunAsync(app.Dispatcher, Require);
+                await PetVoiceIdlePolicyChecks.RunAsync(app.Dispatcher, Require);
                 await PetVoiceProfileChecks.RunAsync(app.Dispatcher, Require);
                 PetVoiceLibraryChecks.Run(Require);
                 await PetVoiceStudioChecks.RunAsync(app.Dispatcher, Require);

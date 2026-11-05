@@ -1,4 +1,4 @@
-# Codex Companion · 蓝色大肥鱼 1.31.1
+# Codex Companion · 蓝色大肥鱼 1.34.0
 
 [简体中文](README.md) | **English**
 
@@ -26,6 +26,12 @@ The application supports English and Simplified Chinese. Key Chinese labels are 
 **Settings:** Right-click the pet and select Settings (设置), or open it from the work dashboard, character wardrobe, or system tray. Pet & Interaction (桌宠与互动) manages display, walking, behavior, music, and performances. Models & Speech (模型与语音) manages chat and speech models, GPU memory, character voices, and Voice Studio. The wardrobe focuses on character selection and asset imports; the dashboard focuses on Codex work progress. Existing preferences and saved voices are preserved. Model status refreshes only while the corresponding settings page is visible.
 
 **Performances:** Under Pet & Interaction → Performances & Emotions (桌宠与互动 → 表演与情绪), select “Sing Let Me Go” (唱 Let Me Go), “保持 Q 弹 · 邦友的酒,” or another expression or dance, then use the shared play and stop controls. Music & Singing (音乐与唱歌) contains only the music toggle and volume control.
+
+## Changelog
+
+- **1.34.0 · Ollama activity detection:** Settings combines Ollama process GPU activity with the pet's own requests to indicate suspected external inference, without identifying the exact task.
+- **1.33.0 · Automatic model unloading:** Chat and speech models can each unload after 1 / 5 / 10 / 30 / 60 idle minutes, or never unload automatically.
+- **1.32.0 · Task result readout:** Completed scheduled tasks announce their results; an already-loaded LLM can summarize long results.
 
 ## Language switching and one-click restart
 

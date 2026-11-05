@@ -71,12 +71,15 @@ internal sealed class PetSpeechService : IDisposable
         PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) && !_suspended;
     private bool ModelAllowed => !_disposed && !_studioBusy && _enabledForProcess && _settings.SpeechEnabled &&
         PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId));
+    private int IdleUnloadMinutes => ModelRetentionPolicy.NormalizeSpeech(_settings.SpeechIdleUnloadMinutes);
+    private bool RetainModel => ModelAllowed && !_manualUnload &&
+        (IdleUnloadMinutes == -1 || IdleUnloadMinutes == 0 && _chatSessionActive);
 
     private string IdleStatus => !_settings.SpeechEnabled ? L.T("语音已关闭", "Speech is off") :
         !PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId)) ? L.T("当前角色未选择语音模型", "No speech model selected for this character") :
         _suspended ? L.T("语音已暂停", "Speech paused") : !_enabledForProcess ? L.T("测试模式：不播放声音", "Test mode: audio playback disabled") :
         _manualUnload ? L.T("语音模型已卸载，下次朗读时加载", "Speech model unloaded; the next readout will load it") :
-        _modelReady && _chatSessionActive ? L.T("语音模型已加载，待命", "Speech model loaded and ready") : L.T("本地语音待命，按需加载", "Local speech ready; model loads on demand");
+        _modelReady && RetainModel ? L.T("语音模型已加载，待命", "Speech model loaded and ready") : L.T("本地语音待命，按需加载", "Local speech ready; model loads on demand");
 
     private void SetStatus(string value, bool speaking = false)
     {
@@ -107,6 +110,7 @@ internal sealed class PetSpeechService : IDisposable
         // from the previous one. AppendChatResponse remains within one epoch.
         StopCore();
         _manualUnload = false;
+        ApplyRetentionPolicy();
         _queue.Enqueue(new Utterance(normalized, source, _epoch));
         if (!_pumping) _ = PumpAsync();
     }
@@ -116,7 +120,7 @@ internal sealed class PetSpeechService : IDisposable
         _dispatcher.VerifyAccess();
         if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         if (!Allowed) return -1;
-        StopCore(); _manualUnload = false;
+        StopCore(); _manualUnload = false; ApplyRetentionPolicy();
         _chatInput = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
         _chatInputId = _epoch; _chatInputCharacters = 0;
         _queue.Enqueue(new Utterance("", PetSpeechSource.Chat, _epoch, _chatInput.Reader));
@@ -360,13 +364,27 @@ internal sealed class PetSpeechService : IDisposable
         if (!Allowed)
         {
             StopCore();
-            if (_enabledForProcess && !(ModelAllowed && _chatSessionActive && !_manualUnload))
+            if (_enabledForProcess && !(ModelAllowed && !_manualUnload && (IdleUnloadMinutes != 0 || _chatSessionActive)))
             {
                 CancelPreload(); _modelReady = false;
                 _pendingRelease = ReleaseAfterAsync(_pendingRelease);
             }
         }
         else if (!IsSpeaking && !_pumping) SetStatus(IdleStatus);
+        ApplyRetentionPolicy();
+    }
+
+    public void ApplyRetentionPolicy()
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.BeginInvoke(ApplyRetentionPolicy); return; }
+        if (_disposed) return;
+        // Finite policies need no pinning lease. Keeping this lightweight timer
+        // active retries updates after transient worker/network transitions; a
+        // heartbeat never counts as synthesis activity or starts a stopped worker.
+        if (ModelAllowed && !_manualUnload && (_chatSessionActive || IdleUnloadMinutes != 0)) _retentionTimer.Start();
+        else _retentionTimer.Stop();
+        _ = UpdateRetentionAsync();
+        if (!_pumping && _preloading is not { IsCompleted: false } && !IsSpeaking) SetStatus(IdleStatus);
     }
 
     public void SetChatSessionActive(bool active)
@@ -376,13 +394,12 @@ internal sealed class PetSpeechService : IDisposable
         _chatSessionActive = active;
         if (active)
         {
-            _retentionTimer.Start();
+            ApplyRetentionPolicy();
             if (ModelAllowed && !_manualUnload) _ = IgnoreFailureAsync(PreloadAsync);
         }
         else
         {
-            _retentionTimer.Stop();
-            _ = UpdateRetentionAsync();
+            ApplyRetentionPolicy();
             if (!_pumping && _preloading is not { IsCompleted: false }) SetStatus(IdleStatus);
         }
     }
@@ -394,6 +411,7 @@ internal sealed class PetSpeechService : IDisposable
         if (!ModelAllowed || _synthesizer is not IPetVoiceLifecycle) return Task.CompletedTask;
         if (_preloading is { IsCompleted: false }) return _preloading;
         _manualUnload = false;
+        ApplyRetentionPolicy();
         return _preloading = PreloadCoreAsync();
     }
 
@@ -428,6 +446,7 @@ internal sealed class PetSpeechService : IDisposable
         if (_disposed) return;
         if (_pendingRelease.IsFaulted || _pendingRelease.IsCanceled) ApplySettings();
         _manualUnload = true; StopCore(); CancelPreload();
+        ApplyRetentionPolicy();
         if (!_enabledForProcess) return;
         SetStatus(L.T("正在卸载语音模型…", "Unloading speech model…"));
         try
@@ -469,8 +488,10 @@ internal sealed class PetSpeechService : IDisposable
     private async Task UpdateRetentionAsync()
     {
         if (_disposed || !_enabledForProcess || _synthesizer is not IPetVoiceLifecycle lifecycle) return;
-        bool active = ModelAllowed && _chatSessionActive && !_manualUnload;
-        await IgnoreFailureAsync(() => lifecycle.SetRetentionAsync(active, CancellationToken.None));
+        bool active = RetainModel;
+        if (_synthesizer is IPetVoiceRetentionPolicy policy)
+            await IgnoreFailureAsync(() => policy.SetRetentionAsync(active, IdleUnloadMinutes, CancellationToken.None));
+        else await IgnoreFailureAsync(() => lifecycle.SetRetentionAsync(active, CancellationToken.None));
     }
 
     public void SetSuspended(bool suspended)

@@ -105,9 +105,15 @@ def make_handler(engine, token, port):
                     self.json_response(202, {"status": "unloading"})
                     return
                 if self.path == "/retention":
-                    if set(body) != {"active"} or not isinstance(body["active"], bool):
+                    if set(body) not in ({"active"}, {"active", "idle_seconds"}) or not isinstance(body["active"], bool):
                         raise ValueError()
-                    engine.retain(body["active"])
+                    idle_seconds = body.get("idle_seconds")
+                    if idle_seconds is not None and (type(idle_seconds) is not int or not 1 <= idle_seconds <= 86400):
+                        raise ValueError()
+                    if "idle_seconds" in body:
+                        engine.retain(body["active"], idle_seconds)
+                    else:
+                        engine.retain(body["active"])
                     self.json_response(200, {"status": "retained" if body["active"] else "released"})
                     return
                 request_id = body.get("request_id")

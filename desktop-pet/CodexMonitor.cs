@@ -13,6 +13,10 @@ internal sealed class CodexMonitor : IDisposable
     private readonly ICodexConnection _connection;
     private readonly DesktopSettings _settings;
     private readonly bool _persistSettings;
+    private readonly Func<IReadOnlyList<CodexScheduledTask>> _scheduledTaskSource;
+    private readonly Dictionary<string, CodexCompletedTurn> _observedScheduledTurns = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _completedTurns = new(StringComparer.Ordinal);
+    private readonly Queue<string> _completedTurnOrder = new();
     private readonly DispatcherTimer _timer;
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly CancellationTokenSource _lifetime = new();
@@ -28,6 +32,7 @@ internal sealed class CodexMonitor : IDisposable
     private DateTimeOffset? _lastUsageAttempt;
     private LifecycleFailure? _lastConnectionFailure;
     internal string? CallerThreadId => _connection.CallerThreadId;
+    internal (int Access, int Source) NoticeContext => (_accessGeneration, _sourceGeneration);
     public CodexSnapshot Snapshot { get; private set; } = CodexSnapshot.Empty;
     public DashboardTaskFilter DashboardFilter { get; private set; } = DashboardTaskFilter.Codex;
     public IReadOnlyList<CodexTaskInfo> DashboardTasks => Snapshot.Tasks.Where(task => TaskSourcePolicy.Matches(task, DashboardFilter)).ToArray();
@@ -46,11 +51,13 @@ internal sealed class CodexMonitor : IDisposable
     public event Action<PetNotice>? Notice;
     public event Action<PetNotice>? VerifiedTransition;
 
-    public CodexMonitor(DesktopSettings settings, ICodexConnection? connection = null, bool persistSettings = true)
+    public CodexMonitor(DesktopSettings settings, ICodexConnection? connection = null, bool persistSettings = true,
+        Func<IReadOnlyList<CodexScheduledTask>>? scheduledTaskSource = null)
     {
         _settings = settings;
         _settings.TaskSourceOverrides = TaskSourcePolicy.NormalizeOverrides(_settings.TaskSourceOverrides);
         _persistSettings = persistSettings;
+        _scheduledTaskSource = scheduledTaskSource ?? (persistSettings ? CodexScheduledTasks.ReadLocal : () => Array.Empty<CodexScheduledTask>());
         _connection = connection ?? new CodexConnection();
         _connection.SetMessageAccess(settings.CodexMessagesEnabled);
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(settings.RefreshSeconds) };
@@ -67,6 +74,7 @@ internal sealed class CodexMonitor : IDisposable
     private void InvalidateAccess()
     {
         ++_accessGeneration;
+        _observedScheduledTurns.Clear();
         _accessLifetime.Cancel(); _accessLifetime.Dispose(); _accessLifetime = new CancellationTokenSource();
         ClearSelection();
     }
@@ -133,6 +141,7 @@ internal sealed class CodexMonitor : IDisposable
         try { if (_persistSettings) _settings.Save(); }
         catch { _settings.TaskSourceOverrides = priorOverrides; throw; }
         ++_sourceGeneration;
+        _observedScheduledTurns.Clear();
         CancelConversationRead();
         Snapshot = Snapshot with { Tasks = Snapshot.Tasks.Select(ClassifyTask).ToArray() };
         ReconcileSelection();
@@ -169,11 +178,17 @@ internal sealed class CodexMonitor : IDisposable
             var tasksData = await _connection.CallAsync("list_threads", new { limit = 50 }, token);
             token.ThrowIfCancellationRequested();
             var taskList = CodexParser.ParseTasks(tasksData).Select(ClassifyTask).ToList();
+            var runtimeReads = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
             for (int i = 0; i < taskList.Count; i++)
             {
                 taskList[i] = ClassifyTask(taskList[i]);
                 if (!MessagesEnabled || taskList[i].Source != TaskSource.Codex || !taskList[i].IsRunning) continue;
-                try { var runtime = await _connection.CallAsync("read_thread", ReadArguments(taskList[i], null, 1), token); taskList[i] = CodexParser.WithRuntimeStatus(taskList[i], runtime); }
+                try
+                {
+                    var runtime = await _connection.CallAsync("read_thread", ReadArguments(taskList[i], null, 1, 24000), token);
+                    runtimeReads[taskList[i].Key] = runtime;
+                    taskList[i] = CodexParser.WithRuntimeStatus(taskList[i], runtime);
+                }
                 catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                 catch { /* Keep the list status if detailed state is unavailable. */ }
             }
@@ -194,6 +209,8 @@ internal sealed class CodexMonitor : IDisposable
                     if (_accountId != null && usage.AccountId != null && _accountId != usage.AccountId)
                     {
                         ClearSelection();
+                        ++_sourceGeneration;
+                        _observedScheduledTurns.Clear(); _completedTurns.Clear(); _completedTurnOrder.Clear();
                         prior = CodexSnapshot.Empty;
                     }
                     _accountId = usage.AccountId;
@@ -217,8 +234,9 @@ internal sealed class CodexMonitor : IDisposable
             Snapshot = new CodexSnapshot(true, false, error == null ? L.T("已连接 Codex", "Connected to Codex") : L.T("已连接 · 部分数据待更新", "Connected · Some data pending"), DateTimeOffset.Now, usageTime, buckets, tasks, error, resetCredits);
             ReconcileSelection();
             NotifyChanged();
-            if (MessagesEnabled && sourceGeneration == _sourceGeneration && prior.Connected && (_settings.NotificationsEnabled || (_settings.SceneAutoEnabled && _settings.ScenePackId != null)))
-                await CheckTransitionsAsync(prior.Tasks, tasks, sourceGeneration, token);
+            if (MessagesEnabled && sourceGeneration == _sourceGeneration && (_settings.NotificationsEnabled || (_settings.SceneAutoEnabled && _settings.ScenePackId != null)))
+                await CheckTransitionsAsync(prior.Tasks, tasks, runtimeReads, sourceGeneration, prior.Connected, token);
+            else _observedScheduledTurns.Clear();
             if (MessagesEnabled && SelectedTask != null && !IsReading) await ReadLatestAsync(SelectedTask, false);
         }
         catch (OperationCanceledException) when (_lifetime.IsCancellationRequested || generation != _accessGeneration) { }
@@ -226,6 +244,7 @@ internal sealed class CodexMonitor : IDisposable
         {
             if (generation != _accessGeneration || !ConnectionRequested) return;
             _connection.Disconnect();
+            _observedScheduledTurns.Clear();
             var failure = LifecycleLog.Classify(ex);
             if (_lastConnectionFailure != failure)
             {
@@ -260,35 +279,94 @@ internal sealed class CodexMonitor : IDisposable
         }
     }
 
-    private async Task CheckTransitionsAsync(IReadOnlyList<CodexTaskInfo> before, IReadOnlyList<CodexTaskInfo> after, int sourceGeneration, CancellationToken token)
+    private async Task CheckTransitionsAsync(IReadOnlyList<CodexTaskInfo> before, IReadOnlyList<CodexTaskInfo> after,
+        IReadOnlyDictionary<string, JsonElement> runtimeReads, int sourceGeneration, bool allowNotices, CancellationToken token)
     {
         var prior = before.ToDictionary(t => t.Key, StringComparer.Ordinal);
+        IReadOnlyList<CodexScheduledTask> schedules;
+        try { schedules = _scheduledTaskSource(); }
+        catch { schedules = Array.Empty<CodexScheduledTask>(); }
+        // The first successful poll (including reconnection) records a baseline,
+        // so opening the pet never replays an earlier scheduled result.
+        if (!allowNotices) _observedScheduledTurns.Clear();
+        var boundKeys = after.Where(task => CodexScheduledTasks.IsBound(task, schedules)).Select(task => task.Key).ToHashSet(StringComparer.Ordinal);
+        foreach (string stale in _observedScheduledTurns.Keys.Where(key => !boundKeys.Contains(key)).ToArray())
+            _observedScheduledTurns.Remove(stale);
         int emitted = 0;
         foreach (var task in after)
         {
             token.ThrowIfCancellationRequested();
             if (!MessagesEnabled || sourceGeneration != _sourceGeneration) return;
-            if (emitted >= 3 || !prior.TryGetValue(task.Key, out var old)) continue;
-            if (old.Source != TaskSource.Codex || task.Source != TaskSource.Codex) continue;
-            if (old.Status == task.Status) continue;
-            if (task.NeedsAttention && !old.NeedsAttention)
+            if (task.Source != TaskSource.Codex || task.Kind != "codex") continue;
+            prior.TryGetValue(task.Key, out var old);
+            bool priorEligible = allowNotices && old?.Source == TaskSource.Codex;
+            bool changedStatus = priorEligible && old!.Status != task.Status;
+            if (changedStatus && task.NeedsAttention && !old!.NeedsAttention)
             {
-                EmitNotice(new PetNotice(L.T("任务需要关注", "Task needs attention"), task.Title, "attention"), task.Key, sourceGeneration); emitted++; continue;
+                if (emitted < 3) { EmitNotice(new PetNotice(L.T("任务需要关注", "Task needs attention"), task.Title, "attention") { TaskKey = task.Key }, task.Key, sourceGeneration); emitted++; }
+                continue;
             }
-            if ((!old.IsRunning && !old.NeedsAttention) || task.IsRunning || task.Kind != "codex") continue;
+            bool ordinaryTransition = changedStatus && (old!.IsRunning || old.NeedsAttention) && !task.IsRunning;
+            bool bound = boundKeys.Contains(task.Key);
+            _observedScheduledTurns.TryGetValue(task.Key, out var observed);
+            bool inspectScheduled = bound && (observed == null || !allowNotices || old == null ||
+                task.UpdatedAt != old.UpdatedAt || task.Status != old.Status || task.IsRunning);
+            if (!ordinaryTransition && !inspectScheduled) continue;
             try
             {
-                var data = await _connection.CallAsync("read_thread", ReadArguments(task, null, 1), token);
+                var data = runtimeReads.TryGetValue(task.Key, out var cached) ? cached :
+                    await _connection.CallAsync("read_thread", ReadArguments(task, null, 1, 24000), token);
                 token.ThrowIfCancellationRequested();
                 if (!MessagesEnabled || sourceGeneration != _sourceGeneration ||
                     Snapshot.Tasks.FirstOrDefault(row => row.Key == task.Key)?.Source != TaskSource.Codex) return;
-                var state = CodexParser.ParseConversation(data, task.Key).LatestTurnStatus;
-                if (state == "completed") { EmitNotice(new PetNotice(L.T("任务已完成", "Task completed"), task.Title, "complete"), task.Key, sourceGeneration); emitted++; }
-                else if (state is "failed" or "interrupted") { EmitNotice(new PetNotice(state == "failed" ? L.T("任务执行失败", "Task failed") : L.T("任务已中断", "Task interrupted"), task.Title, "attention"), task.Key, sourceGeneration); emitted++; }
+                var turn = CodexScheduledTasks.LatestTurn(data);
+                if (turn == null)
+                {
+                    // Older adapters may omit turn identity. Keep their existing
+                    // ordinary status-transition notice, but never infer a
+                    // scheduled run or replay output without a deduplication ID.
+                    var state = CodexParser.ParseConversation(data, task.Key).LatestTurnStatus;
+                    if (ordinaryTransition && emitted < 3 && state == "completed")
+                    { EmitNotice(new PetNotice(L.T("任务已完成", "Task completed"), task.Title, "complete") { TaskKey = task.Key }, task.Key, sourceGeneration); emitted++; }
+                    else if (ordinaryTransition && emitted < 3 && state is "failed" or "interrupted")
+                    { EmitNotice(new PetNotice(state == "failed" ? L.T("任务执行失败", "Task failed") : L.T("任务已中断", "Task interrupted"), task.Title, "attention") { TaskKey = task.Key }, task.Key, sourceGeneration); emitted++; }
+                    continue;
+                }
+                if (bound) _observedScheduledTurns[task.Key] = turn;
+                bool scheduled = CodexScheduledTasks.IsScheduled(task, turn, schedules);
+                bool newScheduledCompletion = scheduled && priorEligible && observed != null &&
+                    (observed.Id != turn.Id || observed.Status != "completed");
+                string completionKey = task.Key + "\n" + turn.Id;
+                if (turn.Status == "completed")
+                {
+                    bool alreadyHandled = _completedTurns.Contains(completionKey);
+                    // Mark baseline completions as handled as well. Repeated list
+                    // timestamps/status flaps must not read the same result aloud.
+                    RememberCompletion(completionKey);
+                    if (alreadyHandled || emitted >= 3 || !priorEligible || (!ordinaryTransition && !newScheduledCompletion)) continue;
+                    var notice = new PetNotice(scheduled ? L.T("定时任务完成", "Scheduled task completed") : L.T("任务已完成", "Task completed"), task.Title, "complete")
+                    {
+                        IsScheduled = scheduled, ScheduledOutput = scheduled ? turn.Output : null,
+                        TaskKey = task.Key, TurnId = turn.Id
+                    };
+                    EmitNotice(notice, task.Key, sourceGeneration); emitted++;
+                }
+                else if (ordinaryTransition && emitted < 3 && turn.Status is "failed" or "interrupted")
+                {
+                    EmitNotice(new PetNotice(turn.Status == "failed" ? L.T("任务执行失败", "Task failed") : L.T("任务已中断", "Task interrupted"), task.Title, "attention")
+                        { TaskKey = task.Key, TurnId = turn.Id }, task.Key, sourceGeneration); emitted++;
+                }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch { /* A missing task is not evidence of completion. */ }
         }
+    }
+
+    private void RememberCompletion(string key)
+    {
+        if (!_completedTurns.Add(key)) return;
+        _completedTurnOrder.Enqueue(key);
+        while (_completedTurnOrder.Count > 512) _completedTurns.Remove(_completedTurnOrder.Dequeue());
     }
 
     private bool CanEmitNotice(string taskKey, int sourceGeneration) =>
@@ -385,9 +463,9 @@ internal sealed class CodexMonitor : IDisposable
         finally { if (generation == _readGeneration) { IsReading = false; NotifyChanged(); } }
     }
 
-    private static object ReadArguments(CodexTaskInfo task, string? cursor, int limit)
+    private static object ReadArguments(CodexTaskInfo task, string? cursor, int limit, int maximumOutputCharacters = 0)
     {
-        var args = new Dictionary<string, object> { ["threadId"] = task.Id, ["turnLimit"] = limit, ["includeOutputs"] = false, ["maxOutputCharsPerItem"] = 0 };
+        var args = new Dictionary<string, object> { ["threadId"] = task.Id, ["turnLimit"] = limit, ["includeOutputs"] = false, ["maxOutputCharsPerItem"] = maximumOutputCharacters };
         if (!string.IsNullOrEmpty(task.HostId)) args["hostId"] = task.HostId;
         if (!string.IsNullOrEmpty(cursor)) args["cursor"] = cursor;
         return args;

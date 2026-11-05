@@ -32,9 +32,10 @@ internal interface IPetVoiceProfileSelector
 
 // Owns a local worker and an ephemeral authentication token. No cloud service,
 // existing user's server, environment credential, or shell command is involved.
-internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeechSynthesizer, IPetVoiceLifecycle, IPetVoiceDiagnostics, IPetVoiceProfileSelector
+internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeechSynthesizer, IPetVoiceLifecycle, IPetVoiceRetentionPolicy, IPetVoiceDiagnostics, IPetVoiceProfileSelector
 {
     private readonly SemaphoreSlim _startup = new(1, 1);
+    private readonly SemaphoreSlim _retentionUpdates = new(1, 1);
     private readonly object _workerLock = new();
     private readonly object _workerStopLock = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -46,6 +47,8 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
     private Process? _worker;
     private long _workerRevision;
     private bool _disposed;
+    private bool _retentionActive;
+    private int _idleUnloadMinutes;
     private PetVoiceProfile _profile = PetVoiceProfiles.ResolveForPlayback(PetVoiceProfiles.DefaultForSkin("deepseek"));
     internal const int MaxWaveBytes = 32 * 1024 * 1024;
 
@@ -270,6 +273,9 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
             HttpResponseMessage response;
             try
             {
+                // Apply the stored idle policy before an explicit preload or
+                // synthesis. A newly restarted worker must not use old defaults.
+                await SendStoredRetentionAsync(token).ConfigureAwait(false);
                 response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             }
             catch (HttpRequestException) when (attempt == 0)
@@ -391,13 +397,41 @@ internal sealed class PetVoiceClient : IPetSpeechSynthesizer, IPetStreamingSpeec
 
     public async Task SetRetentionAsync(bool active, CancellationToken cancellationToken)
     {
+        lock (_workerLock) _retentionActive = active;
+        await SendStoredRetentionAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task SetRetentionAsync(bool active, int idleMinutes, CancellationToken cancellationToken)
+    {
+        lock (_workerLock)
+        {
+            _retentionActive = active;
+            _idleUnloadMinutes = ModelRetentionPolicy.NormalizeSpeech(idleMinutes);
+        }
+        await SendStoredRetentionAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SendStoredRetentionAsync(CancellationToken cancellationToken)
+    {
         // A heartbeat must never resurrect an explicitly unloaded/stopped worker.
         if (!WorkerRunning) return;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         lifetime.CancelAfter(TimeSpan.FromSeconds(3));
-        using var content = JsonBody(new { active });
-        using var response = await _http.PostAsync("retention", content, lifetime.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException(L.T("无法更新语音模型保留状态。", "Could not update speech model retention."));
+        await _retentionUpdates.WaitAsync(lifetime.Token).ConfigureAwait(false);
+        try
+        {
+            bool active; int? idleSeconds;
+            lock (_workerLock)
+            {
+                if (_disposed || _worker is not { HasExited: false }) return;
+                active = _retentionActive;
+                idleSeconds = _idleUnloadMinutes > 0 ? _idleUnloadMinutes * 60 : null;
+            }
+            using var content = JsonBody(new { active, idle_seconds = idleSeconds });
+            using var response = await _http.PostAsync("retention", content, lifetime.Token).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) throw new InvalidOperationException(L.T("无法更新语音模型保留状态。", "Could not update speech model retention."));
+        }
+        finally { _retentionUpdates.Release(); }
     }
 
     public async Task UnloadAsync(CancellationToken cancellationToken)
