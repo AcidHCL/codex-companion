@@ -43,6 +43,10 @@ internal sealed class PetSpeechService : IDisposable
     public event Action? Changed;
     public string StatusText { get; private set; } = L.T("本地参考音色待命", "Local reference voice ready");
     public bool IsSpeaking { get; private set; }
+    // Includes synthesis and queued audio so low-priority features do not replace
+    // an answer while the speech backend is preparing its first samples.
+    internal bool HasPendingSpeech => _pumping || _queue.Count > 0 || _current != null || IsSpeaking;
+    internal long SpeechRevision => _epoch;
 
     internal Task<PetVoiceHealth?> ReadModelHealthAsync(CancellationToken cancellationToken)
     {

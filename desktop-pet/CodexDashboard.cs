@@ -94,8 +94,7 @@ internal sealed partial class CodexDashboard : Window
         AutomationProperties.SetName(eyebrow, L.T("AI Pet 版本 ", "AI Pet version ") + AppVersion.Number);
         eyebrow.Margin = new Thickness(1, 0, 0, 5); heading.Children.Add(eyebrow);
         heading.Children.Add(Ui.Text(L.T("工作看板", "Work dashboard"), 28, "#203E2C", true));
-        var intro = Ui.Text(L.T("小伙伴陪你工作，进展随时看见。", "A companion by your side, with progress in view."), 12, "#84917C");
-        intro.Margin = new Thickness(1, 7, 0, 0); heading.Children.Add(intro); header.Children.Add(heading);
+        header.Children.Add(heading);
         var actions = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         _settingsButton.Margin = new Thickness(0, 0, 8, 0);
@@ -103,7 +102,7 @@ internal sealed partial class CodexDashboard : Window
         _settingsButton.Click += (_, _) => _openSettings?.Invoke();
         AutomationProperties.SetName(_settingsButton, L.T("设置", "Settings"));
         buttons.Children.Add(_settingsButton);
-        var skins = Ui.Button(L.T("给桌宠换装", "Change character skin"), (_, _) => openSkins());
+        var skins = Ui.Button(L.T("换装", "Wardrobe"), (_, _) => openSkins());
         skins.Margin = new Thickness(0, 0, 8, 0); buttons.Children.Add(skins);
         _refresh.Content = L.T("立即刷新", "Refresh now"); _refresh.Background = Ui.Brush("#28563C"); _refresh.Foreground = Brushes.White;
         _refresh.BorderThickness = new Thickness(0); _refresh.MinWidth = 105; _refresh.ToolTip = L.T("刷新连接、额度与任务（F5）", "Refresh connection, usage, and tasks (F5)");
@@ -192,10 +191,12 @@ internal sealed partial class CodexDashboard : Window
         _sourceHint.TextWrapping = TextWrapping.Wrap;
         _sourceHint.Margin = new Thickness(0, 7, 0, 10);
         filters.Children.Add(_sourceHint);
-        var label = Ui.Text(L.T("最近 50 条记录及置顶任务 · 搜索", "Latest 50 records and pinned tasks · Search"), 10, "#86947F"); label.Margin = new Thickness(0, 0, 0, 5); filters.Children.Add(label);
+        var label = Ui.Text(L.T("搜索近期任务", "Search recent tasks"), 11, "#65775D"); label.Margin = new Thickness(0, 0, 0, 5); filters.Children.Add(label);
         _search.FontFamily = new FontFamily("Microsoft YaHei UI"); _search.FontSize = 12; _search.Padding = new Thickness(9, 7, 9, 7);
         _search.BorderBrush = Ui.Brush("#DDE5D6"); _search.Foreground = Ui.Brush("#38523B"); _search.Background = Ui.Brush("#FAFBF7");
-        _search.ToolTip = L.T("按任务标题或项目名搜索", "Search by task title or project"); AutomationProperties.SetName(_search, L.T("搜索任务标题或项目名", "Search task titles or project names"));
+        _search.ToolTip = L.T("按标题或项目名搜索最近 50 条记录及置顶任务。", "Search the latest 50 records and pinned tasks by title or project.");
+        AutomationProperties.SetName(_search, L.T("搜索近期任务标题或项目名", "Search recent task titles or projects"));
+        AutomationProperties.SetHelpText(_search, (string)_search.ToolTip);
         _search.TextChanged += (_, _) => { if (!_rendering) RenderTasks(); }; filters.Children.Add(_search);
         Grid.SetRow(filters, 1); left.Children.Add(filters);
         _taskScroll.Content = _taskList; _taskScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto; _taskScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -242,7 +243,8 @@ internal sealed partial class CodexDashboard : Window
             catch (Exception ex) { _uiError = L.T("暂时无法保存刷新设置：", "Could not save refresh settings: ") + ex.Message; Render(); }
         };
         row.Children.Add(_interval); Grid.SetColumn(row, 1); footer.Children.Add(row);
-        var note = Ui.Text(L.T("额度每 60 秒刷新 · F5 立即刷新\n关闭看板后，桌宠继续留意任务进展", "Usage refreshes every 60 seconds · F5 to refresh now\nThe pet keeps following tasks after you close this dashboard"), 10, "#8B9783");
+        var note = Ui.Text(L.T("额度每 60 秒刷新", "Usage refreshes every 60 seconds"), 10, "#71826D");
+        note.ToolTip = L.T("F5 立即刷新。关闭看板后，桌宠继续关注任务。", "F5 to refresh now. The pet keeps following tasks when this dashboard is closed.");
         note.TextAlignment = TextAlignment.Right; note.VerticalAlignment = VerticalAlignment.Center; note.LineHeight = 17;
         Grid.SetColumn(note, 2); footer.Children.Add(note);
         var preferences = new StackPanel(); preferences.Children.Add(footer);
@@ -251,7 +253,7 @@ internal sealed partial class CodexDashboard : Window
         _messagesAccess.Checked += (_, _) => ChangeMessageAccess(true);
         _messagesAccess.Unchecked += (_, _) => ChangeMessageAccess(false);
         privacy.Children.Add(_messagesAccess);
-        var privacyHint = Ui.Text(L.T("默认关闭；开启后可查看消息并核验完成提醒。关闭时仅查询额度和任务列表。", "Off by default. Enable to view messages and verify completion notices. When off, only usage and task lists are queried."), 10, "#71826D");
+        var privacyHint = Ui.Text(L.T("用于查看消息与核验完成提醒。", "Used to display messages and verify task completion."), 11, "#71826D");
         privacyHint.Margin = new Thickness(14, 0, 0, 0); privacyHint.VerticalAlignment = VerticalAlignment.Center;
         privacyHint.TextWrapping = TextWrapping.Wrap; privacy.Children.Add(privacyHint); preferences.Children.Add(privacy);
         Grid.SetRow(preferences, 4); _root.Children.Add(preferences);
@@ -458,7 +460,8 @@ internal sealed partial class CodexDashboard : Window
         var page = _monitor.Conversation;
         bool pageMatches = task is not null && page?.TaskKey == task.Key;
         _conversationTitle.Text = task?.Title ?? L.T("选一项任务，看看进展", "Select a task to see its progress"); _conversationTitle.ToolTip = task?.Title;
-        _conversationMeta.Text = !_monitor.MessagesEnabled ? L.T("对话读取已关闭", "Message reading is off") : task is null ? L.T("只显示用户与助手消息", "Only user and assistant messages are shown") : task.StatusLabel + "  ·  " + (_monitor.IsReading ? L.T("正在读取…", "Reading…") : L.T("用户与助手消息", "User and assistant messages"));
+        _conversationMeta.Text = !_monitor.MessagesEnabled ? L.T("对话读取已关闭", "Message reading is off") : task is null ? "" : task.StatusLabel + (_monitor.IsReading ? L.T(" · 正在读取…", " · Reading…") : "");
+        _conversationMeta.Visibility = string.IsNullOrEmpty(_conversationMeta.Text) ? Visibility.Collapsed : Visibility.Visible;
         string? error = _monitor.ConversationError;
         _conversationError.Text = string.IsNullOrWhiteSpace(error) ? "" : L.T("消息暂未读取成功，可再次点击任务重试。", "Could not read messages. Click the task again to retry.");
         _conversationError.ToolTip = error; _conversationError.Visibility = string.IsNullOrWhiteSpace(error) ? Visibility.Collapsed : Visibility.Visible;

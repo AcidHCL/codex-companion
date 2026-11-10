@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Automation;
@@ -17,10 +18,12 @@ internal sealed class AppSettingsWindow : Window
     private readonly ModelSettingsView _models;
     private readonly Button _generalNav, _modelNav;
     private readonly TextBlock _currentRole;
+    private readonly List<(FrameworkElement View, Button Navigation)> _extraPages = new();
 
     internal AppSettingsWindow(PetWindow pet, Action? openSkins = null, Action? openDashboard = null,
         Action? openChat = null, Action<bool>? setLlmBehavior = null,
-        DashboardModelServices? modelServices = null, IPetVoiceStudio? voiceStudio = null, Action? restart = null)
+        DashboardModelServices? modelServices = null, IPetVoiceStudio? voiceStudio = null, Action? restart = null,
+        IReadOnlyList<PetSettingsPage>? extraPages = null)
     {
         _pet = pet;
         Title = AppVersion.WindowTitle(L.T("设置", "Settings"));
@@ -37,8 +40,7 @@ internal sealed class AppSettingsWindow : Window
         navigation.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var brand = new StackPanel { Margin = new Thickness(24, 28, 18, 0) };
         brand.Children.Add(Ui.Text("AI PET", 23, "#214332", true));
-        var subtitle = Ui.Text(L.T("偏好与模型", "Preferences & models"), 12, "#71826D"); subtitle.Margin = new Thickness(0, 8, 0, 0);
-        brand.Children.Add(subtitle); navigation.Children.Add(brand);
+        navigation.Children.Add(brand);
         var choices = new StackPanel { Margin = new Thickness(14, 30, 14, 0) };
         Grid.SetRow(choices, 1);
         _generalNav = Navigation(L.T("桌宠与互动", "Pet & interaction"), "SettingsNavGeneral", () => SelectPage(false));
@@ -65,6 +67,15 @@ internal sealed class AppSettingsWindow : Window
         _general = new GeneralSettingsView(pet, setLlmBehavior, restart);
         _models = new ModelSettingsView(pet.Settings, pet, modelServices, voiceStudio) { Visibility = Visibility.Collapsed };
         pages.Children.Add(_general); pages.Children.Add(_models); main.Children.Add(pages);
+        foreach (var contribution in extraPages ?? Array.Empty<PetSettingsPage>())
+        {
+            var view = contribution.CreateView();
+            view.Visibility = Visibility.Collapsed;
+            var button = Navigation(contribution.Title, "SettingsNav" + contribution.Key, () => SelectExtraPage(contribution.Key));
+            button.Tag = contribution.Key;
+            _extraPages.Add((view, button));
+            pages.Children.Add(view); choices.Children.Add(button);
+        }
         root.Children.Add(main); Content = root;
         SelectPage(false); RefreshRole();
         _pet.SettingsChanged += RefreshRole;
@@ -72,6 +83,7 @@ internal sealed class AppSettingsWindow : Window
         {
             _pet.SettingsChanged -= RefreshRole;
             _models.Dispose(); _general.Dispose();
+            foreach (var page in _extraPages) (page.View as IDisposable)?.Dispose();
         };
     }
 
@@ -96,6 +108,20 @@ internal sealed class AppSettingsWindow : Window
         _general.Visibility = models ? Visibility.Collapsed : Visibility.Visible;
         _models.Visibility = models ? Visibility.Visible : Visibility.Collapsed;
         MarkNavigation(_generalNav, !models); MarkNavigation(_modelNav, models);
+        foreach (var page in _extraPages)
+        { page.View.Visibility = Visibility.Collapsed; MarkNavigation(page.Navigation, false); }
+    }
+
+    private void SelectExtraPage(string key)
+    {
+        _general.Visibility = _models.Visibility = Visibility.Collapsed;
+        MarkNavigation(_generalNav, false); MarkNavigation(_modelNav, false);
+        foreach (var page in _extraPages)
+        {
+            bool selected = Equals(page.Navigation.Tag, key);
+            page.View.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+            MarkNavigation(page.Navigation, selected);
+        }
     }
 
     private static void MarkNavigation(Button button, bool selected)
@@ -107,7 +133,7 @@ internal sealed class AppSettingsWindow : Window
         AutomationProperties.SetItemStatus(button, selected ? L.T("当前页面", "Current page") : "");
     }
 
-    private void RefreshRole() => _currentRole.Text = L.T("当前角色\n", "Current character\n") + _pet.CurrentDisplayName;
+    private void RefreshRole() => _currentRole.Text = _pet.CurrentDisplayName;
     internal void ModelSelectionChanged() => _models.ModelSelectionChanged();
 
     internal void SavePreview(string path)

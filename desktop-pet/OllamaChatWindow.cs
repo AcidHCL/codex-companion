@@ -72,7 +72,7 @@ internal sealed partial class OllamaChatWindow : Window
     private string? _lastUsedModel;
     private IReadOnlyList<string> _installedModels = Array.Empty<string>();
     private OllamaModelCapabilities _capabilities = new(null, null, null);
-    private OllamaConnectionWindow? _connectionWindow;
+    private Window? _connectionWindow;
     private bool _connected, _configuring;
     private bool _generating, _switching, _preparingImage, _shutdown, _selectionSync, _imeComposing, _compactLayout;
     private readonly object _streamLock = new();
@@ -96,21 +96,24 @@ internal sealed partial class OllamaChatWindow : Window
         Action<string> say, Action saveSettings, IOllamaClient? client = null, Func<Uri, IOllamaClient>? clientFactory = null, IPetWebClient? webClient = null, IChatMemoryStore? chatStore = null, IPetBehaviorHost? behaviorHost = null,
         Action<string, string>? answerCompleted = null, Action? stopSpeech = null,
         PetVoiceInputSession? voiceInputSession = null, Action<bool>? voiceInputActive = null,
-        Action<bool>? voiceChatSessionActive = null, PetChatSpeechCallbacks? streamingSpeech = null)
+        Action<bool>? voiceChatSessionActive = null, PetChatSpeechCallbacks? streamingSpeech = null,
+        ApiKeyStore? apiKeys = null, Func<ChatApiProfile, IOllamaClient>? apiClientFactory = null)
     {
         _settings = settings; _characterName = characterName; _setBusy = setBusy; _say = say; _saveSettings = saveSettings;
         _answerCompleted = answerCompleted; _stopSpeech = stopSpeech;
         _voiceInputActive = voiceInputActive;
         _voiceChatSessionActive = voiceChatSessionActive;
         _streamingSpeech = streamingSpeech;
+        _apiKeys = apiKeys ?? new ApiKeyStore();
+        _apiClientFactory = apiClientFactory ?? CreateApiClient;
         _clientFactory = clientFactory ?? (endpoint => new OllamaClient(endpoint, () => _settings.OllamaKeepAliveMinutes));
-        _client = client ?? _clientFactory(OllamaEndpoint.Parse(settings.OllamaAddress));
+        _client = client ?? (settings.UseChatApi ? _apiClientFactory(settings.ApiProfile) : _clientFactory(OllamaEndpoint.Parse(settings.OllamaAddress)));
         _webClient = webClient ?? new PetWebClient();
         _chatStore = chatStore ?? new ChatMemoryStore(":memory:");
         _behaviorHost = behaviorHost; _behaviorSetting = settings.LlmBehaviorEnabled;
         _draftTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(450) };
         _draftTimer.Tick += (_, _) => { _draftTimer.Stop(); SaveCurrentDraft(); };
-        _model = OllamaModels.Normalize(settings.OllamaModel);
+        _model = ChatModelConnection.ActiveModel(settings);
         _personaKey = settings.SkinId.ToLowerInvariant();
         Title = AppVersion.WindowTitle(L.T("和桌宠聊天", "Chat with your pet"));
         Width = L.IsEnglish ? 460 : 410; Height = 550; MinWidth = 320; MinHeight = 360;
@@ -228,6 +231,7 @@ internal sealed partial class OllamaChatWindow : Window
         InitializeVoiceInput(voiceInputSession);
         try { RestoreConversation(GetScopeConversation(_client.Endpoint, _personaKey)); }
         catch (Exception ex) { ReportStorageFailure(ex); }
+        RestoreConfiguredApiReadiness();
         RefreshControls();
     }
 
@@ -383,9 +387,9 @@ internal sealed partial class OllamaChatWindow : Window
     }
 
     private PetPersonaProfile CurrentPersona() => PetPersona.ForSkin(_settings.SkinId, _characterName(), _model, _client.Endpoint.IsLoopback, _capabilities.SupportsImages, _settings.WebSearchEnabled, _settings.LlmBehaviorEnabled && BehaviorServiceReady,
-        explicitCommandsEnabled: _settings.LlmBehaviorEnabled && BehaviorCommandsReady);
+        explicitCommandsEnabled: _settings.LlmBehaviorEnabled && BehaviorCommandsReady, api: _settings.UseChatApi);
 
-    private string ConnectionNote() => (_settings.WebSearchEnabled ? L.T("按需联网 · ", "Web on demand · ") : L.T("联网关闭 · ", "Web off · ")) + (_client.Endpoint.IsLoopback
+    private string ConnectionNote() => (_settings.WebSearchEnabled ? L.T("按需联网 · ", "Web on demand · ") : L.T("联网关闭 · ", "Web off · ")) + (_settings.UseChatApi ? L.T("API · 消息及所选图片发送到 ", "API · Messages and selected images go to ") + _client.Endpoint.Host : _client.Endpoint.IsLoopback
         ? L.T("模型在本机运行", "Model runs on this computer")
         : L.T("模型位于 ", "Model hosted at ") + _client.Endpoint.GetLeftPart(UriPartial.Authority));
 
@@ -401,7 +405,7 @@ internal sealed partial class OllamaChatWindow : Window
         SetStatus(enabled ? L.T("已开启按需联网，搜索词会发往搜索服务；可以直接发送网页链接。", "Web access enabled. Search queries go to the search service; you can also send webpage links directly.") : L.T("已关闭联网，本轮只使用模型知识和已有对话。", "Web access disabled. This turn uses model knowledge and existing conversation only."));
     }
 
-    private string ConnectionTarget() => (_client.Endpoint.IsLoopback ? L.T("本机 Ollama：", "Local Ollama: ") : "") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
+    private string ConnectionTarget() => _settings.UseChatApi ? "API: " + _client.Endpoint.AbsoluteUri.TrimEnd('/') : (_client.Endpoint.IsLoopback ? L.T("本机 Ollama：", "Local Ollama: ") : "") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
 
     private void RefreshWelcome()
     {
@@ -410,16 +414,27 @@ internal sealed partial class OllamaChatWindow : Window
 
     private void PersistModelChoice(string selected)
     {
+        if (_settings.UseChatApi)
+        {
+            if (selected.Length == 0 || _settings.ApiProfile.Model == selected) return;
+            var previousProfile = _settings.ApiProfile;
+            try { _settings.ApiProfile = previousProfile with { Model = selected }; _saveSettings(); }
+            catch { _settings.ApiProfile = previousProfile; throw; }
+            ModelConnectionRevision++;
+            return;
+        }
         if (selected.Length == 0 || _settings.OllamaModel == selected) return;
         string previous = _settings.OllamaModel;
         try { _settings.OllamaModel = selected; _saveSettings(); }
         catch { _settings.OllamaModel = previous; throw; }
+        ModelConnectionRevision++;
     }
 
     internal event Action? BehaviorAvailabilityChanged;
     internal event Action? BehaviorContextInvalidated;
     internal event Action? ModelSelectionChanged;
     internal string SelectedModel => _model;
+    internal long ModelConnectionRevision { get; private set; }
 
     // Readiness describes the connection and capabilities, independently of a
     // foreground generation. Controllers must not mistake user priority for a disconnect.
@@ -525,8 +540,8 @@ internal sealed partial class OllamaChatWindow : Window
 
     internal string? CurrentConversationId => _conversation?.Id;
 
-    private static string EndpointScope(Uri endpoint) => endpoint.GetLeftPart(UriPartial.Authority);
-    private string StorageModel => string.IsNullOrEmpty(_model) ? OllamaModels.Normalize(_settings.OllamaModel) : _model;
+    private string EndpointScope(Uri endpoint) => ChatModelConnection.Scope(endpoint, _settings.UseChatApi);
+    private string StorageModel => string.IsNullOrEmpty(_model) ? "unconfigured" : _model;
 
     private ChatConversation GetScopeConversation(Uri endpoint, string personaKey)
     {
@@ -782,7 +797,8 @@ internal sealed partial class OllamaChatWindow : Window
         _refresh.IsEnabled = composing;
         _models.IsEnabled = _connected && !sendStarting && !_switching && !_preparingImage && !_shutdown && !_configuring && !_sessionSwitching && _installedModels.Count > 0 && !ModelMemoryBusy;
         _connection.IsEnabled = !sendStarting && !_switching && !_preparingImage && !_shutdown && !_configuring && !_sessionSwitching && !ModelMemoryBusy;
-        _connection.ToolTip = L.T("Ollama 地址与端口设置\n当前：", "Ollama address and port\nCurrent: ") + _client.Endpoint.GetLeftPart(UriPartial.Authority);
+        _connection.ToolTip = L.T("聊天模型连接（Ollama / API）\n当前：", "Chat model connection (Ollama / API)\nCurrent: ") + ConnectionTarget();
+        _models.ToolTip = _settings.UseChatApi ? L.T("选择 API 模型；可在连接设置中手动填写模型 ID。", "Select an API model, or enter a model ID in connection settings.") : L.T("选择此 Ollama 服务器已安装的模型", "Choose a model installed on this Ollama server");
         _attachments.IsEnabled = composing;
         _webEnabled.IsEnabled = composing;
         bool textOnly = _capabilities.SupportsImages == false;
@@ -846,11 +862,29 @@ internal sealed partial class OllamaChatWindow : Window
 
     private string ModelReadyMessage(string prefix)
     {
+        if (_settings.UseChatApi) return prefix + (_capabilities.SupportsImages == true ? L.T(" · 已启用图片输入", " · Image input enabled") : L.T(" · 文字输入", " · Text input"));
         if (_installedModels.Count == 0) return prefix + L.T(" · 还没有已安装模型，请先在 Ollama 下载模型，再刷新。", " · No models installed. Download one in Ollama, then refresh.");
         if (_capabilities.SupportsChat == false) return prefix + L.T(" · 当前模型不支持聊天，请选择其他模型。", " · This model does not support chat. Please choose another.");
         if (_capabilities.SupportsImages == false)
             return prefix + (_pendingImages.Count > 0 ? L.T(" · 当前模型仅支持文字，请先移除待发送图片。", " · This model supports text only. Remove the pending images first.") : L.T(" · 当前模型仅支持文字；历史图片轮次不会发送给它。", " · This model supports text only; earlier image turns will not be sent."));
         return prefix + (_capabilities.SupportsImages == true ? L.T(" · 支持图片，首次回复需加载模型。", " · Images supported. The first reply requires loading the model.") : L.T(" · 模型能力未完整公布，可尝试聊天或图片。 ", " · Model capabilities are not fully reported; you can try text or images. "));
+    }
+
+    // Periodic health checks are maintenance, not a user request to replace an
+    // in-flight reaction. Test and start on the same UI turn so no shared-lane
+    // task can begin between this guard and BeginConfiguration. Explicit refresh
+    // and opening/focusing the composer retain their normal priority path below.
+    internal Task CheckConnectionWhenIdleAsync()
+    {
+        Dispatcher.VerifyAccess();
+        if (_behaviorTask is { IsCompleted: false }) return Task.CompletedTask;
+        if (_settings.UseChatApi)
+        {
+            // Configured API models do not have local residency. Rearm after a
+            // transient failure without sending periodic metadata/inference.
+            RestoreConfiguredApiReadiness(); RefreshControls(); return Task.CompletedTask;
+        }
+        return CheckConnectionAsync();
     }
 
     internal async Task CheckConnectionAsync()
@@ -865,10 +899,10 @@ internal sealed partial class OllamaChatWindow : Window
             await StopBehaviorReactionAsync(); CheckConfiguration(operation, revision);
             var installed = await client.ListModelsAsync(operation.Token);
             CheckConfiguration(operation, revision);
-            var selected = ChooseModel(installed, _model.Length == 0 ? _settings.OllamaModel : _model);
+            var selected = ChooseModel(installed, _model.Length == 0 ? ChatModelConnection.ActiveModel(_settings) : _model);
             var capabilities = selected.Length == 0 ? new OllamaModelCapabilities(null, null, null) : await client.GetModelInfoAsync(selected, operation.Token);
             CheckConfiguration(operation, revision);
-            if (_lastUsedModel != null && _lastUsedModel != selected)
+            if (!_settings.UseChatApi && _lastUsedModel != null && _lastUsedModel != selected)
             {
                 await client.UnloadAsync(_lastUsedModel, operation.Token);
                 CheckConfiguration(operation, revision); _lastUsedModel = null;
@@ -877,11 +911,27 @@ internal sealed partial class OllamaChatWindow : Window
             if (_model != selected) InvalidateBehaviorContext();
             SetModelList(installed, selected); _model = selected; _capabilities = capabilities; _connected = true; RefreshWelcome();
             _contextNote.Text = ConnectionNote();
-            SetStatus(ModelReadyMessage(L.T("Ollama 已连接 · ", "Ollama connected · ") + installed.Count + L.T(" 个已安装模型 · ", " installed models · ") + client.Endpoint.GetLeftPart(UriPartial.Authority)), capabilities.SupportsChat == false || installed.Count == 0);
+            SetStatus(ModelReadyMessage(_settings.UseChatApi ? ApiConnectionStatus(client) : L.T("Ollama 已连接 · ", "Ollama connected · ") + installed.Count + L.T(" 个已安装模型 · ", " installed models · ") + client.Endpoint.GetLeftPart(UriPartial.Authority)), capabilities.SupportsChat == false || installed.Count == 0);
             committed = true;
         }
         catch (OperationCanceledException) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetStatus(L.T("连接检查已取消或超时，请确认服务器地址后刷新。", "Connection check canceled or timed out. Confirm the server address, then refresh."), true); } }
-        catch (Exception ex) { if (!_shutdown && revision == _configurationRevision) { _connected = false; SetModelList(Array.Empty<string>(), ""); SetStatus(ex is OllamaException ? ex.Message : L.T("无法连接 ", "Cannot connect to ") + ConnectionTarget() + L.T("，请检查地址和端口后刷新。", ". Check the address and port, then refresh."), true); } }
+        catch (Exception ex)
+        {
+            if (!_shutdown && revision == _configurationRevision)
+            {
+                string error = ex is OllamaException ? ex.Message : L.T("无法读取模型列表，请检查连接设置。", "Could not read the model list. Check connection settings.");
+                if (_settings.UseChatApi && ChatApiModel.IsValid(_settings.ApiProfile.Model))
+                {
+                    // Some restricted keys permit chat but not model listing.
+                    // Keep manual entry available; only an explicit send probes inference.
+                    _model = _settings.ApiProfile.Model;
+                    _capabilities = new(true, _settings.ApiProfile.SupportsImages, false, _settings.ApiProfile.SupportsTools);
+                    SetModelList(new[] { _model }, _model); _connected = true;
+                    SetStatus(error + L.T(" 可尝试手动模型；连接与推理权限尚未验证。", " You can try the manual model; connection and inference access remain unverified."), true);
+                }
+                else { _connected = false; SetModelList(Array.Empty<string>(), ""); SetStatus(error, true); }
+            }
+        }
         finally
         {
             FinishConfiguration(operation);
@@ -902,7 +952,7 @@ internal sealed partial class OllamaChatWindow : Window
     internal Task<string> SelectDashboardModelAsync(string selected)
     {
         if (DashboardModelControlBlockedReason is { } blocked) return Task.FromResult(blocked);
-        if (!OllamaModels.IsSupported(selected)) return Task.FromResult(L.T("请选择此 Ollama 服务器已安装的聊天模型。", "Choose a chat model installed on this Ollama server."));
+        if (!(_settings.UseChatApi ? ChatApiModel.IsValid(selected) : OllamaModels.IsSupported(selected))) return Task.FromResult(L.T("请选择有效的聊天模型。", "Choose a valid chat model."));
         return SwitchModelAsync(selected);
     }
 
@@ -913,7 +963,7 @@ internal sealed partial class OllamaChatWindow : Window
         var previous = _model;
         var client = _client;
         bool entered = false, committed = false;
-        SetStatus(L.T("正在停止回复并释放旧模型显存…", "Stopping the reply and releasing the previous model's GPU memory…"));
+        SetStatus(_settings.UseChatApi ? L.T("正在切换 API 模型…", "Switching API model…") : L.T("正在停止回复并释放旧模型显存…", "Stopping the reply and releasing the previous model's GPU memory…"));
         try
         {
             await StopGenerationAsync();
@@ -923,10 +973,10 @@ internal sealed partial class OllamaChatWindow : Window
             var installed = await client.ListModelsAsync(operation.Token);
             CheckConfiguration(operation, revision);
             if (!installed.Contains(selected, StringComparer.Ordinal))
-                throw new OllamaException(L.T("所选模型未安装在此 Ollama 服务器，请刷新模型列表后重试。", "The selected model is not installed on this Ollama server. Refresh the model list and retry."));
+                throw new OllamaException(_settings.UseChatApi ? L.T("API 列表中没有此模型；也可以在连接设置中手动指定。", "This model is not listed by the API; you can enter it manually in connection settings.") : L.T("所选模型未安装在此 Ollama 服务器，请刷新模型列表后重试。", "The selected model is not installed on this Ollama server. Refresh the model list and retry."));
             var capabilities = await client.GetModelInfoAsync(selected, operation.Token);
             CheckConfiguration(operation, revision);
-            if (selected != previous && _lastUsedModel == previous)
+            if (!_settings.UseChatApi && selected != previous && _lastUsedModel == previous)
             {
                 await client.UnloadAsync(previous, operation.Token);
                 CheckConfiguration(operation, revision);
@@ -961,8 +1011,9 @@ internal sealed partial class OllamaChatWindow : Window
         }
     }
 
-    private void OpenConnectionSettings()
+    private void OpenOllamaConnectionSettings()
     {
+        if (_settings.UseChatApi) return;
         if (_shutdown || _switching || _preparingImage || ModelMemoryBusy) return;
         CancelVoiceInput();
         if (_connectionWindow != null) { _connectionWindow.Activate(); return; }
@@ -976,6 +1027,7 @@ internal sealed partial class OllamaChatWindow : Window
 
     private async Task<bool> ApplyConnectionAsync(IOllamaClient candidate, IReadOnlyList<string> installed, CancellationToken cancellationToken)
     {
+        if (_settings.UseChatApi) return false;
         if (_shutdown || _connectionWindow == null || !_connectionWindow.IsVisible) return false;
         var (operation, revision) = BeginConfiguration(cancellationToken);
         var previousClient = _client;
@@ -1019,6 +1071,7 @@ internal sealed partial class OllamaChatWindow : Window
             catch { _settings.OllamaAddress = previousAddress; _settings.OllamaModel = previousModel; throw; }
             if (serverChanged || selected != _model) InvalidateBehaviorContext();
             _client = candidate; adopted = true;
+            ModelConnectionRevision++;
             if (serverChanged || selected != _model) _lastUsedModel = null;
             _model = selected; _capabilities = capabilities; _connected = true; SetModelList(installed, selected);
             if (serverChanged)
@@ -1103,7 +1156,7 @@ internal sealed partial class OllamaChatWindow : Window
             SetStatus(SharedMemoryContext.ContainsLikelySecret(memoryRequest) ? L.T("这段内容疑似含密码或密钥，未写入共享记忆；输入仍保留。", "This content may contain a password or key and was not saved to shared memory. Your input is preserved.") : L.T("请在“记住：”后填写 1–1000 字的记忆内容。输入仍保留。", "Enter 1–1000 characters after 'remember:'. Your input is preserved."), true);
             return;
         }
-        if (!_connected || !_installedModels.Contains(_model, StringComparer.Ordinal)) { SetStatus(L.T("请先连接 Ollama 并选择已安装模型。", "Connect to Ollama and select an installed model first."), true); return; }
+        if (!_connected || !_installedModels.Contains(_model, StringComparer.Ordinal)) { SetStatus(L.T("请先配置模型连接并选择可用的聊天模型。", "Configure a connection and select an available chat model first."), true); return; }
         if (_capabilities.SupportsChat == false) { SetStatus(L.T("当前模型不支持聊天，请选择其他模型。", "This model does not support chat. Please choose another."), true); return; }
         if (_capabilities.SupportsImages == false && _pendingImages.Count > 0) { SetStatus(L.T("当前模型仅支持文字，请先移除待发送图片，或切换支持图片的模型。", "This model supports text only. Remove the pending images or choose a vision model."), true); return; }
         var draft = _input.Text;

@@ -24,7 +24,10 @@ internal sealed class CodexNoticePresenter : IDisposable
         Action<PetNotice, CodexNoticePresentation> present)
     { _describe = describe; _present = present; }
 
-    internal async Task ShowAsync(PetNotice notice, string model, string address, Func<bool> eligible)
+    internal Task ShowAsync(PetNotice notice, string model, string address, Func<bool> eligible)
+        => ShowAsync(notice, model, OllamaEndpoint.Parse(address), eligible);
+
+    internal async Task ShowAsync(PetNotice notice, string model, Uri endpoint, Func<bool> eligible)
     {
         CancelPending();
         if (_disposed || !eligible()) return;
@@ -37,10 +40,10 @@ internal sealed class CodexNoticePresenter : IDisposable
             {
                 try
                 {
-                    var result = await _describe(notice.ScheduledOutput, model, OllamaEndpoint.Parse(address), cancellation.Token);
+                    var result = await _describe(notice.ScheduledOutput, model, endpoint, cancellation.Token);
                     output = result.Output;
                 }
-                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
+                catch (OperationCanceledException) { return; }
                 catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
                 { /* An unavailable summary must not suppress the completion notice. */ }
             }

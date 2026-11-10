@@ -43,7 +43,12 @@ internal sealed class PetBehaviorCoordinator : IDisposable
             _pet.SetExplicitBehaviorCommandsActive(requested && session?.BehaviorCommandsReady == true);
             _pet.SetLlmBehaviorActive(requested && session?.BehaviorServiceReady == true);
             if (requested) _timer.Start();
-            else { _timer.Stop(); CancelPending(); session?.CancelBehaviorReaction(); }
+            // Cancel only this coordinator's own pending interaction here.
+            // RefreshMode also runs for ordinary animation/voice status updates;
+            // a repeated "off" refresh must not cancel other background lanes.
+            // An actual preference change is already invalidated by the chat
+            // session above, and _reaction is linked to the interaction request.
+            else { _timer.Stop(); CancelPending(); }
         }
         finally { _refreshing = false; }
     }
@@ -84,7 +89,7 @@ internal sealed class PetBehaviorCoordinator : IDisposable
             {
                 _nextProbe = now.AddSeconds(45);
                 session = _ensureSession(); Attach(session);
-                if (session != null) await session.CheckConnectionAsync();
+                if (session != null) await session.CheckConnectionWhenIdleAsync();
                 RefreshMode();
             }
             if (session == null || _disposed) return;
@@ -93,7 +98,7 @@ internal sealed class PetBehaviorCoordinator : IDisposable
             if (now >= _nextProbe)
             {
                 _nextProbe = now.AddSeconds(45);
-                await session.CheckConnectionAsync(); RefreshMode();
+                await session.CheckConnectionWhenIdleAsync(); RefreshMode();
             }
             // Text-only models can acknowledge a click without receiving any
             // action tools or taking over the default movement controller.

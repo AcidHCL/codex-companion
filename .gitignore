@@ -27,6 +27,9 @@
 
 # Personal runtime data and generated diagnostics
 **/AIPet/
+**/api-keys/
+**/api-integration-fixture-*/
+**/api-settings-fixture-*/
 **/voice-temp/
 **/WebView2*/
 **/userdata/

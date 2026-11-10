@@ -127,7 +127,7 @@ internal static class ModelDashboardChecks
                 Capture(dashboard, "model-dashboard-minimum.png");
                 dashboard.Width = 1180; dashboard.Height = 850; await Settle(); Capture(dashboard, "model-dashboard-default.png");
                 int beforePause = reads; Click(dashboard, "SettingsNavGeneral"); await Task.Delay(5200);
-                Require(reads == beforePause && Named<Slider>(dashboard, "PetSize").IsVisible && !Named<Button>(dashboard, "SpeechPreload").IsVisible, "switching_to_general_settings_stops_model_polling");
+                Require(reads == beforePause && Named<Slider>(dashboard, "PetSize").IsVisible && !Named<Button>(dashboard, "DashboardVoiceLoad").IsVisible, "switching_to_general_settings_stops_model_polling");
                 Click(dashboard, "SettingsNavModels"); await Settle();
                 Require(reads > beforePause, "reopening_model_page_refreshes_immediately");
                 int beforeHidden = reads; dashboard.Hide(); await Task.Delay(5200);
@@ -527,19 +527,40 @@ internal static class ModelDashboardChecks
         list.ScrollIntoView(list.SelectedItem); await Settle();
         var selectedRow = list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem);
         var rowTexts = selectedRow == null ? Array.Empty<TextBlock>() : Walk(selectedRow).OfType<TextBlock>().ToArray();
-        require(rowTexts.Any(block => BindingOperations.GetBinding(block, TextBlock.TextProperty)?.Path?.Path == "Name" && block.Text == second.Name) &&
-            rowTexts.Any(block => BindingOperations.GetBinding(block, TextBlock.TextProperty)?.Path?.Path == "Details" && block.Text.Contains(second.ReferenceId[..6])),
-            "saved_voice_row_displays_exact_user_name_separately_from_date_and_reference_details");
-        delete.BringIntoView(); await Settle();
-        require(Fits(dashboard, list) && Fits(dashboard, name) && Fits(dashboard, rename) && Fits(dashboard, delete),
+        require(rowTexts.Any(block => BindingOperations.GetBinding(block, TextBlock.TextProperty)?.Path?.Path == "Name" &&
+                block.Text == second.Name && block.ToolTip?.ToString() == second.Name) &&
+            rowTexts.Any(block => BindingOperations.GetBinding(block, TextBlock.TextProperty)?.Path?.Path == "Details" &&
+                block.Text == second.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)),
+            "saved_voice_row_preserves_exact_name_and_full_tooltip_separately_from_date");
+        var libraryCard = Named<Border>(dashboard, "VoiceLibraryCard");
+        libraryCard.BringIntoView(); await Settle();
+        require(FitsModelViewport(dashboard, list) && FitsModelViewport(dashboard, name) && FitsModelViewport(dashboard, rename) && FitsModelViewport(dashboard, delete),
             "voice_library_selection_name_and_actions_fit_scrolled_settings");
         Capture(dashboard, "model-dashboard-voice-library.png");
         double width = dashboard.Width, height = dashboard.Height;
         dashboard.Width = dashboard.MinWidth; dashboard.Height = dashboard.MinHeight;
-        delete.BringIntoView(); await Settle();
-        require(Fits(dashboard, list) && Fits(dashboard, rename) && Fits(dashboard, delete),
-            "voice_library_selection_and_actions_fit_minimum_settings_window");
+        // Finish the narrow-window reflow before scrolling both columns into
+        // view. Bringing only the short right-side button into view does not
+        // promise visibility of the taller list beside it.
+        await Settle(); libraryCard.BringIntoView(); await Settle();
         Capture(dashboard, "model-dashboard-voice-library-minimum.png");
+        var viewport = Walk(Named<ScrollViewer>(dashboard, "ModelPage")).OfType<ScrollContentPresenter>().First();
+        File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "model-dashboard-voice-library-layout.json"),
+            JsonSerializer.Serialize(new
+            {
+                viewport = new { width = viewport.ActualWidth, height = viewport.ActualHeight },
+                controls = new FrameworkElement[] { list, name, rename, delete, libraryCard }.Select(element => new
+                {
+                    element.Name,
+                    x = element.TransformToAncestor(viewport).Transform(new Point()).X,
+                    y = element.TransformToAncestor(viewport).Transform(new Point()).Y,
+                    width = element.ActualWidth, height = element.ActualHeight,
+                    visible = FitsModelViewport(dashboard, element)
+                })
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        require(FitsModelViewport(dashboard, list) && FitsModelViewport(dashboard, name) &&
+            FitsModelViewport(dashboard, rename) && FitsModelViewport(dashboard, delete),
+            "voice_library_selection_and_actions_fit_minimum_settings_window");
         dashboard.Width = width; dashboard.Height = height; await Settle();
         var selectedProfile = settings.GetVoiceProfile("gpt");
         studio.Saved.Remove(second.ReferenceId);
@@ -657,6 +678,13 @@ internal static class ModelDashboardChecks
     {
         var origin = element.TransformToAncestor(window).Transform(new Point());
         return element.IsVisible && origin.Y >= 0 && origin.Y + element.ActualHeight <= window.ActualHeight && origin.X >= 0 && origin.X + element.ActualWidth <= window.ActualWidth;
+    }
+    private static bool FitsModelViewport(Window window, FrameworkElement element)
+    {
+        var viewport = Walk(Named<ScrollViewer>(window, "ModelPage")).OfType<ScrollContentPresenter>().First();
+        var bounds = element.TransformToAncestor(viewport).TransformBounds(new Rect(element.RenderSize));
+        return element.IsVisible && bounds.Left >= -.1 && bounds.Top >= -.1 &&
+            bounds.Right <= viewport.ActualWidth + .1 && bounds.Bottom <= viewport.ActualHeight + .1;
     }
     private static void Capture(Window window, string name)
     {

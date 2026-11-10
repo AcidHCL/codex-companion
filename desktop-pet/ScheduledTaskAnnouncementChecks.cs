@@ -64,7 +64,7 @@ internal static class ScheduledTaskAnnouncementChecks
             Check(path == "/api/chat", "summary_never_calls_download_load_unload_or_any_other_route");
             using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
             var root = document.RootElement;
-            Check(root.GetProperty("model").GetString() == "selected:latest", "prefer_current_selection_only_when_it_is_resident");
+            Check(root.GetProperty("model").GetString() == "selected:latest", "only_current_selected_resident_model_is_used");
             Check(!root.GetProperty("stream").GetBoolean() && !root.GetProperty("think").GetBoolean() &&
                 !root.TryGetProperty("keep_alive", out _) && !root.TryGetProperty("tools", out _),
                 "stateless_summary_disables_thinking_and_has_no_tools_or_keepalive_override");
@@ -87,6 +87,9 @@ internal static class ScheduledTaskAnnouncementChecks
 
         string? actualModel = null;
         string? capturedSource = null;
+        var otherResident = MetadataHandler((_, _) => throw new InvalidOperationException("A different resident model must not generate."));
+        Check((await Service(otherResident).CreateAsync(longSource, "unloaded:latest", endpoint, CancellationToken.None)).Output == null &&
+            otherResident.Paths.SequenceEqual(new[] { "/api/ps" }), "unloaded_selection_never_falls_back_to_another_resident_model");
         var alternate = MetadataHandler(async (request, ct) =>
         {
             using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
@@ -94,8 +97,8 @@ internal static class ScheduledTaskAnnouncementChecks
             capturedSource = document.RootElement.GetProperty("messages")[1].GetProperty("content").GetString();
             return Reply(new string('好', 300));
         });
-        var bounded = await Service(alternate).CreateAsync("START" + new string('中', 20_000) + "END", "unloaded:latest", endpoint, CancellationToken.None);
-        Check(actualModel == "resident:latest", "uses_existing_resident_chat_model_without_loading_unloaded_selection");
+        var bounded = await Service(alternate).CreateAsync("START" + new string('中', 20_000) + "END", "resident:latest", endpoint, CancellationToken.None);
+        Check(actualModel == "resident:latest", "large_result_uses_exactly_selected_resident_model");
         Check(capturedSource!.StartsWith("START", StringComparison.Ordinal) && capturedSource.EndsWith("END", StringComparison.Ordinal) &&
             Encoding.UTF8.GetByteCount(capturedSource) < 3072 && capturedSource.Contains("omitted", StringComparison.Ordinal),
             "large_input_budget_preserves_head_and_tail_and_marks_omitted_middle");
@@ -145,7 +148,109 @@ internal static class ScheduledTaskAnnouncementChecks
         try { await Service(cancelDuring).CreateAsync(longSource, "resident:latest", endpoint, canceled.Token); }
         catch (OperationCanceledException) { propagated = true; }
         Check(propagated, "privacy_or_exit_cancellation_propagates_and_does_not_return_stale_summary");
+
+        await CheckApiAsync(Check, longSource);
         return new { passed = true, checks };
+    }
+
+    private static async Task CheckApiAsync(Action<bool, string> check, string longSource)
+    {
+        const string selected = "fixture-selected-model", dummyKey = "fixture-not-a-real-key";
+        foreach (var endpoint in new[] { new Uri("https://api.openai.com/v1/"), new Uri("https://api.example.test/custom/v1/") })
+        {
+            string? captured = null;
+            var handler = new Handler(async (request, ct) =>
+            {
+                check(request.Method == HttpMethod.Post && request.RequestUri == new Uri(endpoint, "chat/completions"),
+                    "api_summary_only_uses_current_provider_chat_route_" + endpoint.Host);
+                check(request.Headers.Authorization?.Scheme == "Bearer" && request.Headers.Authorization?.Parameter == dummyKey,
+                    "api_summary_uses_bound_key_without_putting_it_in_source_" + endpoint.Host);
+                using var doc = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                var body = doc.RootElement;
+                var messages = body.GetProperty("messages");
+                captured = messages[1].GetProperty("content").GetString();
+                check(body.GetProperty("model").GetString() == selected && messages.GetArrayLength() == 2 &&
+                    messages[0].GetProperty("role").GetString() == "system" && messages[1].GetProperty("role").GetString() == "user" &&
+                    !body.TryGetProperty("tools", out _) && !body.TryGetProperty("keep_alive", out _) &&
+                    !body.TryGetProperty("options", out _) && !body.GetRawText().Contains(dummyKey, StringComparison.Ordinal),
+                    "api_summary_has_selected_model_and_stateless_instruction_source_only_" + endpoint.Host);
+                check(body.TryGetProperty(endpoint.Host == "api.openai.com" ? "max_completion_tokens" : "max_tokens", out var limit) &&
+                    limit.GetInt32() is > 0 and <= 4096,
+                    "api_summary_has_bounded_output_tokens_" + endpoint.Host);
+                return ApiReply("完成了比较，两个结果一致。", thinking: "PRIVATE REASONING MUST NOT BE SPOKEN");
+            });
+            using var client = new OpenAiCompatibleClient(endpoint, () => dummyKey, selected, false, false, handler);
+            string source = "START" + new string('中', 20_000) + "END";
+            var result = await ScheduledTaskAnnouncement.CreateWithClientAsync(source, selected, client, CancellationToken.None);
+            check(result.IsSummary && result.Output == "完成了比较，两个结果一致。", "api_summary_uses_final_text_only_" + endpoint.Host);
+            check(captured != null && captured.StartsWith("START", StringComparison.Ordinal) && captured.EndsWith("END", StringComparison.Ordinal) &&
+                captured.Contains("omitted", StringComparison.Ordinal) && Encoding.UTF8.GetByteCount(captured) < 8192,
+                "api_large_input_keeps_head_tail_with_bounded_evidence_" + endpoint.Host);
+            check(handler.Paths.SequenceEqual(new[] { new Uri(endpoint, "chat/completions").AbsolutePath }) && !handler.Disposed,
+                "api_summary_never_queries_residency_or_disposes_borrowed_client_" + endpoint.Host);
+        }
+
+        var noCall = new Handler((_, _) => throw new InvalidOperationException("Short API output must not send a request."));
+        using (var client = new OpenAiCompatibleClient(new Uri("https://api.example.test/v1/"), () => dummyKey, selected, false, false, noCall))
+        {
+            var whole = await ScheduledTaskAnnouncement.CreateWithClientAsync("Short result", selected, client, CancellationToken.None);
+            check(whole.Output == "Short result" && !whole.IsSummary && noCall.Paths.Count == 0 && !noCall.Disposed,
+                "short_result_bypasses_api_and_preserves_borrowed_client");
+        }
+
+        var verbose = new Handler((_, _) => Task.FromResult(ApiReply(new string('好', 300))));
+        using (var client = new OpenAiCompatibleClient(new Uri("https://api.example.test/v1/"), () => dummyKey, selected, false, false, verbose))
+        {
+            var result = await ScheduledTaskAnnouncement.CreateWithClientAsync(longSource, selected, client, CancellationToken.None);
+            check(result.IsSummary && result.Output?.EnumerateRunes().Count() == 240, "api_summary_display_is_bounded_to_240_characters");
+        }
+
+        foreach (var scenario in new[] { "thinking_only", "unterminated_think", "tool_call", "truncated", "oversized", "http_error" })
+        {
+            var handler = new Handler((_, _) => Task.FromResult(scenario switch
+            {
+                "thinking_only" => ApiReply("", thinking: "private thought"),
+                "unterminated_think" => ApiReply("<think>private thought"),
+                "tool_call" => ApiToolReply(),
+                "truncated" => ApiReply("Incomplete answer", finish: "length"),
+                "oversized" => ApiReply(new string('x', 8193)),
+                _ => Json("{\"error\":\"fixture upstream failure\"}", HttpStatusCode.ServiceUnavailable)
+            }));
+            using var client = new OpenAiCompatibleClient(new Uri("https://api.example.test/v1/"), () => dummyKey, selected, false, false, handler);
+            var result = await ScheduledTaskAnnouncement.CreateWithClientAsync(longSource, selected, client, CancellationToken.None);
+            check(result.Output == null && !result.IsSummary && handler.Paths.Count == 1,
+                "api_invalid_summary_falls_back_without_other_provider_or_model_" + scenario);
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelHandler = new Handler(async (_, ct) =>
+        {
+            cancellation.Cancel();
+            await Task.Delay(1, ct);
+            return ApiReply("stale answer");
+        });
+        using (var client = new OpenAiCompatibleClient(new Uri("https://api.example.test/v1/"), () => dummyKey, selected, false, false, cancelHandler))
+        {
+            bool propagated = false;
+            try { await ScheduledTaskAnnouncement.CreateWithClientAsync(longSource, selected, client, cancellation.Token); }
+            catch (OperationCanceledException) { propagated = true; }
+            check(propagated && !cancelHandler.Disposed, "api_provider_switch_or_exit_cancellation_propagates_without_disposing_shared_client");
+        }
+    }
+
+    private static HttpResponseMessage ApiReply(string content, string? thinking = null, string finish = "stop")
+    {
+        string fragment = JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = new { content, reasoning_content = thinking } } } });
+        string completed = JsonSerializer.Serialize(new { choices = new[] { new { index = 0, delta = new { }, finish_reason = finish } } });
+        return new(HttpStatusCode.OK) { Content = new StringContent("data: " + fragment + "\n\ndata: " + completed + "\n\ndata: [DONE]\n\n", Encoding.UTF8, "text/event-stream") };
+    }
+
+    private static HttpResponseMessage ApiToolReply()
+    {
+        string data = JsonSerializer.Serialize(new { choices = new[] { new { index = 0,
+            delta = new { tool_calls = new[] { new { index = 0, id = "call_fixture", type = "function", function = new { name = "unrequested_action", arguments = "{}" } } } },
+            finish_reason = "tool_calls" } } });
+        return new(HttpStatusCode.OK) { Content = new StringContent("data: " + data + "\n\ndata: [DONE]\n\n", Encoding.UTF8, "text/event-stream") };
     }
 
     private static ScheduledTaskAnnouncement Service(Handler handler) => new(endpoint => new OllamaClient(endpoint, handler));
@@ -170,10 +275,12 @@ internal static class ScheduledTaskAnnouncementChecks
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         public List<string> Paths { get; } = new();
+        public bool Disposed { get; private set; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Paths.Add(request.RequestUri!.AbsolutePath);
             return send(request, cancellationToken);
         }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
     }
 }

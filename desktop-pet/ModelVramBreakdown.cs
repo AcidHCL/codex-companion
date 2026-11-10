@@ -148,7 +148,9 @@ internal static class ModelVramBreakdown
             view.Children.Add(Legend(snapshot.RemoteModels, "RemoteModelLegend"));
         }
         foreach (string note in snapshot.Notes) view.Children.Add(Text(note, "", false));
-        view.Children.Add(Text(L.T("语音按 PyTorch 保留显存计入（已包含分配量）；颜色随模型保持，未归属包含桌面、其他程序及未报告的开销。", "Speech uses PyTorch reserved memory, including allocated memory. Colors stay with each model. Unattributed usage includes the desktop, other applications, and unreported overhead."), "ModelVramScopeHint"));
+        var explanation = L.T("语音按 PyTorch 保留显存计入（已包含分配量）；颜色随模型保持，未归属包含桌面、其他程序及未报告的开销。", "Speech uses PyTorch reserved memory, including allocated memory. Colors stay with each model. Unattributed usage includes the desktop, other applications, and unreported overhead.");
+        view.ToolTip = explanation;
+        System.Windows.Automation.AutomationProperties.SetHelpText(view, explanation);
         return view;
     }
 

@@ -114,7 +114,7 @@ internal static class ModelRetentionUiChecks
                     string llmHint = Named<TextBlock>(window, "DashboardLlmIdleHint").Text;
                     string voiceHint = Named<TextBlock>(window, "DashboardVoiceIdleHint").Text;
                     Check(llmHint.Contains(L.T("下一次", "next model request")) &&
-                        llmHint.Contains(L.T("不修改服务器全局设置", "without changing Ollama's global settings")) &&
+                        (llm.ToolTip?.ToString() ?? "").Contains(L.T("不修改服务器全局设置", "without changing Ollama's global settings")) &&
                         voiceHint.Contains(L.T("手动卸载", "Manual unload")),
                         "policy_scope_and_manual_unload_are_explained_" + language);
                     Check(Named<TextBlock>(window, "DashboardVoiceIdleLabel").Text == L.T("空闲后自动卸载", "Unload after inactivity"),

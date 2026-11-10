@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Threading;
 
 namespace DesktopPet;
@@ -23,11 +24,18 @@ internal sealed record DashboardModelServices(
     Func<string, CancellationToken, Task<IReadOnlyList<string>>>? ReadInstalledModels = null,
     Func<string, Task<string>>? SelectLlmModel = null,
     Func<string, CancellationToken, Task<OllamaGpuActivity>>? ReadOllamaActivity = null,
-    Func<string, OllamaRequestSnapshot>? ReadOwnActivity = null)
+    Func<string, OllamaRequestSnapshot>? ReadOwnActivity = null,
+    Func<ChatApiConnectionUpdate, CancellationToken, Task>? ApplyChatApiConnection = null,
+    Func<Uri, bool>? HasChatApiKey = null,
+    Func<IReadOnlyList<string>>? ReadChatApiModels = null,
+    Func<ChatApiConnectionUpdate, CancellationToken, Task<IReadOnlyList<string>>>? ListChatApiModels = null)
 {
     internal static DashboardModelServices Create(PetWindow? pet,
         Func<bool, Task<string>>? setLlmLoaded = null, Func<string?>? operation = null,
-        Func<string?>? blockedReason = null, Func<string, Task<string>>? selectLlmModel = null) => new(
+        Func<string?>? blockedReason = null, Func<string, Task<string>>? selectLlmModel = null,
+        Func<ChatApiConnectionUpdate, CancellationToken, Task>? applyChatApiConnection = null,
+        Func<Uri, bool>? hasChatApiKey = null, Func<IReadOnlyList<string>>? readChatApiModels = null,
+        Func<ChatApiConnectionUpdate, CancellationToken, Task<IReadOnlyList<string>>>? listChatApiModels = null) => new(
         async (address, ct) =>
         {
             using var client = new OllamaClient(OllamaEndpoint.Parse(address));
@@ -39,7 +47,8 @@ internal sealed record DashboardModelServices(
         {
             using var client = new OllamaClient(OllamaEndpoint.Parse(address));
             return await client.ListModelsAsync(ct);
-        }, selectLlmModel, OllamaActivityTelemetry.ReadAsync, OllamaRequestActivity.Snapshot);
+        }, selectLlmModel, OllamaActivityTelemetry.ReadAsync, OllamaRequestActivity.Snapshot,
+        applyChatApiConnection, hasChatApiKey, readChatApiModels, listChatApiModels);
 }
 
 internal sealed partial class ModelSettingsView
@@ -103,13 +112,51 @@ internal sealed partial class ModelSettingsView
     private string? _installedModelsEndpoint;
     private IReadOnlyList<string> _dashboardInstalledModels = Array.Empty<string>();
     private bool _syncModelSelector, _installedListAvailable, _selectingLlm;
+    private ChatApiConnectionView? _chatApiConnection;
+    private Expander? _chatApiExpander;
+    private ChatApiProfile? _chatApiSnapshot;
+    private bool _chatApiSnapshotEnabled;
+    private readonly TextBlock _llmLabel = ModelText("", "LlmModelLabel", 14, true);
+    private readonly TextBlock _llmMemoryHint = ModelText("", "LlmMemoryHint");
+    private string ActiveChatModel => _settings.UseChatApi ? _settings.ApiProfile.Model : _settings.OllamaModel;
+    private string ActiveModelScope => _settings.UseChatApi ? "api:" + _settings.ApiProfile.BaseUrl : _settings.OllamaAddress;
 
     private static TextBlock ModelText(string text, string name, double size = 11, bool bold = false)
     {
         var view = Ui.Text(text, size, bold ? "#294B36" : "#71826D", bold);
         view.Name = name; view.TextWrapping = TextWrapping.Wrap;
         view.Margin = new Thickness(0, 0, 0, 8);
+        var style = new Style(typeof(TextBlock));
+        var empty = new DataTrigger { Binding = new Binding(nameof(TextBlock.Text)) { RelativeSource = RelativeSource.Self }, Value = "" };
+        empty.Setters.Add(new Setter(VisibilityProperty, Visibility.Collapsed)); style.Triggers.Add(empty); view.Style = style;
         return view;
+    }
+
+    private void BuildChatConnectionEditor(StackPanel body)
+    {
+        _chatApiConnection = new ChatApiConnectionView(_settings.ApiProfile, _settings.UseChatApi,
+            async (update, ct) =>
+            {
+                if (_closed || _modelServices.ApplyChatApiConnection == null)
+                    throw new InvalidOperationException(L.T("请从桌宠打开设置修改连接。", "Open Settings from the pet to change the connection."));
+                InvalidateModelRead();
+                await _modelServices.ApplyChatApiConnection(update, ct);
+                if (!_closed) ModelSelectionChanged();
+            }, _modelServices.HasChatApiKey, _modelServices.ListChatApiModels);
+        _chatApiExpander = new Expander { Name = "ChatApiConnectionExpander", Content = _chatApiConnection,
+            Margin = new Thickness(0, 0, 0, 12), IsExpanded = false };
+        body.Children.Add(_chatApiExpander);
+        SyncChatConnectionEditor();
+    }
+
+    private void SyncChatConnectionEditor()
+    {
+        if (_chatApiExpander != null) _chatApiExpander.Header = _settings.UseChatApi
+            ? L.T("模型连接 · API", "Model connection · API")
+            : L.T("模型连接 · Ollama", "Model connection · Ollama");
+        if (_chatApiSnapshot == _settings.ApiProfile && _chatApiSnapshotEnabled == _settings.UseChatApi) return;
+        _chatApiSnapshot = _settings.ApiProfile; _chatApiSnapshotEnabled = _settings.UseChatApi;
+        _chatApiConnection?.SetConfiguration(_settings.ApiProfile, _settings.UseChatApi);
     }
 
     private void BuildModelPage()
@@ -118,17 +165,21 @@ internal sealed partial class ModelSettingsView
         var heading = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(_modelRefresh, Dock.Right); heading.Children.Add(_modelRefresh);
         var caption = new StackPanel();
-        caption.Children.Add(ModelText(L.T("模型与显存", "Models & GPU memory"), "ModelPageTitle", 23, true));
+        caption.Children.Add(ModelText(L.T("模型与语音", "Models & speech"), "ModelPageTitle", 23, true));
         caption.Children.Add(_modelUpdated); heading.Children.Add(caption); body.Children.Add(heading);
+        BuildChatConnectionEditor(body);
         body.Children.Add(BuildSpeechPreferences());
         var cards = new Grid();
         cards.ColumnDefinitions.Add(new ColumnDefinition()); cards.ColumnDefinitions.Add(new ColumnDefinition());
         var voice = new StackPanel();
-        voice.Children.Add(ModelText(L.T("当前角色 / 语音", "CURRENT CHARACTER / SPEECH"), "VoiceModelLabel", 11, true));
-        voice.Children.Add(_voiceCurrentRole);
+        var voiceHeading = new DockPanel { LastChildFill = true };
+        _voiceCurrentRole.HorizontalAlignment = HorizontalAlignment.Right;
+        DockPanel.SetDock(_voiceCurrentRole, Dock.Right); voiceHeading.Children.Add(_voiceCurrentRole);
+        voiceHeading.Children.Add(ModelText(L.T("语音模型", "Speech model"), "VoiceModelLabel", 14, true));
+        voice.Children.Add(voiceHeading);
         voice.Children.Add(_voiceName); voice.Children.Add(_voiceState); voice.Children.Add(_voiceBackend);
         voice.Children.Add(_voiceMemory);
-        voice.Children.Add(ModelText(L.T("显存按语音进程的 PyTorch 统计；“保留”包含可复用的缓存。", "Speech GPU memory is reported by PyTorch. Reserved memory includes reusable cache."), "VoiceMemoryHint"));
+        _voiceMemory.ToolTip = L.T("语音进程的 PyTorch 统计；保留量包含可复用缓存。", "PyTorch memory for the speech process. Reserved memory includes reusable cache.");
         var voiceButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 10) };
         _voiceLoad.Margin = new Thickness(0, 0, 8, 0); voiceButtons.Children.Add(_voiceLoad); voiceButtons.Children.Add(_voiceUnload);
         voice.Children.Add(voiceButtons); voice.Children.Add(_voiceModelAction);
@@ -139,7 +190,7 @@ internal sealed partial class ModelSettingsView
         _voiceUnload.Click += async (_, _) => await ChangeSpeechModelLoadAsync(false);
         var voiceCard = Card(voice); voiceCard.Margin = new Thickness(0, 0, 7, 0); cards.Children.Add(voiceCard);
         var llm = new StackPanel();
-        llm.Children.Add(ModelText(L.T("OLLAMA / 聊天", "OLLAMA / CHAT"), "LlmModelLabel", 11, true));
+        llm.Children.Add(_llmLabel);
         ConfigureCombo(_llmSelector);
         _llmSelector.FontSize = 13; _llmSelector.MinHeight = 36;
         _llmSelector.Margin = new Thickness(0, 0, 0, 7);
@@ -156,19 +207,19 @@ internal sealed partial class ModelSettingsView
         llm.Children.Add(llmButtons); llm.Children.Add(_llmModelAction);
         BuildIdleUnloadChoice(llm, _llmIdleUnload, _llmIdleHint, speech: false);
         llm.Children.Add(_llmOthers);
-        llm.Children.Add(ModelText(L.T("操作聊天中当前选中的模型。卸载不会删除文件；其他软件共用此模型时也会受影响。", "Controls the selected chat model. Unloading keeps its files, but also affects other apps using the same model."), "LlmMemoryHint"));
+        llm.Children.Add(_llmMemoryHint);
         _llmLoad.ToolTip = L.T("提前加载当前聊天模型，使用下方的自动卸载设置；不发送聊天消息", "Preload the chat model using the auto-unload setting below, without sending a chat message");
         _llmUnload.ToolTip = L.T("仅卸载当前选中的模型，不删除模型文件", "Unload only the selected model without deleting its files");
         _llmLoad.Click += async (_, _) => await ChangeLlmModelLoadAsync(true);
         _llmUnload.Click += async (_, _) => await ChangeLlmModelLoadAsync(false);
         var llmCard = Card(llm); llmCard.Margin = new Thickness(7, 0, 0, 0); Grid.SetColumn(llmCard, 1); cards.Children.Add(llmCard);
         body.Children.Add(cards);
-        BuildOllamaActivityCard(body);
-        BuildVoiceProfileEditor(body);
         var gpu = new StackPanel(); gpu.Children.Add(ModelText(L.T("本机显卡", "Local GPUs"), "GpuModelLabel", 16, true));
         gpu.Children.Add(_gpuRows);
-        gpu.Children.Add(ModelText(L.T("模型颜色保持固定。语音使用 PyTorch 保留量（包含已分配量）；远程 Ollama 单独列出。", "Model colors remain consistent. Speech uses PyTorch reserved memory (including allocated memory). Remote Ollama is listed separately."), "GpuMemoryHint"));
+        _gpuRows.ToolTip = L.T("语音显存使用 PyTorch 保留量，包含已分配量。远程 Ollama 单独列出。", "Speech uses PyTorch reserved memory, including allocated memory. Remote Ollama is listed separately.");
         var gpuCard = Card(gpu); gpuCard.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(gpuCard);
+        BuildOllamaActivityCard(body);
+        BuildVoiceProfileEditor(body);
         _modelPage = new ScrollViewer { Name = "ModelPage", Content = body,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Padding = new Thickness(0, 0, 8, 0) };
@@ -184,7 +235,10 @@ internal sealed partial class ModelSettingsView
         SyncIdleUnloadChoices();
         bool llmBusy = _llmModelOperation || _modelServices.LlmOperation?.Invoke() != null;
         string? blocked = _modelServices.LlmBlockedReason?.Invoke();
-        _llmLoad.IsEnabled = _llmUnload.IsEnabled = !llmBusy && blocked == null && _modelServices.SetLlmLoaded != null;
+        _llmLoad.IsEnabled = _llmUnload.IsEnabled = !_settings.UseChatApi && !llmBusy && blocked == null && _modelServices.SetLlmLoaded != null;
+        _llmLabel.Text = _settings.UseChatApi ? L.T("全局模型 · API", "Global model · API") : L.T("全局模型 · Ollama", "Global model · Ollama");
+        _llmMemoryHint.Text = _settings.UseChatApi ? L.T("聊天与主动功能共用此模型，调用可能计费。语音独立。", "Chat and proactive features share this model and may incur charges. Speech is separate.") :
+            L.T("卸载会影响共用此模型的其他软件，模型文件会保留。", "Unloading affects other apps sharing this model. Its files are kept.");
         _llmSelector.IsEnabled = !llmBusy && blocked == null && _installedListAvailable &&
             _modelServices.SelectLlmModel != null && _dashboardInstalledModels.Count > 0;
         bool voiceEnabled = PetVoiceProfiles.IsEnabled(_settings.GetVoiceProfile(_settings.SkinId));
@@ -198,7 +252,7 @@ internal sealed partial class ModelSettingsView
         if (voiceBlocked != null) _voiceModelAction.Text = voiceBlocked;
         else if (_lastVoiceBlockReason != null && _voiceModelAction.Text == _lastVoiceBlockReason) _voiceModelAction.Text = "";
         _lastVoiceBlockReason = voiceBlocked;
-        _voiceCurrentRole.Text = L.T("当前桌宠：", "Current pet: ") + PetVoiceProfiles.CharacterName(_settings.SkinId);
+        _voiceCurrentRole.Text = PetVoiceProfiles.CharacterName(_settings.SkinId);
         SyncVoiceProfileEditor();
         RenderVoiceStudio();
     }
@@ -232,8 +286,9 @@ internal sealed partial class ModelSettingsView
         {
             _llmIdleUnload.SelectedValue = _settings.OllamaKeepAliveMinutes;
             _voiceIdleUnload.SelectedValue = _settings.SpeechIdleUnloadMinutes;
-            _llmIdleUnload.IsEnabled = _voiceIdleUnload.IsEnabled = _speechHost != null;
-            _llmIdleHint.Text = L.T(
+            _voiceIdleUnload.IsEnabled = _speechHost != null;
+            _llmIdleUnload.IsEnabled = !_settings.UseChatApi && _speechHost != null;
+            _llmIdleHint.Text = _settings.UseChatApi ? L.T("此项仅用于 Ollama；API 模式不会修改原来的自动卸载时间。", "This setting applies to Ollama only. API mode leaves its auto-unload time unchanged.") : L.T(
                 "保存后，从下一次使用模型或手动加载开始生效；空闲时间从该次请求结束计算。仅控制桌宠发给 Ollama 的请求，不修改服务器全局设置；其他软件的请求也可能影响卸载时间。仍可手动卸载。",
                 "Saved for the next model request or manual load. Idle time starts after that request finishes. Applies only to AI Pet requests, without changing Ollama's global settings; requests from other apps may also affect unloading. Manual unload remains available.");
             _voiceIdleHint.Text = _settings.SpeechIdleUnloadMinutes switch
@@ -245,13 +300,23 @@ internal sealed partial class ModelSettingsView
                 int minutes => L.T($"最后一次合成或预加载结束后，空闲 {minutes} 分钟自动卸载，即使聊天窗口仍打开。下次朗读时按需重新加载；选择时不会主动加载模型。",
                     $"Unload after {minutes} minute{(minutes == 1 ? "" : "s")} idle following synthesis or preloading, even with chat open. Reload on the next readout; choosing a setting does not load it.")
             };
+            _llmIdleUnload.ToolTip = _llmIdleHint.Text;
+            _voiceIdleUnload.ToolTip = _voiceIdleHint.Text;
+            _llmIdleHint.Text = _settings.UseChatApi ? L.T("仅适用于 Ollama。", "Ollama only.") :
+                L.T("下一次请求生效；其他软件的请求也会影响卸载时间。", "Applies to the next model request. Other apps may affect unloading.");
+            _voiceIdleHint.Text = _settings.SpeechIdleUnloadMinutes switch
+            {
+                0 => L.T("关闭聊天后，空闲 1 分钟卸载。", "After chat closes, unload after 1 minute idle."),
+                -1 => L.T("仍可手动卸载。", "Manual unload remains available."),
+                _ => L.T("聊天打开时同样生效。", "Also applies while chat is open.")
+            };
         }
         finally { _syncIdleUnload = false; }
     }
 
     private void ChangeIdleUnloadChoice(bool speech)
     {
-        if (_syncIdleUnload || _rendering || _closed || _speechHost == null) return;
+        if (_syncIdleUnload || _rendering || _closed || _speechHost == null || !speech && _settings.UseChatApi) return;
         var selector = speech ? _voiceIdleUnload : _llmIdleUnload;
         if (selector.SelectedValue is not int minutes ||
             minutes == (speech ? _settings.SpeechIdleUnloadMinutes : _settings.OllamaKeepAliveMinutes)) return;
@@ -270,7 +335,7 @@ internal sealed partial class ModelSettingsView
     {
         var content = new StackPanel();
         content.Children.Add(ModelText(L.T("语音生成方式", "Speech generation method"), "VoiceProfileTitle", 16, true));
-        content.Children.Add(ModelText(L.T("先选择角色和生成方式。使用已保存音色时，在下方音色库选择具体声音；配置按角色独立保存。", "Choose a character and generation method. For saved voices, select a voice in the library below. Settings are saved separately for each character."), "VoiceProfileScopeHint"));
+        _voiceCharacter.ToolTip = L.T("按角色保存，不切换当前桌宠。", "Saved per character; does not switch the current pet.");
         var columns = new Grid();
         columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition());
         var left = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
@@ -287,13 +352,13 @@ internal sealed partial class ModelSettingsView
         _voiceSpeaker.ItemsSource = PetVoiceProfiles.Speakers;
         _voiceLanguage.ItemsSource = new[] { new PetVoiceChoice("auto", L.T("跟随软件语言", "Follow app language")) }
             .Concat(PetVoiceProfiles.Languages.Select(value => new PetVoiceChoice(value, value))).ToArray();
-        left.Children.Add(ModelText(L.T("编辑角色", "Edit character"), "VoiceProfileCharacterLabel", 11, true)); left.Children.Add(_voiceCharacter);
+        left.Children.Add(ModelText(L.T("角色", "Character"), "VoiceProfileCharacterLabel", 11, true)); left.Children.Add(_voiceCharacter);
         left.Children.Add(ModelText(L.T("生成方式", "Generation method"), "VoiceProfileModelLabel", 11, true)); left.Children.Add(_voiceModel);
         _voiceSpeakerField = new StackPanel();
         _voiceSpeakerField.Children.Add(ModelText(L.T("预置音色", "Preset speaker"), "VoiceProfileSpeakerLabel", 11, true));
         _voiceSpeakerField.Children.Add(_voiceSpeaker); left.Children.Add(_voiceSpeakerField);
-        left.Children.Add(ModelText(L.T("朗读语言", "Speech language"), "VoiceProfileLanguageLabel", 11, true));
-        left.Children.Add(_voiceLanguage);
+        right.Children.Add(ModelText(L.T("朗读语言", "Speech language"), "VoiceProfileLanguageLabel", 11, true));
+        right.Children.Add(_voiceLanguage);
         _voiceInstructionField = new StackPanel();
         _voiceInstructionField.Children.Add(_voiceInstructionLabel);
         _voiceInstruction.Padding = new Thickness(8); _voiceInstruction.FontSize = 12;
@@ -381,15 +446,17 @@ internal sealed partial class ModelSettingsView
         _voiceModel.IsEnabled = _voiceSpeaker.IsEnabled = _voiceInstruction.IsEnabled = _voiceLanguage.IsEnabled = !_voiceStudioGenerating;
         if (_voiceSpeakerField != null) _voiceSpeakerField.Visibility = model == "custom-voice" ? Visibility.Visible : Visibility.Collapsed;
         if (_voiceInstructionField != null) _voiceInstructionField.Visibility = model is "custom-voice" or "voice-design" ? Visibility.Visible : Visibility.Collapsed;
-        _voiceInstructionLabel.Text = model == "voice-design" ? L.T("音色描述（必填，最多 600 字）", "Voice description (required, up to 600 characters)") : L.T("语气要求（可选，最多 600 字）", "Delivery instructions (optional, up to 600 characters)");
+        _voiceInstructionLabel.Text = model == "voice-design" ? L.T("音色描述", "Voice description") : L.T("语气要求（可选）", "Delivery instructions (optional)");
+        _voiceInstruction.ToolTip = L.T("最多 600 字。", "Up to 600 characters.");
         string hint = model switch
         {
-            "fixed" => L.T("用 Base 复用音色库中的声音，保持固定音色。请在下方选择具体音色；要制作新声音，可使用独立的音色工坊。", "Base reuses a library voice to keep its identity consistent. Select one below, or create a new voice in Voice Studio."),
-            "custom-voice" => L.T("使用 CustomVoice 的预置说话人，可附加语气要求；无需参考音频。", "Use a CustomVoice preset speaker with optional delivery instructions. No reference audio is needed."),
-            "voice-design" => L.T("每次朗读都由 VoiceDesign 按文字描述即时生成，音色可能变化。想固定声音，请使用下方音色工坊生成并保存。", "VoiceDesign generates speech from the description each time, so the voice may vary. To save a consistent voice, use Voice Studio below."),
-            _ => L.T("此角色不朗读文字；其他角色的语音配置保持独立。", "This character does not read text aloud. Other characters keep their own speech settings.")
+            "fixed" => L.T("从下方音色库选择声音。", "Choose a voice from the library below."),
+            "custom-voice" => "",
+            "voice-design" => L.T("音色可能随每次朗读变化；要固定声音，请使用音色工坊。", "The voice may vary between readouts. Use Voice Studio to save a consistent voice."),
+            _ => ""
         };
-        if (model != "disabled") hint += PetVoiceProfiles.IsModelInstalled(model == "fixed" ? "base" : model) ? L.T("\n模型文件已安装；应用不会自动加载。", "\nModel files are installed. Applying settings does not load the model.") : L.T("\n未检测到本地模型文件，使用前需完成下载。", "\nLocal model files were not found. Download them before use.");
+        if (model != "disabled" && !PetVoiceProfiles.IsModelInstalled(model == "fixed" ? "base" : model))
+            hint += (hint.Length == 0 ? "" : "\n") + L.T("模型未安装，请先下载。", "Model not installed. Download it before use.");
         _voiceProfileHint.Text = hint;
         _voiceProfileSave.IsEnabled = _speechHost != null && !_speechModelOperation && !_voiceStudioGenerating && _voiceProfileDirty;
     }
@@ -457,11 +524,13 @@ internal sealed partial class ModelSettingsView
         if (_closed) return;
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(ModelSelectionChanged)); return; }
         InvalidateModelRead(); _modelSnapshotKey = null; ResetOllamaActivity();
-        if (_installedModelsEndpoint != _settings.OllamaAddress)
+        SyncChatConnectionEditor();
+        if (_installedModelsEndpoint != ActiveModelScope)
         {
             _dashboardInstalledModels = Array.Empty<string>(); _installedListAvailable = false;
             _llmListStatus.Text = L.T("连接已更换，正在读取已安装模型…", "Connection changed. Reading installed models…");
         }
+        if (_settings.UseChatApi) RenderApiModels();
         SyncModelSelector(); RenderModelButtons();
         _llmState.Text = L.T("正在查询…", "Reading status…"); _llmMemory.Text = ""; _llmOthers.Text = "";
         if (_showModelPage) _ = RefreshModelPageAsync();
@@ -482,17 +551,33 @@ internal sealed partial class ModelSettingsView
             _installedListAvailable = true; _installedModelsEndpoint = endpoint;
             _dashboardInstalledModels = models;
             _llmListStatus.Text = models.Count == 0 ? L.T("此服务器尚无已安装模型。", "No models are installed on this server.") :
-                models.Contains(_settings.OllamaModel, StringComparer.Ordinal) ? L.T("与聊天窗口同步 · ", "Synchronized with chat · ") + models.Count + L.T(" 个已安装模型", " installed models") : L.T("当前选择未安装，请选择其他模型。", "The current model is not installed. Select another model.");
+                models.Contains(_settings.OllamaModel, StringComparer.Ordinal) ? "" : L.T("当前选择未安装，请选择其他模型。", "The current model is not installed. Select another model.");
         }
+        if (!_selectingLlm) SyncModelSelector();
+    }
+
+    // The shared chat host supplies its last metadata result. Polling the dashboard
+    // does not make API requests or read the credential; manual list refresh lives
+    // in the connection editor.
+    private void RenderApiModels()
+    {
+        IReadOnlyList<string> cached;
+        try { cached = _modelServices.ReadChatApiModels?.Invoke() ?? Array.Empty<string>(); }
+        catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { cached = Array.Empty<string>(); }
+        _dashboardInstalledModels = cached.Append(_settings.ApiProfile.Model).Where(ChatApiModel.IsValid)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        _installedListAvailable = _dashboardInstalledModels.Count > 0;
+        _installedModelsEndpoint = ActiveModelScope;
+        _llmListStatus.Text = "";
         if (!_selectingLlm) SyncModelSelector();
     }
 
     private void SyncModelSelector()
     {
-        string selected = _settings.OllamaModel;
+        string selected = ActiveChatModel;
         var choices = _dashboardInstalledModels.Select(id => new OllamaModelChoice(id,
             OllamaModels.Supported.FirstOrDefault(m => m.Id == id)?.DisplayName ?? id)).ToList();
-        if (!choices.Any(x => x.Id == selected)) choices.Insert(0, new(selected, selected + (_installedListAvailable ? L.T("（未安装）", " (not installed)") : L.T("（当前选择）", " (current selection)"))));
+        if (!choices.Any(x => x.Id == selected)) choices.Insert(0, new(selected, selected + (_installedListAvailable && !_settings.UseChatApi ? L.T("（未安装）", " (not installed)") : L.T("（当前选择）", " (current selection)"))));
         _syncModelSelector = true;
         try
         {
@@ -506,7 +591,7 @@ internal sealed partial class ModelSettingsView
 
     private async Task SelectDashboardLlmAsync()
     {
-        if (_syncModelSelector || _closed || _llmSelector.SelectedValue is not string selected || selected == _settings.OllamaModel) return;
+        if (_syncModelSelector || _closed || _llmSelector.SelectedValue is not string selected || selected == ActiveChatModel) return;
         if (_llmModelOperation || !_installedListAvailable || !_dashboardInstalledModels.Contains(selected, StringComparer.Ordinal) ||
             _modelServices.SelectLlmModel == null || _modelServices.LlmBlockedReason?.Invoke() != null)
         { SyncModelSelector(); return; }
@@ -523,7 +608,7 @@ internal sealed partial class ModelSettingsView
 
     private async Task ChangeLlmModelLoadAsync(bool load)
     {
-        if (_llmModelOperation || _modelServices.SetLlmLoaded == null) return;
+        if (_settings.UseChatApi || _llmModelOperation || _modelServices.SetLlmLoaded == null) return;
         InvalidateModelRead();
         _llmModelOperation = true;
         _llmModelAction.Text = load ? L.T("正在加载聊天模型…", "Loading chat model…") : L.T("正在卸载聊天模型…", "Unloading chat model…");
@@ -547,8 +632,9 @@ internal sealed partial class ModelSettingsView
         using var read = CancellationTokenSource.CreateLinkedTokenSource(_modelPageLifetime.Token);
         read.CancelAfter(TimeSpan.FromSeconds(6)); _modelReadCancellation = read;
         long epoch = ++_modelReadEpoch;
-        string endpoint = _settings.OllamaAddress, model = _settings.OllamaModel;
-        string snapshotKey = endpoint + "\n" + model;
+        string endpoint = _settings.OllamaAddress, model = ActiveChatModel, modelScope = ActiveModelScope;
+        bool useApi = _settings.UseChatApi;
+        string snapshotKey = endpoint + "\n" + modelScope + "\n" + model;
         if (_modelSnapshotKey != snapshotKey)
         {
             _modelSnapshotKey = snapshotKey;
@@ -556,10 +642,12 @@ internal sealed partial class ModelSettingsView
             _llmState.Text = L.T("正在查询…", "Reading status…"); _llmMemory.Text = ""; _llmOthers.Text = "";
         }
         if (!_selectingLlm && !string.Equals(_llmSelector.SelectedValue as string, model, StringComparison.Ordinal)) SyncModelSelector();
-        if (_installedModelsEndpoint != endpoint) _installedListAvailable = false;
+        if (_installedModelsEndpoint != modelScope) _installedListAvailable = false;
         bool remote = true;
         try { remote = !OllamaEndpoint.Parse(endpoint).IsLoopback; } catch (ArgumentException) { }
-        _llmEndpoint.Text = (remote ? L.T("服务器 · ", "Server · ") : L.T("本机服务 · ", "Local service · ")) + endpoint;
+        _llmEndpoint.Text = useApi ? L.T("API 服务 · ", "API service · ") + _settings.ApiProfile.BaseUrl :
+            (remote ? L.T("服务器 · ", "Server · ") : L.T("本机服务 · ", "Local service · ")) + endpoint;
+        SyncChatConnectionEditor();
         RenderModelButtons();
         try
         {
@@ -570,20 +658,25 @@ internal sealed partial class ModelSettingsView
                 ? Task.FromResult(new OllamaGpuActivity(false, L.T("远程 Ollama 无法读取服务器进程的 GPU 活动。", "GPU activity of a remote Ollama server cannot be read locally."), null, Array.Empty<OllamaGpuProcess>(), DateTimeOffset.UtcNow))
                 : _modelServices.ReadOllamaActivity?.Invoke(endpoint, read.Token) ??
                     Task.FromResult(new OllamaGpuActivity(false, L.T("当前未提供进程 GPU 监测。", "Process GPU monitoring is not available."), null, Array.Empty<OllamaGpuProcess>(), DateTimeOffset.UtcNow)), read.Token);
-            var installedTask = ReadSafely(() => _modelServices.ReadInstalledModels?.Invoke(endpoint, read.Token) ??
+            var installedTask = ReadSafely(() => !useApi ? _modelServices.ReadInstalledModels?.Invoke(endpoint, read.Token) ??
+                Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>()) :
                 Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>()), read.Token);
             await Task.WhenAll(llmTask, voiceTask, gpuTask, installedTask, activityTask);
             if (_closed || !_showModelPage || epoch != _modelReadEpoch) return;
-            if (endpoint != _settings.OllamaAddress || model != _settings.OllamaModel) { _modelRefreshPending = true; return; }
-            RenderLlmRuntime(llmTask.Result.Value, llmTask.Result.Error, model);
+            if (endpoint != _settings.OllamaAddress || model != ActiveChatModel || modelScope != ActiveModelScope || useApi != _settings.UseChatApi)
+            { _modelRefreshPending = true; return; }
+            if (useApi) RenderApiRuntime(llmTask.Result.Value, llmTask.Result.Error);
+            else RenderLlmRuntime(llmTask.Result.Value, llmTask.Result.Error, model);
             RenderOllamaActivity(endpoint, llmTask.Result.Value, llmTask.Result.Error,
                 activityTask.Result.Value, activityTask.Result.Error, _modelServices.ReadOwnActivity?.Invoke(endpoint));
             RenderVoiceRuntime(voiceTask.Result.Value, voiceTask.Result.Error);
-            RenderInstalledModels(installedTask.Result.Value, installedTask.Result.Error, endpoint);
+            if (useApi) RenderApiModels();
+            else RenderInstalledModels(installedTask.Result.Value, installedTask.Result.Error, endpoint);
             _gpuRows.Children.Clear();
             _gpuRows.Children.Add(ModelVramBreakdown.Build(gpuTask.Result.Value, gpuTask.Result.Error,
                 llmTask.Result.Value, llmTask.Result.Error, voiceTask.Result.Value, voiceTask.Result.Error, !remote));
-            _modelUpdated.Text = L.T("每 5 秒刷新 · 最近读取 ", "Refreshes every 5 seconds · Last read ") + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture) + L.T(" · 查看状态不会加载模型", " · Viewing status does not load models");
+            _modelUpdated.Text = L.T("最近读取 ", "Last read ") + DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+            _modelUpdated.ToolTip = L.T("每 5 秒刷新；查看状态不会加载模型。", "Refreshes every 5 seconds without loading models.");
         }
         finally
         {
@@ -610,14 +703,28 @@ internal sealed partial class ModelSettingsView
         }
         var current = models.FirstOrDefault(m => m.Name.Equals(selected, StringComparison.Ordinal));
         _llmState.Text = _modelServices.LlmOperation?.Invoke() ?? (_llmModelOperation ? L.T("正在操作模型…", "Model operation in progress…") : current == null ? L.T("未加载", "Not loaded") : L.T("已加载", "Loaded"));
-        _llmMemory.Text = current == null ? L.T("所选模型当前未驻留在 Ollama 中。", "The selected model is not currently loaded in Ollama.") :
+        _llmMemory.Text = current == null ? "" :
             L.T("显存 · ", "GPU memory · ") + MemorySize(current.VramBytes) + L.T("    总驻留 · ", "    Total resident · ") + MemorySize(current.SizeBytes) +
             L.T("\n上下文 · ", "\nContext · ") + (current.ContextLength?.ToString("N0", CultureInfo.CurrentCulture) ?? L.T("未提供", "Not provided")) +
             L.T("    保留至 · ", "    Keep until · ") + (current.ExpiresAt is { } at ? (at.Year > 2100 ? L.T("持续保留", "Indefinitely") : at.ToLocalTime().ToString("HH:mm:ss")) : L.T("未提供", "Not provided"));
         var others = models.Where(m => !m.Name.Equals(selected, StringComparison.Ordinal)).ToArray();
-        _llmOthers.Text = others.Length == 0 ? L.T("没有其他已加载的 Ollama 模型。", "No other Ollama models are loaded.") :
+        _llmOthers.Text = others.Length == 0 ? "" :
             L.T("其他已加载模型：\n", "Other loaded models:\n") + string.Join("\n", others.Take(8).Select(m => m.Name + L.T(" · 显存 ", " · GPU memory ") + MemorySize(m.VramBytes))) +
             (others.Length > 8 ? L.T("\n另有 ", "\nAnd ") + (others.Length - 8) + L.T(" 个模型", " more models") : "");
+    }
+
+    private void RenderApiRuntime(IReadOnlyList<OllamaRunningModel>? ollamaModels, string? ollamaError)
+    {
+        _llmState.Text = _modelServices.LlmOperation?.Invoke() ?? L.T("API 模式 · 按需请求", "API mode · Requests on demand");
+        bool localApi = false;
+        try { localApi = _settings.ApiProfile.Endpoint.IsLoopback; } catch (ArgumentException) { }
+        _llmMemory.Text = localApi
+            ? L.T("本机兼容 API：此协议不提供模型显存或驻留状态。", "Local compatible API: this protocol does not report model GPU memory or residency.")
+            : L.T("远程模型不占本机模型显存；服务端的显存与加载状态不在此显示。", "The remote model does not occupy local model GPU memory. Server memory and residency are not reported here.");
+        _llmOthers.Text = ollamaError != null ? L.T("原 Ollama 服务状态暂不可用；不影响 API 聊天。", "The previous Ollama service status is unavailable; API chat is independent.") :
+            ollamaModels == null || ollamaModels.Count == 0 ? L.T("原 Ollama 服务暂无已加载模型。", "The previous Ollama service reports no loaded models.") :
+            L.T("Ollama 仍驻留的模型（独立于 API 聊天）：\n", "Models still loaded in Ollama (separate from API chat):\n") +
+                string.Join("\n", ollamaModels.Take(8).Select(item => item.Name + L.T(" · 显存 ", " · GPU memory ") + MemorySize(item.VramBytes)));
     }
 
     private void RenderVoiceRuntime(PetVoiceHealth? health, string? error)
@@ -633,10 +740,10 @@ internal sealed partial class ModelSettingsView
                 "loading" => L.T("加载中", "Loading"), "unloading" => L.T("卸载中", "Unloading"), "error" => L.T("引擎异常", "Engine error"),
                 _ => health.Loaded ? L.T("已加载", "Loaded") : L.T("未加载", "Not loaded")
             };
-        _voiceBackend.Text = health == null ? (_speechHost?.SpeechStatusText ?? L.T("语音服务未启动", "Speech service is not running")) :
+        _voiceBackend.Text = health == null ? "" :
             L.T("后端 · ", "Backend · ") + health.Backend + L.T("    设备 · ", "    Device · ") + (health.Device ?? L.T("未提供", "Not provided")) +
-            (health.Retained ? L.T("\n聊天期间保持加载", "\nKept loaded while chatting") : L.T("\n按原有空闲策略释放", "\nUnloaded according to the existing idle policy"));
-        _voiceMemory.Text = health == null ? L.T("语音工作进程未运行，无模型显存驻留。", "The speech worker is not running; no speech model occupies GPU memory.") :
+            (health.Retained ? L.T("\n聊天期间保持加载", "\nKept loaded while chatting") : "");
+        _voiceMemory.Text = health == null ? "" :
             L.T("已分配 · ", "Allocated · ") + MemorySize(health.AllocatedBytes) + L.T("    已保留 · ", "    Reserved · ") + MemorySize(health.ReservedBytes);
     }
 
@@ -653,6 +760,6 @@ internal sealed partial class ModelSettingsView
 
     private void CloseModelPage()
     {
-        PauseModelReads(); _modelPageLifetime.Cancel(); _modelPageLifetime.Dispose();
+        PauseModelReads(); _chatApiConnection?.Dispose(); _modelPageLifetime.Cancel(); _modelPageLifetime.Dispose();
     }
 }

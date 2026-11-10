@@ -17,6 +17,7 @@ internal sealed partial class ModelSettingsView
     private readonly Button _voiceLibraryRename = new() { Name = "VoiceLibraryRename", Content = L.T("重命名", "Rename") };
     private readonly Button _voiceLibraryDelete = new() { Name = "VoiceLibraryDelete", Content = L.T("删除", "Delete") };
     private readonly TextBlock _voiceLibraryStatus = ModelText("", "VoiceLibraryStatus");
+    private readonly TextBlock _voiceLibraryTitle = ModelText("", "VoiceLibraryTitle", 16, true);
     private bool _syncVoiceLibrary;
     private string? _voiceLibraryRole;
     private IReadOnlyList<VoiceLibraryChoice> _voiceLibraryChoices = Array.Empty<VoiceLibraryChoice>();
@@ -30,8 +31,12 @@ internal sealed partial class ModelSettingsView
     private void BuildVoiceLibrary(StackPanel body)
     {
         var content = new StackPanel();
-        content.Children.Add(ModelText(L.T("已保存音色", "Saved voices"), "VoiceLibraryTitle", 16, true));
-        content.Children.Add(ModelText(L.T("选择名字，点击「使用所选音色」即可为此角色启用。你保存的音色可在这里重命名或删除。", "Select a name and click Use selected voice to enable it for this character. Rename or delete your saved voices here."), "VoiceLibraryHint"));
+        content.Children.Add(_voiceLibraryTitle);
+        var columns = new Grid();
+        columns.ColumnDefinitions.Add(new ColumnDefinition());
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
+        var editor = new StackPanel { Margin = new Thickness(20, 0, 0, 0) };
+        Grid.SetColumn(editor, 1); columns.Children.Add(editor);
         _voiceLibraryList.MinHeight = 132; _voiceLibraryList.MaxHeight = 240;
         _voiceLibraryList.Margin = new Thickness(0, 0, 0, 12);
         _voiceLibraryList.BorderBrush = Ui.Brush("#DDE5D6"); _voiceLibraryList.Background = Ui.Brush("#FAFBF7");
@@ -70,19 +75,26 @@ internal sealed partial class ModelSettingsView
 </Style>
 """);
         _voiceLibraryList.SelectedValuePath = nameof(VoiceLibraryChoice.Key);
-        content.Children.Add(_voiceLibraryList);
-        content.Children.Add(ModelText(L.T("修改所选音色名称（最多 60 字）", "Edit selected voice name (up to 60 characters)"), "VoiceLibraryNameLabel", 11, true));
+        columns.Children.Add(_voiceLibraryList);
+        editor.Children.Add(ModelText(L.T("音色名称", "Voice name"), "VoiceLibraryNameLabel", 11, true));
         _voiceLibraryName.AcceptsReturn = false; _voiceLibraryName.MaxHeight = 34;
-        content.Children.Add(_voiceLibraryName);
+        _voiceLibraryName.ToolTip = L.T("最多 60 字。", "Up to 60 characters.");
+        editor.Children.Add(_voiceLibraryName);
         var actions = new WrapPanel { Margin = new Thickness(0, 12, 0, 4) };
-        foreach (var button in new[] { _voiceLibraryApply, _voiceLibraryRename, _voiceLibraryDelete })
+        foreach (var button in new[] { _voiceLibraryRename, _voiceLibraryDelete })
         {
             button.Margin = new Thickness(0, 0, 8, 6); actions.Children.Add(button);
             AutomationProperties.SetName(button, button.Content.ToString());
         }
-        content.Children.Add(actions); content.Children.Add(_voiceLibraryStatus);
-        content.Children.Add(ModelText(L.T("DeepSeek 的 Let Me Go 和 GPT 龙娘的默认音色已锁定，不能删除。删除自定义音色时，本机保留恢复副本。", "DeepSeek's Let Me Go and GPT Dragon's default voice are protected from deletion. Deleted custom voices retain a local recovery copy."), "VoiceLibraryProtectedHint"));
-        var card = Card(content); card.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(card);
+        editor.Children.Add(actions);
+        _voiceLibraryApply.HorizontalAlignment = HorizontalAlignment.Left;
+        _voiceLibraryApply.Margin = new Thickness(0, 8, 0, 8);
+        AutomationProperties.SetName(_voiceLibraryApply, _voiceLibraryApply.Content.ToString());
+        editor.Children.Add(_voiceLibraryApply); editor.Children.Add(_voiceLibraryStatus);
+        _voiceLibraryDelete.ToolTip = L.T("删除后保留本机恢复副本；默认音色不能删除。", "Keeps a local recovery copy. Default voices cannot be deleted.");
+        content.Children.Add(columns);
+        var card = Card(content); card.Name = "VoiceLibraryCard";
+        card.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(card);
         AutomationProperties.SetName(_voiceLibraryList, L.T("当前角色的默认与已保存音色", "Default and saved voices for the current character"));
         AutomationProperties.SetName(_voiceLibraryName, L.T("固定音色名称，最多60字", "Saved voice name, up to 60 characters"));
         _voiceLibraryList.SelectionChanged += (_, _) => { if (!_syncVoiceLibrary) VoiceLibrarySelectionChanged(); };
@@ -104,12 +116,11 @@ internal sealed partial class ModelSettingsView
     private void RefreshVoiceLibrary(string? preferredKey = null)
     {
         if (_voiceCharacter.SelectedValue is not string role) return;
-        string defaultModel = PetVoiceProfiles.DefaultForSkin(role).ModelId;
         var choices = new List<VoiceLibraryChoice>();
         foreach (var (id, name) in new[] { ("base", "Let Me Go"), ("gpt-fixed", L.T("GPT 龙娘固定音色", "GPT Dragon voice")) })
         {
             string owner = id == "base" ? L.T("DeepSeek 默认", "DeepSeek default") : L.T("GPT 默认", "GPT default");
-            choices.Add(new("builtin:" + id, owner + L.T(" · 已保护，不可删除", " · Protected from deletion") + (id == defaultModel ? L.T(" · 本角色默认", " · Default for this character") : ""), name, id));
+            choices.Add(new("builtin:" + id, owner + L.T(" · 已保护", " · Protected"), name, id));
         }
         string? error = null;
         try
@@ -118,7 +129,7 @@ internal sealed partial class ModelSettingsView
             {
                 if (!PetVoiceProfiles.IsReferenceId(voice.ReferenceId) || !string.Equals(voice.SkinId, role, StringComparison.OrdinalIgnoreCase)) continue;
                 string name = string.IsNullOrWhiteSpace(voice.Name) ? L.T("未命名音色", "Unnamed voice") : voice.Name;
-                string details = L.T("自定义 · ", "Custom · ") + voice.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " · " + voice.ReferenceId[..6];
+                string details = voice.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
                 choices.Add(new(voice.ReferenceId, details, name, "saved-voice", voice));
             }
         }
@@ -136,8 +147,7 @@ internal sealed partial class ModelSettingsView
             _voiceLibraryName.Text = (_voiceLibraryList.SelectedItem as VoiceLibraryChoice)?.Name ?? "";
         }
         finally { _syncVoiceLibrary = false; }
-        _voiceLibraryStatus.Text = error ?? (selected == null
-            ? L.T("请从列表选择一个音色后点击使用。", "Select a voice from the list, then click Use selected voice.") : L.T("选择音色后点击「使用所选音色」生效；修改名称不会改变声音。", "Click Use selected voice to activate your selection. Renaming does not change the sound."));
+        _voiceLibraryStatus.Text = error ?? "";
         RenderVoiceLibrary();
     }
 
@@ -148,7 +158,7 @@ internal sealed partial class ModelSettingsView
         _syncVoiceLibrary = true;
         try { _voiceLibraryName.Text = choice.Name; }
         finally { _syncVoiceLibrary = false; }
-        _voiceLibraryStatus.Text = choice.IsBuiltIn ? L.T("内置音色受到保护，可以使用，不能重命名或删除。", "This built-in voice is protected. You can use it, but cannot rename or delete it.") : L.T("已选中「", "Selected “") + choice.Name + L.T("」；点击使用后才会切换当前角色的音色。", "”. Click Use selected voice to change this character's voice.");
+        _voiceLibraryStatus.Text = choice.IsBuiltIn ? L.T("默认音色不可重命名或删除。", "Default voices cannot be renamed or deleted.") : "";
         if (_voiceModel.SelectedValue as string == "fixed") VoiceProfileDraftChanged();
         RenderVoiceLibrary();
     }
@@ -156,6 +166,7 @@ internal sealed partial class ModelSettingsView
     private void RenderVoiceLibrary()
     {
         if (_closed) return;
+        _voiceLibraryTitle.Text = L.T("已保存音色", "Saved voices") + (_voiceLibraryRole == null ? "" : " · " + PetVoiceProfiles.CharacterName(_voiceLibraryRole));
         var selected = _voiceLibraryList.SelectedItem as VoiceLibraryChoice;
         bool busy = VoiceStudioOwnsAudio || _speechModelOperation;
         bool available = _speechHost != null && !busy && selected != null;

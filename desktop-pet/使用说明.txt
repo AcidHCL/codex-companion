@@ -1,3 +1,49 @@
+1.40.0 界面精简
+设置、模型、语音、陪伴与屏幕理解减少重复说明，相关操作就近分组，详细帮助按需展开；连接状态、错误、远程发送和费用提醒继续可见。中英文同步，原设置和音色保持不变。
+English: Related controls are grouped together, redundant descriptions are removed, and detailed help expands on demand. Connection status, errors, remote-sharing and cost notices remain visible. Both languages and existing preferences/voices are preserved.
+
+1.39.0 全局模型选择 · API 主动陪伴与屏幕理解
+“设置 → 模型与语音 → 聊天模型连接”现在统一控制所有 LLM 功能：聊天与图片、动作/点击反应、主动陪伴、屏幕理解和定时任务长结果摘要。选择 Ollama 后均使用当前选中的 Ollama 模型；选择 API 后均使用当前 API 地址和模型，不自动回退到另一服务或其他模型。语音合成、音色和语音输入设置保持独立。
+沿用原“主动陪伴”和“屏幕理解”页面、场景开关、冷却/自动间隔、排除应用与全屏安静设置。API 不需要本机加载；开启相关功能后，符合条件的主动反应会调用 API，可能产生服务商费用。Ollama 后台任务仍仅使用当前已加载模型，并保留其上下文与自动卸载设置。
+远程 API 读取窗口文字/截图，仍需在“屏幕理解”开启原来的远程发送选项（现名“允许发送到远程模型服务（含 API）”）。截图还要求所选 API 模型支持图片，并在连接设置开启图片输入；不支持图片时只使用已开启的窗口文字，不更换模型。各项开关不会因升级自动打开。
+切换服务或模型会取消旧的后台请求，过期结果不再显示或播报。陪伴观察、截图/正文和定时摘要不进入聊天记录或共享记忆；应用分类仍按原开关单独保存。API 模式重启后，无需先打开聊天窗口，已开启的点击反应即可使用；定期检查不发送付费探测请求。
+English: The selected Ollama/API connection now controls all LLM features: chat/images, pet actions and interaction reactions, proactive companionship, screen understanding and scheduled-result summaries. Speech and voice input remain independent. Existing feature switches, intervals, exclusions and quiet rules still apply; API background requests may incur provider charges. Remote window content still requires the existing remote-sharing option, and screenshots require image support. Ollama background requests use only the selected resident model. Switching cancels old requests; observation and summary content stays out of chat/shared memory.
+
+1.38.0 OpenAI 官方与兼容 API
+设置 → 模型与语音 → 聊天模型连接：选择 OpenAI 兼容 API。OpenAI 官方基础地址为 https://api.openai.com/v1；填写自己的 API Key，读取模型列表选择模型或手动填写完整模型 ID，然后保存并应用。其他提供 OpenAI 兼容 Chat Completions 的服务使用其官方基础地址；不支持直接填写 Anthropic Messages 等其他原生协议。
+按模型实际能力打开“图片输入”和“工具调用”，分别用于聊天中的图片理解、联网搜索和桌宠动作。保存不会发起推理；读取模型列表不发送对话或图片。实际聊天按服务商规则计费；模型列表可见不保证拥有该模型的推理权限，列表接口受限时仍可手动填写后尝试聊天。
+API Key 在本机按 Windows 用户加密，按完整基础地址分别保存，不写入普通设置文件；更换地址不复用旧地址密钥。聊天、图片及相关记忆只在发送时交给所选服务；切换服务会恢复各自独立的本地会话和记忆，不把原 Ollama 历史自动发给 API。
+看板和聊天窗口的选模同步；API 模型不显示为本机已加载，不提供本机加载/卸载或自动卸载。切回 Ollama 保留原地址、模型和自动卸载设置，不主动卸载原来的模型。1.39 起主动功能也使用当前 API，传送窗口内容继续受原远程发送开关控制。
+English: Settings → Models & Speech → Chat model connection supports official OpenAI (https://api.openai.com/v1) and compatible Chat Completions APIs. Enter your key and model ID, or read the model list, then save and apply. Enable image/tool capabilities only when supported. Keys are encrypted locally and bound to the full base URL; history/memory are isolated per service. API calls use provider billing. Version 1.39 also routes proactive features through the current API, subject to the existing remote window-sharing setting. Switching back preserves Ollama settings and residency.
+
+1.37.1 主动陪伴触发修复与诊断
+修复临时聊天、播报或冷却期吃掉陪伴触发机会的问题：空闲后重新检查当前窗口，不补播旧结果。后台连接检查不再取消正在生成的陪伴反应；手动刷新仍优先。
+设置 → 主动陪伴 → 当前状态 → 最近陪伴记录：展开或点击刷新可查看近期触发、等待、取消和跳过原因。记录仅含时间、固定环节与原因，不含应用名、窗口标题、截图、正文或模型回答；本地日志最多保留两份128 KiB文件。
+English: Temporary busy/cooldown states no longer consume companion opportunities, and periodic connection checks no longer cancel active reactions. Settings → Proactive companion → Current status → Recent companion records shows bounded local timing/reason diagnostics without window or conversation content.
+
+1.37.0 屏幕理解 · 按需读取与应用识别
+新增独立的“设置 → 屏幕理解”，默认关闭。先开启“主动陪伴”并加载选中的 Ollama 聊天模型，再启用窗口文字、必要时截图和应用分类记忆。未加载模型时不会读取窗口；截图还要求模型支持图片。默认仅向本机 Ollama 发送，远程地址需单独允许。
+点击“切回目标窗口后看一下”，随后回到目标应用，让窗口稳定约 15 秒并停下输入至少 5 秒。自动理解默认最少间隔 5 分钟，可选 3／5／10 分钟，并沿用主动陪伴的场景、排除应用、全屏安静和聊天优先规则；恢复输入或换窗口会取消过期结果。回应可以保持安静，语音沿用原朗读开关。
+窗口文字、截图和理解摘要不保存到聊天历史或共享记忆。未知专用应用的可信分类可单独记住：只保存应用名、身份哈希、分类与必要时间信息，可信度至少 0.85，最多 256 条，90 天过期。可在该页纠正或删除；手动应用分类优先，浏览器、远程桌面等多用途程序不会凭一页内容固定分类。
+第二层代码独立放在 Features/ScreenUnderstanding；构建时 -p:EnableScreenUnderstanding=false 可单独移除，第一层仍可使用。不自动加载或卸载模型，不修改 Ollama 全局设置。
+English: Settings → Screen understanding adds opt-in current-window text and on-demand images with an already-loaded Ollama model. Enable Proactive companion first; images need a vision model. To try once, click “Inspect after I return to the target window”, return to the app and pause input. Content stays out of chat/shared memory. Only confident dedicated-app categories are stored separately for up to 90 days, with correction and deletion controls. Remote transmission needs a separate opt-in. Existing quiet, exclusion, speech and chat-priority rules remain in effect.
+
+1.36.0 主动陪伴 · 工作、游戏与日常
+原“工作陪伴”扩展为“设置 → 主动陪伴”，支持工作与学习、游戏、影音娱乐、日常浏览与交流，四类分别开关。沿用原总开关、隐私选项和语音偏好；新安装默认关闭。
+应用切换后的简短回应会参考当前与之前的场景，并保留 DeepSeek／GPT 的人设。按前台进程名称粗略分类，浏览器、聊天软件、启动器和未知应用默认归日常；可在“应用分类”输入进程名，选择场景并保存，也能选中修改或移除。
+工作与日常默认约 45 分钟活跃使用后考虑提醒，游戏和影音默认约 60 分钟，分别可选 30／45／60／90 分钟。跨场景重新累计，同类应用切换保留累计；五分钟无输入会重置，所以这些是估计活跃使用时间，不是实际对局或媒体播放时长。
+“全屏时保持安静”默认开启：全屏期间仅保留应用分类和活跃时长，不读取标题或发起主动回应；切回其他应用并停下输入后再考虑回应。关闭该选项后仍需停下输入至少 5 秒，且遵守全局间隔、语音和聊天优先级。Codex 原通知仍由看板设置控制。
+1.36 的第一层自身只基于应用和可选标题，不能知道游戏输赢、对局进展、歌曲名、视频情节或聊天正文；1.37 可另行开启上面的屏幕理解第二层。仅使用已加载模型，观察和主动回应不写入聊天历史或共享记忆。功能继续集中在独立模块中。
+English: Settings → Proactive companion now covers work/study, gaming, video/music and everyday use, each with its own switch and reminder interval. App names provide rough categories; browsers, launchers and unknown apps default to everyday use. Add or edit app overrides in the same page. Full-screen quiet is enabled by default and keeps only transient app/activity-time context, without titles or generated remarks. Activity duration is estimated from input, not actual match or playback time. Existing privacy, model, speech and chat-priority behavior is retained.
+
+1.35.0 工作陪伴 · 第一层
+设置 → 工作陪伴：新增独立开关，默认关闭。开启后每 2 秒只读前台应用和最后输入时间；窗口标题需要单独开启。应用稳定约 15 秒且停止输入至少 5 秒后，才考虑给出简短的角色回应；连续活动默认约 45 分钟可提醒休息，回应间隔默认至少 5 分钟。
+只使用设置中已加载的 Ollama 聊天模型，未加载或忙碌时保持安静；不会主动预加载或卸载，不修改 Ollama 的模型配置。回应可配开心或惊讶表情，朗读单独开启并服从原语音总开关。Codex 完成通知与庆祝沿用原流程，不重复生成或播报。
+全屏、锁屏、远程会话断开、密码管理器和排除应用期间不观察；恢复输入、窗口变化、操作桌宠、聊天或切换模型会丢弃过期回应。可随时暂停、清除本段观察或关闭功能。
+不截图、不读取正文或按键内容；观察和回应不进入聊天历史、共享记忆或日志，只在内存短暂保留。独立设置保存在 %LOCALAPPDATA%\AIPet\work-companion-settings.json。若开启窗口标题，标题会发往你配置的 Ollama 地址；它可能包含私人信息。
+开发：功能代码集中在 Features/WorkCompanion，通过泛型设置页和少量生命周期接口接入；构建时加 -p:EnableWorkCompanion=false 可整体排除此模块。屏幕内容理解和长期工作记忆留待后续层实现。
+English: Enable Settings → Work companion to use lightweight app/activity observations with an already-loaded chat model. Window titles and speech are separate opt-ins. Replies are infrequent, stop for input or higher-priority interactions, and never enter chat history or shared memory. Full-screen, locked/disconnected and excluded contexts are skipped. Pause, clear or disable the module at any time. This is layer one only; screen understanding and long-term work memory are not included yet.
+
 1.34.0 Ollama 运行活动
 设置 → 模型与语音：新增“Ollama 运行活动”，结合该本机服务的推理进程 GPU 运算负载和桌宠自身请求，显示桌宠正在请求、疑似外部推理、暂无明显 GPU 活动、观察中或无法判断。页面可见时每 5 秒读取；隐藏或切换页面后停止采样。
 桌宠请求包含聊天、行为反应和定时任务摘要；加载、卸载、预热以及请求刚结束的缓冲期单独处理。连续多次检测到 GPU 活动且桌宠没有请求时，才提示“疑似外部推理”。

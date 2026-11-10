@@ -1,10 +1,10 @@
-# Codex Companion · 蓝色大肥鱼 1.34.0
+# Codex Companion · 蓝色大肥鱼 1.40.0
 
 [简体中文](README.md) | **English**
 
 Bring AI characters to your Windows desktop: change their appearance, let them walk and interact with windows, chat with them, and receive reminders when work is finished.
 
-Codex Companion combines desktop character animation, **local chat through Ollama**, a **Codex task dashboard**, and **local speech**. Enable the connections you need; the pet and local animations also work without Codex or an AI model.
+Codex Companion combines desktop character animation, **Ollama / API chat**, a **Codex task dashboard**, and **local speech**. Enable the connections you need; the pet and local animations also work without Codex or an AI model.
 
 The current application interface still displays **AI Pet**, and its executable is `DesktopPet.exe`.
 
@@ -14,7 +14,7 @@ The application supports English and Simplified Chinese. Key Chinese labels are 
 | --- | --- |
 | Characters and animation | 9 character skins; state animations for DeepSeek and GPT; switch between classic and newer DeepSeek animations |
 | Desktop interaction | Dragging, walking, falling and landing, standing on windows, jumping, and climbing |
-| Chat and image understanding | Configurable Ollama address, switching between installed models, streamed replies, and image drag-and-drop or paste |
+| Chat and image understanding | Ollama or OpenAI-compatible APIs, model switching, streamed replies, and image drag-and-drop or paste |
 | History and memory | Local conversation history, conversation switching, shared memory across conversations, optional web search and webpage reading |
 | Speech | Local voice input, separate voice settings for all 9 characters, Voice Studio generation / audition / named saves, a voice library with selection / renaming / deletion, streamed playback, and model loading controls |
 | Work dashboard | Codex usage allowances and tasks, optional message reading, and Codex / Dot / All filters |
@@ -29,9 +29,27 @@ The application supports English and Simplified Chinese. Key Chinese labels are 
 
 ## Changelog
 
+- **1.40.0 · Cleaner interface:** Related controls are grouped together, repeated descriptions are reduced, and detailed help expands on demand in both languages. Future UI work follows the [design principles](DESIGN.md).
+- **1.39.0 · Global model selection:** Proactive companionship, screen understanding and scheduled summaries follow the selected Ollama/API model. Existing settings remain in place, speech stays independent, and switching cancels stale requests.
+- **1.38.0 · API chat:** Official OpenAI and compatible APIs, configurable connections, model switching, streaming, images and tools; locally encrypted keys and separate Ollama settings.
+- **1.35–1.37.1 · Proactive companion:** Work, gaming and everyday reactions, opt-in window text/image understanding, and recent trigger diagnostics in independently removable modules.
 - **1.34.0 · Ollama activity detection:** Settings combines Ollama process GPU activity with the pet's own requests to indicate suspected external inference, without identifying the exact task.
 - **1.33.0 · Automatic model unloading:** Chat and speech models can each unload after 1 / 5 / 10 / 30 / 60 idle minutes, or never unload automatically.
 - **1.32.0 · Task result readout:** Completed scheduled tasks announce their results; an already-loaded LLM can summarize long results.
+
+## Using OpenAI or a compatible API
+
+1. Open **Settings → Models & Speech → Model connection** and select **OpenAI-compatible API**.
+2. For official OpenAI, use `https://api.openai.com/v1`, enter your API key, and **Read model list** to choose a chat model. You can also enter its model ID manually.
+3. Enable **image input** and **tool calling** only if the model supports them, then **Save and apply**. Model selection stays synchronized with chat; existing personas, speech and actions continue to work.
+
+Other providers must expose a compatible Chat Completions API. Use their documented base URL without appending `/chat/completions`; native protocols such as Anthropic Messages are not supported by this connection. Saving does not run inference. Actual requests use the provider's API billing, and a listed model may still require separate inference access.
+
+Keys are encrypted for the current Windows user and bound to the full base URL, outside ordinary preferences. Each service has separate local history and shared memory; switching does not automatically send previous Ollama conversations to the API. API models require no local download, loading or unloading. Switching back preserves the Ollama address, model, retention preference and residency.
+
+The selected connection controls chat, images, pet behavior, proactive companionship, screen understanding and scheduled-result summaries. Speech remains independent. Existing feature switches, scenes, intervals and exclusions still apply. API requests use provider billing; Ollama background requests use only the selected resident model, without switching to another loaded model.
+
+For remote API window text/images, enable **Screen understanding → Allow window content to be sent to remote services**. Screenshots additionally require a vision-capable model with image input enabled in connection settings. Upgrades do not turn these options on. Switching services/models cancels old requests; observations and summaries stay out of chat history and shared memory.
 
 ## Language switching and one-click restart
 

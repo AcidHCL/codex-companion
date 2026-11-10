@@ -8,13 +8,13 @@ internal sealed record PetPersonaProfile(string Key, string SystemPrompt, string
 // summaries, not official model biographies or identities of the backend.
 internal static class PetPersona
 {
-    internal static PetPersonaProfile ForSkin(string skinId, string characterName, string model, bool isLocal = true, bool? supportsImages = null, bool webEnabled = false, bool behaviorEnabled = false, bool explicitCommandsEnabled = false)
+    internal static PetPersonaProfile ForSkin(string skinId, string characterName, string model, bool isLocal = true, bool? supportsImages = null, bool webEnabled = false, bool behaviorEnabled = false, bool explicitCommandsEnabled = false, bool api = false)
     {
-        if (L.IsEnglish) return EnglishProfile(skinId, characterName, model, isLocal, supportsImages, webEnabled, behaviorEnabled, explicitCommandsEnabled);
+        if (L.IsEnglish) return EnglishProfile(skinId, characterName, model, isLocal, supportsImages, webEnabled, behaviorEnabled, explicitCommandsEnabled, api);
         bool deepSeek = string.Equals(skinId, "deepseek", StringComparison.OrdinalIgnoreCase);
         bool gpt = string.Equals(skinId, "gpt", StringComparison.OrdinalIgnoreCase);
         string vision = supportsImages == false ? "当前模型不支持图片理解，不要声称看到了未收到的图片。" : "若实际收到图片，按可见内容回答，看不清就说明，不编造画面。";
-        string backend = isLocal ? "本机 Ollama" : "所配置的 Ollama 服务";
+        string backend = api ? "用户配置的 API 服务" : isLocal ? "本机 Ollama" : "所配置的 Ollama 服务";
         string web = webEnabled ? "本轮允许按需搜索公开网页和读取用户提供的链接；只有实际收到的检索结果才算已查证，失败时如实说明。" : "本轮未启用联网，不能搜索或打开网页，不要假装查到了实时信息。";
         string behavior = behaviorEnabled
             ? "当前可通过桌宠专用工具播放已安装的表演、情绪或声音，并按用户的移动意图尝试行走、跳跃及攀爬；实际可用能力由本轮状态和工具执行回执决定。只有回执确认接受的动作才能说已启动，启动移动不代表已到达；窗口目标不合适时可能被拒绝。跳舞、敲碗或烟花是人物表演，不能声称播放了未配置的音乐；Token 来或口粮表演不会改变真实额度、用量或任务。点击、拖拽、下落和落地由用户及物理系统触发，你只能对事件作出反应。不能操控其他程序或文件，不能假装存在尚未制作的动作、表情或音频；仅文字里的表情描写不代表桌面真的播放。"
@@ -86,7 +86,7 @@ internal static class PetPersona
     }
 
     private static PetPersonaProfile EnglishProfile(string skinId, string name, string model, bool local,
-        bool? images, bool web, bool behavior, bool explicitCommands)
+        bool? images, bool web, bool behavior, bool explicitCommands, bool api)
     {
         string vision = images == false
             ? "This model cannot understand images. Do not claim to see an image you did not receive. "
@@ -99,7 +99,7 @@ internal static class PetPersona
             : explicitCommands
                 ? "No autonomous action tools are available. The app handles only explicit short song/start/stop commands, subject to installed assets and physics. Describe success only from an actual execution receipt. Other actions or computer control are unavailable. "
                 : "You have no computer control, model delegation or audio playback tools. Do not claim actions you did not execute. ";
-        string basic = $"You are the user's desktop companion, named {name}. Reply in natural, friendly English by default; follow an explicit request for another language. Keep casual replies short and provide detail when useful. {vision}{capabilities}If asked which model is running, honestly identify {model} on {(local ? "local Ollama" : "the configured Ollama service")}; your character skin is not the backend model. ";
+        string basic = $"You are the user's desktop companion, named {name}. Reply in natural, friendly English by default; follow an explicit request for another language. Keep casual replies short and provide detail when useful. {vision}{capabilities}If asked which model is running, honestly identify {model} on {(api ? "the configured API service" : local ? "local Ollama" : "the configured Ollama service")}; your character skin is not the backend model. ";
         string key = skinId.ToLowerInvariant();
         if (key == "gpt")
         {

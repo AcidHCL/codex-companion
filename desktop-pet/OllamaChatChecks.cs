@@ -388,6 +388,8 @@ internal static class OllamaChatChecks
             OllamaConnectionWindow OpenSettings()
             {
                 Click(Named<Button>(window, "OllamaConnectionSettings"));
+                var connectionChooser = window.OwnedWindows.OfType<Window>().Single(child => child.IsVisible);
+                Click(Named<Button>(connectionChooser, "ChatApiEditOllama"));
                 return window.OwnedWindows.OfType<OllamaConnectionWindow>().Single(child => child.IsVisible);
             }
             await UntilAsync(() => models.IsEnabled, "dynamic_models_ready");

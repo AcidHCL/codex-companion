@@ -88,6 +88,9 @@ internal static class OllamaActivityUiChecks
                     Click(window, "ModelRefresh"); await Settle(window);
                     Click(window, "ModelRefresh"); await Settle(window);
                     Check(Text(window, "DashboardOllamaActivityState") == L.T("疑似外部推理", "Possible external inference"), "sustained_gpu_without_own_requests_shows_suspected_external_" + language);
+                    var details = Named<Expander>(window, "DashboardOllamaActivityDetails");
+                    Check(!details.IsExpanded, "technical_detection_details_are_collapsed_by_default_" + language);
+                    details.IsExpanded = true; await Settle(window);
                     Check(Text(window, "DashboardOllamaActivityGpu").Contains("90%") && Text(window, "DashboardOllamaActivityProcesses").Contains("PID 1234"),
                         "activity_card_reports_process_percent_and_pid_" + language);
                     Check(Text(window, "DashboardOllamaActivityScope").Contains(L.T("整个 Ollama 服务", "entire Ollama service")) &&

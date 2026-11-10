@@ -18,6 +18,9 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // A bounded capture helper only speaks stdin/stdout JSON; never relay it
+        // through desktop launch, load user settings, initialize logging or UI.
+        if (OptionalPetFeatures.RunEarlyWorker(args) is int workerResult) return workerResult;
         // Normalize the process before GraphicsRecovery, settings, pairing, or
         // logging touches AppData. A Desktop Bridge child can see redirected
         // files despite reporting no package identity of its own.
@@ -58,6 +61,10 @@ internal static class Program
         if (smoke) File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-result.json"), "{\"passed\":false,\"status\":\"starting\"}");
         try
         {
+            if (OptionalPetFeatures.RunDiagnostic(args) is int optionalDiagnostic) return optionalDiagnostic;
+            if (args.Contains("--chat-api-test")) return ChatApiIntegrationChecks.Run();
+            if (args.Contains("--api-dashboard-test")) return ApiDashboardChecks.Run();
+            if (args.Contains("--api-settings-ui-test")) return ChatApiSettingsUiChecks.Run();
             if (args.Contains("--localization-test")) return LocalizationChecks.Run();
             if (args.Contains("--localization-ui-test")) return LocalizationUiChecks.Run();
             if (args.Contains("--scheduled-announcement-test")) return RunScheduledAnnouncementCheck().GetAwaiter().GetResult();
@@ -523,6 +530,7 @@ internal sealed class PetApplication : Application
     private DateTimeOffset _lastErrorDialog;
     internal bool RestartRequested { get; private set; }
     private CodexNoticePresenter? _noticePresenter;
+    private OptionalPetFeatures? _optionalFeatures;
 
     public PetApplication(IReadOnlyList<SkinInfo> skins, bool smoke, bool integration, bool live2DTest = false, string? live2DTestModel = null, string? sceneTestManifest = null, bool movementTest = false, bool deepSeekStateTest = false, bool fallLandTest = false, bool dragStateTest = false)
     {
@@ -603,18 +611,25 @@ internal sealed class PetApplication : Application
                 // remains disabled until a later release supplies that surface.
             };
             _monitor.VerifiedTransition += _pet.OnVerifiedSceneNotice;
-            _noticePresenter = new CodexNoticePresenter((notice, presentation) =>
+            _noticePresenter = new CodexNoticePresenter((output, model, endpoint, ct) =>
+            {
+                if (ScheduledTaskAnnouncement.ShortResult(output) is { } shortResult) return Task.FromResult(shortResult);
+                return EnsureChatWindow(showErrors: false)?.DescribeScheduledOutputAsync(output, model, endpoint, ct) ??
+                    Task.FromResult(ScheduledTaskAnnouncementResult.Fallback);
+            }, (notice, presentation) =>
             {
                 if (presentation.Expanded) _pet.SayScheduledTask(presentation.Text);
                 else _pet.Say(presentation.Text);
                 _tray.ShowBalloon(notice.Title, presentation.Body);
                 if (notice.Kind == "complete") _pet.Bounce();
-            }, () => settings.OllamaKeepAliveMinutes);
+            });
             _monitor.Notice += PresentCodexNotice;
             if (!_smoke) _monitor.Start();
         }
         _pet.Show();
         if (!_smoke) _behavior = new PetBehaviorCoordinator(_pet, () => _chatWindow, () => EnsureChatWindow(showErrors: false));
+        if (!_smoke) _optionalFeatures = new OptionalPetFeatures(_pet, _monitor,
+            () => _chatWindow, () => EnsureChatWindow(showErrors: false));
         if (_smoke)
         {
             ShowSettings();
@@ -759,7 +774,8 @@ internal sealed class PetApplication : Application
         if (_settingsWindow == null)
         {
             _settingsWindow = new AppSettingsWindow(_pet, ShowWardrobe, ShowDashboard, ShowChat, SetLlmBehaviorMode,
-                modelServices: CreateModelSettingsServices(), restart: RequestRestart);
+                modelServices: CreateModelSettingsServices(), restart: RequestRestart,
+                extraPages: _optionalFeatures?.SettingsPages);
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
@@ -786,7 +802,11 @@ internal sealed class PetApplication : Application
         () => _chatWindow?.ModelMemoryOperationText,
         () => _chatWindow?.DashboardModelControlBlockedReason,
         selected => EnsureChatWindow(showErrors: false)?.SelectDashboardModelAsync(selected) ??
-            Task.FromResult(L.T("无法打开聊天模型控制器，请检查本地聊天记录是否可用。", "Could not open chat model controls. Check whether local chat history is accessible.")));
+            Task.FromResult(L.T("无法打开聊天模型控制器，请检查本地聊天记录是否可用。", "Could not open chat model controls. Check whether local chat history is accessible.")),
+        (update, ct) => (EnsureChatWindow(showErrors: false) ?? throw new InvalidOperationException(L.T("无法打开聊天模型控制器。", "Could not open chat model controls."))).ApplyChatApiConnectionAsync(update, ct),
+        endpoint => new ApiKeyStore().HasKey(endpoint),
+        () => _chatWindow?.AvailableApiModels ?? Array.Empty<string>(),
+        (update, ct) => (EnsureChatWindow(showErrors: false) ?? throw new InvalidOperationException(L.T("无法打开聊天模型控制器。", "Could not open chat model controls."))).ReadChatApiModelsAsync(update, ct));
 
     private void ShowChat()
     {
@@ -819,7 +839,7 @@ internal sealed class PetApplication : Application
             {
                 store = new ChatMemoryStore(ChatMemoryStore.DefaultPath);
                 _chatWindow = new OllamaChatWindow(_pet.Settings, () => _pet.CurrentDisplayName,
-                    _pet.SetChatBusy, _pet.Say, _pet.SaveNow, chatStore: store, behaviorHost: _pet,
+                    _pet.SetChatBusy, _pet.Say, () => _pet.SaveNow(throwOnError: true), chatStore: store, behaviorHost: _pet,
                     answerCompleted: _pet.SayChatAnswer, stopSpeech: _pet.StopSpeech,
                     voiceInputActive: _pet.SetVoiceInputActive,
                     voiceChatSessionActive: _pet.SetVoiceChatSessionActive,
@@ -834,7 +854,7 @@ internal sealed class PetApplication : Application
                 return null;
             }
             _chatWindow.Closed += (_, _) => { _chatWindow = null; _behavior?.RefreshMode(); };
-            _chatWindow.ModelSelectionChanged += () => _settingsWindow?.ModelSelectionChanged();
+            _chatWindow.ModelSelectionChanged += () => { _settingsWindow?.ModelSelectionChanged(); _noticePresenter?.Revalidate(); };
         }
         return _chatWindow;
     }
@@ -858,13 +878,17 @@ internal sealed class PetApplication : Application
         var settings = _pet.Settings;
         var context = monitor.NoticeContext;
         long bubbleRevision = _pet.SpeechBubbleRevision;
-        string address = settings.OllamaAddress, model = settings.OllamaModel, language = settings.Language;
+        var endpoint = ChatModelConnection.ActiveEndpoint(settings);
+        string model = ChatModelConnection.ActiveModel(settings), language = settings.Language;
+        bool useApi = settings.UseChatApi;
+        var apiProfile = settings.ApiProfile;
         bool Eligible() => monitor.MessagesEnabled && monitor.Snapshot.Connected && settings.NotificationsEnabled &&
             monitor.NoticeContext == context && _pet.SpeechBubbleRevision == bubbleRevision &&
-            settings.OllamaAddress == address && settings.OllamaModel == model &&
+            settings.UseChatApi == useApi && ChatModelConnection.ActiveEndpoint(settings) == endpoint &&
+            ChatModelConnection.ActiveModel(settings) == model && (!useApi || settings.ApiProfile == apiProfile) &&
             settings.Language == language && (notice.TaskKey == null ||
                 monitor.Snapshot.Tasks.Any(task => task.Key == notice.TaskKey && task.Source == TaskSource.Codex));
-        try { await _noticePresenter.ShowAsync(notice, model, address, Eligible); }
+        try { await _noticePresenter.ShowAsync(notice, model, endpoint, Eligible); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { Program.Log(ex); }
     }
 
@@ -896,6 +920,7 @@ internal sealed class PetApplication : Application
         LifecycleLog.Record(LifecycleEvent.ApplicationExit, e.ApplicationExitCode);
         GraphicsFailure.FatalHandler = null;
         _smokeTimer?.Stop();
+        _optionalFeatures?.Dispose();
         _noticePresenter?.Dispose();
         _behavior?.Dispose();
         _companionUi?.Dispose();

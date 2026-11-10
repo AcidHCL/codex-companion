@@ -44,7 +44,7 @@ internal sealed partial class OllamaChatWindow
     private bool CanStartModelMemoryOperation => !_shutdown && !_generating && !_userSendPending && !_switching &&
         !_configuring && !_preparingImage && !_sessionSwitching && !VoiceInputBusy && !ModelMemoryBusy;
 
-    private bool CanChangeModelMemory => CanStartModelMemoryOperation && IsVisible &&
+    private bool CanChangeModelMemory => !_settings.UseChatApi && CanStartModelMemoryOperation && IsVisible &&
         _connected && _installedModels.Contains(_model, StringComparer.Ordinal) && _capabilities.SupportsChat != false;
 
     private void RefreshModelMemoryControls()
@@ -71,6 +71,7 @@ internal sealed partial class OllamaChatWindow
     // this window's shared gate so an operation cannot race a reply or behavior.
     internal Task<string> SetDashboardModelLoadedAsync(bool load)
     {
+        if (_settings.UseChatApi) return Task.FromResult(L.T("API 模型由服务商运行，无需在本机加载或卸载。", "API models run at the provider and do not need local loading or unloading."));
         if (!CanStartModelMemoryOperation)
             return Task.FromResult(DashboardModelControlBlockedReason ?? L.T("聊天或模型操作正在进行，请等待当前操作结束后重试。", "A chat or model operation is in progress. Wait for it to finish and retry."));
         return ChangeModelMemoryAsync(load, validateSelection: true);

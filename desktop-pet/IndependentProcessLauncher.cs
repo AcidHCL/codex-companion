@@ -28,7 +28,8 @@ internal static class IndependentProcessLauncher
             throw new InvalidOperationException(L.T("桌宠未能进入独立的 Windows 桌面环境，请从解压目录直接启动 DesktopPet.exe。", "AI Pet could not enter an independent Windows desktop session. Launch DesktopPet.exe directly from the extracted folder."));
         bool pairing = args.Contains("--pair-codex", StringComparer.Ordinal);
         bool command = pairing || args.Contains("--connection-test", StringComparer.Ordinal) ||
-            args.Contains("--desktop-environment-test", StringComparer.Ordinal) || args.Contains("--integration-test", StringComparer.Ordinal);
+            args.Contains("--desktop-environment-test", StringComparer.Ordinal) || args.Contains("--integration-test", StringComparer.Ordinal) ||
+            args.Contains("--companion-runtime-test", StringComparer.Ordinal);
         using var child = LaunchCurrent(args.Append(Marker).ToArray(), pairing);
         if (command)
         {

@@ -35,7 +35,7 @@ internal static class OllamaModels
         !model.EndsWith(":cloud", StringComparison.OrdinalIgnoreCase) && !model.EndsWith("-cloud", StringComparison.OrdinalIgnoreCase);
 }
 
-internal sealed record OllamaToolCall(string Name, string ArgumentsJson);
+internal sealed record OllamaToolCall(string Name, string ArgumentsJson, string? Id = null);
 internal sealed record OllamaToolDefinition(string Name, string Description, string ParametersJson);
 internal sealed record OllamaMessage(string Role, string Content, IReadOnlyList<string>? Images = null,
     IReadOnlyList<OllamaToolCall>? ToolCalls = null, string? ToolName = null, string? Thinking = null);
@@ -62,7 +62,7 @@ internal interface IOllamaClient : IDisposable
 
 // Only the user-selected server receives messages. No proxy, redirect, cloud model,
 // automatic download, authentication bypass, or certificate-validation bypass.
-internal sealed class OllamaClient : IOllamaClient
+internal sealed partial class OllamaClient : IOllamaClient
 {
     internal const int ContextTokens = 8192;
     internal const int ResponseTokens = 1024;

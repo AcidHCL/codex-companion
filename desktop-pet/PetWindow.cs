@@ -558,6 +558,11 @@ internal sealed partial class PetWindow : Window
     private void Changed() { QueueSave(); SettingsChanged?.Invoke(); }
     private void QueueSave() { if (!_persist || _restoring) return; _saveTimer.Stop(); _saveTimer.Start(); }
     public void SaveNow()
+        => SaveNow(throwOnError: false);
+
+    // Connection/profile commits must see storage failures so their key and
+    // active-client rollback can run. Ordinary geometry saves remain best effort.
+    internal void SaveNow(bool throwOnError)
     {
         if (!_persist || _restoring) return;
         try
@@ -573,7 +578,7 @@ internal sealed partial class PetWindow : Window
             }
             Settings.Save();
         }
-        catch (Exception ex) { Program.Log(ex); }
+        catch (Exception ex) { Program.Log(ex); if (throwOnError) throw; }
     }
 
     public void SetCodexStatus(CodexSnapshot snapshot)

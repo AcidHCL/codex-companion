@@ -36,6 +36,8 @@ internal sealed class DesktopSettings
     public bool ShowStatusBadge { get; set; } = true;
     public string OllamaAddress { get; set; } = OllamaEndpoint.DefaultAddress;
     public string OllamaModel { get; set; } = OllamaModels.FastModel;
+    public bool UseChatApi { get; set; }
+    public ChatApiProfile ApiProfile { get; set; } = new();
     public int OllamaKeepAliveMinutes { get; set; } = ModelRetentionPolicy.DefaultOllama;
     public bool WebSearchEnabled { get; set; } = true;
     public bool SharedMemoryEnabled { get; set; } = true;
@@ -94,6 +96,7 @@ internal sealed class DesktopSettings
         TaskSourceOverrides = TaskSourcePolicy.NormalizeOverrides(TaskSourceOverrides);
         OllamaAddress = OllamaEndpoint.Normalize(OllamaAddress);
         OllamaModel = OllamaModels.Normalize(OllamaModel);
+        ApiProfile = (ApiProfile ?? new()).Normalize();
     }
 
     public void Save()

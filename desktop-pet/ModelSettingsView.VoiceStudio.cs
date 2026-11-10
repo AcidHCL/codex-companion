@@ -31,7 +31,7 @@ internal sealed partial class ModelSettingsView
 
     private sealed class VoiceStudioDraft
     {
-        internal string Name = "", Instruction = "", Text = "", Language = L.IsEnglish ? "English" : "Chinese", Status = L.T("填写声音特点，再生成一段试听。", "Describe the voice, then generate an audition sample.");
+        internal string Name = "", Instruction = "", Text = "", Language = L.IsEnglish ? "English" : "Chinese", Status = "";
         internal PetVoiceDesignSample? Sample;
     }
 
@@ -46,16 +46,16 @@ internal sealed partial class ModelSettingsView
     {
         var content = new StackPanel();
         content.Children.Add(_studioRole);
-        content.Children.Add(ModelText(L.T("先生成，反复试听，满意后再固定。生成不会替换角色当前的声音。", "Generate a sample and audition it as often as you like before saving. Generation does not replace the character's current voice."), "VoiceStudioHint"));
-        content.Children.Add(ModelText(L.T("音色名称（保存时必填，最多 60 字）", "Voice name (required to save, up to 60 characters)"), "VoiceStudioNameLabel", 11, true));
-        _studioName.AcceptsReturn = false; _studioName.MaxHeight = 34; _studioName.Margin = new Thickness(0, 0, 0, 10);
-        content.Children.Add(_studioName);
+        _studioName.AcceptsReturn = false; _studioName.MaxHeight = 34;
+        _studioName.ToolTip = L.T("保存时必填，最多 60 字。", "Required when saving, up to 60 characters.");
         var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition()); columns.ColumnDefinitions.Add(new ColumnDefinition());
         var left = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
         var right = new StackPanel { Margin = new Thickness(12, 0, 0, 0) }; Grid.SetColumn(right, 1);
-        left.Children.Add(ModelText(L.T("希望她 / 他说话的声音（最多 600 字）", "Describe the voice (up to 600 characters)"), "VoiceStudioInstructionLabel", 11, true));
+        left.Children.Add(ModelText(L.T("声音描述", "Voice description"), "VoiceStudioInstructionLabel", 11, true));
+        _studioInstruction.ToolTip = L.T("描述音高、音色与说话气质，最多 600 字。", "Describe pitch, tone and delivery, up to 600 characters.");
         left.Children.Add(_studioInstruction);
-        right.Children.Add(ModelText(L.T("试听台词（单段，最多 100 字，建议 3–30 秒）", "Audition text (one paragraph, up to 100 characters, 3–30 seconds suggested)"), "VoiceStudioTextLabel", 11, true));
+        right.Children.Add(ModelText(L.T("试听台词", "Audition text"), "VoiceStudioTextLabel", 11, true));
+        _studioText.ToolTip = L.T("单段，最多 100 字，建议 3–30 秒。", "One paragraph, up to 100 characters; 3–30 seconds suggested.");
         _studioText.AcceptsReturn = false;
         right.Children.Add(_studioText);
         var languages = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
@@ -65,13 +65,24 @@ internal sealed partial class ModelSettingsView
         languages.Children.Add(_studioLanguage); right.Children.Add(languages);
         columns.Children.Add(left); columns.Children.Add(right); content.Children.Add(columns);
         var buttons = new WrapPanel { Margin = new Thickness(0, 14, 0, 5) };
-        foreach (var button in new[] { _studioGenerate, _studioPlay, _studioStop, _studioCancel, _studioSave })
+        foreach (var button in new[] { _studioGenerate, _studioPlay, _studioStop, _studioCancel })
         {
             button.Margin = new Thickness(0, 0, 8, 7); buttons.Children.Add(button);
             AutomationProperties.SetName(button, button.Content.ToString());
         }
-        content.Children.Add(buttons); content.Children.Add(_studioStatus);
-        content.Children.Add(ModelText(L.T("使用本地 VoiceDesign 生成，固定后由 Base 复用参考声音。生成或试听时会暂时释放当前语音模型，不改变 Ollama。未固定的试听只保留到关闭设置窗口。", "Local VoiceDesign generates the sample; Base reuses it after saving. Generation or audition may release the current speech model, without changing Ollama. Unsaved samples are discarded when Settings closes."), "VoiceStudioLocalHint"));
+        content.Children.Add(buttons);
+        var save = new Grid { Margin = new Thickness(0, 8, 0, 10) };
+        save.ColumnDefinitions.Add(new ColumnDefinition());
+        save.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = new StackPanel();
+        name.Children.Add(ModelText(L.T("音色名称", "Voice name"), "VoiceStudioNameLabel", 11, true));
+        name.Children.Add(_studioName); save.Children.Add(name);
+        _studioSave.Margin = new Thickness(12, 0, 0, 0); _studioSave.VerticalAlignment = VerticalAlignment.Bottom;
+        AutomationProperties.SetName(_studioSave, _studioSave.Content.ToString());
+        Grid.SetColumn(_studioSave, 1); save.Children.Add(_studioSave); content.Children.Add(save);
+        content.Children.Add(_studioStatus);
+        content.Children.Add(ModelText(L.T("未保存的试听会在关闭设置时丢弃。", "Unsaved samples are discarded when Settings closes."), "VoiceStudioLocalHint"));
+        _studioGenerate.ToolTip = L.T("本地 VoiceDesign 生成；保存后由 Base 复用音色。生成会暂时释放当前语音模型。", "Generate locally with VoiceDesign; Base reuses the saved voice. Generation temporarily releases the current speech model.");
         var card = Card(content); card.Margin = new Thickness(0, 14, 0, 0); body.Children.Add(card);
         AutomationProperties.SetName(_studioInstruction, L.T("声音设计提示词，最多600字", "Voice design prompt, up to 600 characters"));
         AutomationProperties.SetName(_studioName, L.T("新音色名称，最多60字", "New voice name, up to 60 characters"));
@@ -128,7 +139,7 @@ internal sealed partial class ModelSettingsView
         StopVoiceStudioPlayback();
         draft.Instruction = _studioInstruction.Text; draft.Text = _studioText.Text;
         draft.Language = _studioLanguage.SelectedItem as string ?? (L.IsEnglish ? "English" : "Chinese");
-        draft.Status = draft.Sample == null ? L.T("填写声音特点，再生成一段试听。", "Describe the voice, then generate an audition sample.") : L.T("已修改草稿；可试听上次结果，固定前请重新生成。", "Draft changed. You can audition the previous result, but generate again before saving.");
+        draft.Status = draft.Sample == null ? "" : L.T("草稿已修改，保存前请重新生成。", "Draft changed. Generate again before saving.");
         RenderVoiceStudio();
     }
 
@@ -173,7 +184,7 @@ internal sealed partial class ModelSettingsView
             if (sample.SkinId != role || sample.Instruction != instruction || sample.Text != text || sample.Language != language)
                 throw new InvalidOperationException(L.T("生成结果与本次角色或草稿不匹配，请重试。", "The generated sample does not match this character or draft. Please try again."));
             draft.Sample = sample;
-            draft.Status = SampleMatches(draft) ? L.T("生成完成。先点试听；满意后固定并保存，当前声音尚未改变。", "Sample ready. Audition it, then save when satisfied. The current voice has not changed.") : L.T("生成完成，但草稿已修改；固定前请重新生成。", "Sample ready, but the draft has changed. Generate again before saving.");
+            draft.Status = SampleMatches(draft) ? L.T("试听已生成，尚未替换当前音色。", "Sample ready. The current voice is unchanged.") : L.T("草稿已修改，保存前请重新生成。", "Draft changed. Generate again before saving.");
         }
         catch (OperationCanceledException) { draft.Status = L.T("已取消生成，角色原来的声音保持不变。", "Generation canceled. The character's previous voice is unchanged."); }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { draft.Status = L.T("生成未完成：", "Generation failed: ") + ex.Message; }
@@ -191,12 +202,12 @@ internal sealed partial class ModelSettingsView
             !_voiceStudioDrafts.TryGetValue(_voiceStudioRole, out var draft) || draft.Sample == null) return;
         using var operation = new CancellationTokenSource(); _studioPlayback = operation;
         long epoch = ++_studioPlaybackEpoch;
-        _voiceStudioPlaying = true; draft.Status = L.T("正在播放已生成的试听，不会重新生成声音。", "Playing the existing audition sample without generating new audio.");
+        _voiceStudioPlaying = true; draft.Status = L.T("正在试听…", "Playing sample…");
         RenderVoiceStudio(); RenderSpeechControls(); RenderModelButtons();
         try
         {
             await _voiceStudio.PlayAsync(draft.Sample, _settings.SpeechVolume, operation.Token);
-            if (epoch == _studioPlaybackEpoch) draft.Status = SampleMatches(draft) ? L.T("试听结束。满意后可以固定并保存。", "Audition finished. Save the voice if you are happy with it.") : L.T("上次结果试听结束；草稿已修改，固定前请重新生成。", "Previous audition finished. The draft has changed; generate again before saving.");
+            if (epoch == _studioPlaybackEpoch) draft.Status = SampleMatches(draft) ? L.T("试听结束。", "Audition finished.") : L.T("草稿已修改，保存前请重新生成。", "Draft changed. Generate again before saving.");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex)) { if (epoch == _studioPlaybackEpoch) draft.Status = L.T("试听未完成：", "Audition failed: ") + ex.Message; }

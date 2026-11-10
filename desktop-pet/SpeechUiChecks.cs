@@ -74,12 +74,13 @@ internal static class SpeechUiChecks
                 pet.SetSpeechEnabled(true);
                 Named<Button>(dashboard, "SpeechPreview").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Named<Button>(dashboard, "SpeechStop").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Named<Button>(dashboard, "SpeechPreload").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Named<Button>(dashboard, "SpeechUnload").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Named<Button>(dashboard, "DashboardVoiceLoad").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Named<Button>(dashboard, "DashboardVoiceUnload").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Require(!pet.IsSpeaking, "persist_false_ui_fixture_never_plays_audio");
                 dashboard.Width = dashboard.MinWidth; dashboard.Height = dashboard.MinHeight; Named<TextBlock>(dashboard, "SpeechStatus").BringIntoView(); await Settle(dashboard);
                 Require(Fits(dashboard, Named<Button>(dashboard, "SpeechStop")) && Fits(dashboard, Named<TextBlock>(dashboard, "SpeechStatus")), "voice_controls_fit_minimum_dashboard_size");
-                Require(Fits(dashboard, Named<Button>(dashboard, "SpeechPreload")) && Fits(dashboard, Named<Button>(dashboard, "SpeechUnload")), "voice_model_load_controls_fit_dashboard");
+                Named<Button>(dashboard, "DashboardVoiceLoad").BringIntoView(); await Settle(dashboard);
+                Require(Fits(dashboard, Named<Button>(dashboard, "DashboardVoiceLoad")) && Fits(dashboard, Named<Button>(dashboard, "DashboardVoiceUnload")), "voice_model_load_controls_fit_dashboard");
                 Capture(dashboard, Path.Combine(evidence, "dashboard-voice-minimum.png"));
 
                 var client = new FixtureClient(() => answers.Count == 0);

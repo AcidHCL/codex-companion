@@ -345,12 +345,12 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     }
     private int Execute(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] values) { using var command = Command(transaction, sql, values); return command.ExecuteNonQuery(); }
     private object? Scalar(SqliteTransaction? transaction, string sql, params (string Name, object? Value)[] values) { using var command = Command(transaction, sql, values); return command.ExecuteScalar(); }
-    private static string ScopeEndpoint(string endpoint) => OllamaEndpoint.Parse(endpoint).AbsoluteUri.TrimEnd('/');
+    private static string ScopeEndpoint(string endpoint) => ChatModelConnection.NormalizeScope(endpoint);
     private static string Stamp(DateTimeOffset time) => time.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
     private static DateTimeOffset Date(string value) => DateTimeOffset.ParseExact(value, "O", CultureInfo.InvariantCulture, DateTimeStyles.None);
     private static void RequireChanged(int rows) { if (rows != 1) throw new InvalidOperationException(L.T("对话已不存在，请重新选择对话。", "This conversation no longer exists. Select another conversation.")); }
     private static string ValidId(string value) => Guid.TryParseExact(value, "N", out var id) ? id.ToString("N") : throw new ArgumentException(L.T("无效的对话或记忆标识。", "Invalid conversation or memory ID."), nameof(value));
-    private static string ValidModel(string value) => OllamaModels.IsSupported(value) ? value : throw new ArgumentException(L.T("无效的模型名称。", "Invalid model name."), nameof(value));
+    private static string ValidModel(string value) => OllamaModels.IsSupported(value) || ChatApiModel.IsValid(value) ? value : throw new ArgumentException(L.T("无效的模型名称。", "Invalid model name."), nameof(value));
     private static string ValidText(string? value, int maximum, bool allowEmpty, string parameter)
     {
         if (value == null || value.Length > maximum || (!allowEmpty && string.IsNullOrWhiteSpace(value)) || value.Contains('\0')) throw new ArgumentException(L.T("内容为空、过长或含无效字符。", "Content is empty, too long, or contains invalid characters."), parameter);

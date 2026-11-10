@@ -13,7 +13,7 @@ namespace DesktopPet;
 internal sealed class GeneralSettingsView : UserControl, IDisposable
 {
     private readonly PetWindow _pet;
-    private readonly TextBlock _role, _sizeLabel, _volumeLabel, _behaviorHint;
+    private readonly TextBlock _sizeLabel, _volumeLabel, _behaviorHint, _clickThroughHint;
     private readonly Slider _slider, _volume;
     private readonly CheckBox _topmost, _motion, _clickThrough, _movement, _sound, _llmBehavior;
     private readonly Button _visibility, _stopPerformance, _playEmotion, _climbLeft, _climbRight;
@@ -28,14 +28,15 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
         _pet = pet;
         Name = "GeneralSettingsView";
         var body = new StackPanel { Margin = new Thickness(0, 0, 10, 8) };
-        body.Children.Add(Ui.Text(L.T("桌宠与互动", "Pet & interaction"), 23, "#203E2C", true));
-        _role = Note("", "GeneralCurrentRole"); _role.Margin = new Thickness(0, 8, 0, 18);
-        body.Children.Add(_role);
+        var title = Ui.Text(L.T("桌宠与互动", "Pet & interaction"), 23, "#203E2C", true);
+        title.Margin = new Thickness(0, 0, 0, 18); body.Children.Add(title);
         var language = Section(body, "Language / 语言", "GeneralLanguageSection");
         _language.Items.Add(new ComboBoxItem { Content = "简体中文", Tag = "zh-CN" });
         _language.Items.Add(new ComboBoxItem { Content = "English", Tag = "en-US" });
         _language.HorizontalAlignment = HorizontalAlignment.Left;
         AutomationProperties.SetName(_language, "Language / 语言");
+        _language.ToolTip = L.T("重启后切换界面、人设提示词及跟随软件语言的语音。自定义内容保留。", "Restart to switch the interface, character prompts, and speech that follows the app language. Custom content is preserved.");
+        AutomationProperties.SetHelpText(_language, (string)_language.ToolTip);
         _language.SelectionChanged += (_, _) =>
         {
             if (_syncing || _disposed || _language.SelectedItem is not ComboBoxItem item || item.Tag is not string value) return;
@@ -82,7 +83,8 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
         _topmost = Toggle(L.T("始终置顶", "Always on top"), "PetTopmost", value => _pet.SetTopmost(value)); desktop.Children.Add(_topmost);
         _motion = Toggle(L.T("呼吸动画", "Breathing animation"), "PetMotion", value => _pet.SetMotion(value)); desktop.Children.Add(_motion);
         _clickThrough = Toggle(L.T("鼠标穿透", "Click-through"), "PetClickThrough", value => _pet.SetClickThrough(value)); desktop.Children.Add(_clickThrough);
-        desktop.Children.Add(Note(L.T("开启穿透后，从托盘打开设置，即可恢复角色互动。", "To restore interaction after enabling click-through, open Settings from the system tray."), "PetClickThroughHint"));
+        _clickThroughHint = Note(L.T("从系统托盘打开设置可关闭穿透。", "Open Settings from the system tray to turn this off."), "PetClickThroughHint");
+        desktop.Children.Add(_clickThroughHint);
         var visibilityButtons = new UniformGrid { Columns = 2, Margin = new Thickness(0, 12, 0, 0) };
         _visibility = Button("", "PetVisibility", (_, _) => { if (_pet.IsVisible) _pet.Hide(); else _pet.Show(); Refresh(); });
         _visibility.Margin = new Thickness(0, 0, 4, 0); visibilityButtons.Children.Add(_visibility);
@@ -91,12 +93,14 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
 
         var movement = Section(right, L.T("行走与行为", "Movement & behavior"), "GeneralBehaviorSection");
         _movement = Toggle(L.T("桌面行走与窗口互动", "Walking & window interaction"), "PetMovement", value => _pet.SetMovement(value)); movement.Children.Add(_movement);
-        _llmBehavior = Toggle(L.T("LLM 行为模式", "LLM behavior mode"), "LlmBehaviorEnabled", value =>
+        _llmBehavior = Toggle(L.T("模型控制行为", "Model-controlled behavior"), "LlmBehaviorEnabled", value =>
         {
             if (setLlmBehavior != null) setLlmBehavior(value);
             else { _pet.Settings.LlmBehaviorEnabled = value; _pet.SaveNow(); }
             Refresh();
         });
+        _llmBehavior.ToolTip = L.T("让当前所选模型回应点击、拖拽，并接受对话中的表演与移动请求。移动仍需开启桌面行走。", "Let the selected model respond to clicks and dragging, and accept performance and movement requests in chat. Movement also requires walking to be enabled.");
+        AutomationProperties.SetHelpText(_llmBehavior, (string)_llmBehavior.ToolTip);
         movement.Children.Add(_llmBehavior);
         _behaviorHint = Note("", "LlmBehaviorStatus"); movement.Children.Add(_behaviorHint);
         var jump = Button(L.T("跳到附近窗口", "Jump to nearby window"), "JumpNearbyWindow", (_, _) => _pet.JumpToNearbyWindow());
@@ -105,7 +109,9 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
         _climbLeft = Button(L.T("向左攀爬", "Climb left"), "ClimbLeft", (_, _) => _pet.ClimbNearbyWindow(-1)); _climbLeft.Margin = new Thickness(0, 0, 4, 0);
         _climbRight = Button(L.T("向右攀爬", "Climb right"), "ClimbRight", (_, _) => _pet.ClimbNearbyWindow(1)); _climbRight.Margin = new Thickness(4, 0, 0, 0);
         climbButtons.Children.Add(_climbLeft); climbButtons.Children.Add(_climbRight); movement.Children.Add(climbButtons);
-        movement.Children.Add(Note(L.T("把我放在窗口侧边附近，朝窗沿攀爬后会自动翻上顶边。", "Place me near the side of a window. I can climb toward its ledge and pull myself onto the top."), "PetClimbHint"));
+        _climbLeft.ToolTip = _climbRight.ToolTip = L.T("将桌宠放在窗口侧边附近，再向窗沿攀爬。", "Place the pet near a window's side, then climb toward its ledge.");
+        AutomationProperties.SetHelpText(_climbLeft, (string)_climbLeft.ToolTip);
+        AutomationProperties.SetHelpText(_climbRight, (string)_climbRight.ToolTip);
 
         var music = Section(left, L.T("音乐与唱歌", "Music & singing"), "GeneralMusicSection");
         _sound = Toggle(L.T("音乐开关", "Enable music"), "SoundEnabled", value => _pet.SetSoundEnabled(value)); music.Children.Add(_sound);
@@ -125,7 +131,8 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
         _stopPerformance.Margin = new Thickness(4, 0, 0, 0); performanceButtons.Children.Add(_stopPerformance);
         performances.Children.Add(performanceButtons);
         _emotion.SelectionChanged += (_, _) => { if (!_syncing) RefreshPerformanceAvailability(); };
-        performances.Children.Add(Note(L.T("Let Me Go 与保持 Q 弹会播放配套音乐，音量由左侧控制。停止表演后恢复日常状态；开启 LLM 模式后也可对话点播。", "Let Me Go and Bouncy Dance include music, controlled on the left. Stopping restores the normal state. With LLM mode enabled, you can also request performances in chat."), "PetPerformanceHint"));
+        _playEmotion.ToolTip = L.T("Let Me Go 与保持 Q 弹包含音乐。", "Let Me Go and Bouncy Dance include music.");
+        _stopPerformance.ToolTip = L.T("恢复日常状态。", "Return to the normal state.");
 
         Content = new ScrollViewer { Name = "GeneralSettingsScroll", Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -143,11 +150,19 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
         return content;
     }
 
-    private static TextBlock Note(string text, string name) => new()
+    private static TextBlock Note(string text, string name)
     {
-        Name = name, Text = text, FontSize = 11, Foreground = Ui.Brush("#71826D"), TextWrapping = TextWrapping.Wrap,
-        LineHeight = 18, Margin = new Thickness(0, 6, 0, 2)
-    };
+        var note = new TextBlock
+        {
+            Name = name, Text = text, FontSize = 11, Foreground = Ui.Brush("#71826D"), TextWrapping = TextWrapping.Wrap,
+            LineHeight = 18, Margin = new Thickness(0, 6, 0, 2)
+        };
+        var style = new Style(typeof(TextBlock));
+        var empty = new Trigger { Property = TextBlock.TextProperty, Value = "" };
+        empty.Setters.Add(new Setter(VisibilityProperty, Visibility.Collapsed));
+        style.Triggers.Add(empty); note.Style = style;
+        return note;
+    }
 
     private static Button Button(string label, string name, RoutedEventHandler click)
     {
@@ -175,9 +190,8 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
             bool languagePending = (_pet.Settings.Language == "en-US") != L.IsEnglish;
             _languageStatus.Text = languagePending
                 ? "语言已保存，请重启桌宠生效。 / Language saved. Restart AI Pet to apply."
-                : L.T("切换后重启桌宠生效。界面、人设提示词及跟随软件语言的语音会一起切换；自定义内容保留。", "Restart AI Pet after changing language. The interface, character prompts, and speech set to follow the app will switch together. Custom content is preserved.");
+                : "";
             bool live2D = _pet.CurrentLive2DModel != null;
-            _role.Text = L.T("当前角色：", "Current character: ") + _pet.CurrentDisplayName + L.T(" · 设置会随桌宠自动保存。", " · Preferences are saved automatically.");
             _motion.Content = live2D ? L.T("眨眼与呼吸", "Blinking & breathing") : L.T("呼吸动画", "Breathing animation");
             _motion.ToolTip = live2D ? L.T("驱动模型已有的标准眼睛与呼吸参数；不影响桌面行走与场景动画。系统减少动态时保持静止。", "Uses the model's standard eye and breathing parameters without affecting walking or scene animations. Remains still when reduced motion is enabled.") : L.T("只控制站立呼吸；关闭后仍可桌面行走、下落和窗口互动。", "Only controls idle breathing. Walking, falling, and window interaction still work when disabled.");
             _sizeLabel.Text = L.T("显示大小    ", "Display size    ") + (int)_pet.Settings.Size + " px";
@@ -185,12 +199,14 @@ internal sealed class GeneralSettingsView : UserControl, IDisposable
             _topmost.IsChecked = _pet.Settings.Topmost;
             _motion.IsChecked = _pet.Settings.MotionEnabled;
             _clickThrough.IsChecked = _pet.Settings.ClickThrough;
+            _clickThroughHint.Visibility = _pet.Settings.ClickThrough ? Visibility.Visible : Visibility.Collapsed;
             _movement.IsChecked = _pet.Settings.MovementEnabled;
             _llmBehavior.IsChecked = _pet.Settings.LlmBehaviorEnabled;
             _behaviorHint.Text = !_pet.Settings.LlmBehaviorEnabled
-                ? L.T("默认模式：沿用当前行为，不自动调用模型。", "Default mode: use existing behavior without automatic model requests.")
-                : (_pet.IsLlmBehaviorActive ? L.T("LLM 模式已连接。", "LLM behavior is connected. ") : _pet.CanLlmReact ? L.T("LLM 可回应互动；动作使用默认逻辑。", "The LLM can respond to interactions; movement follows default behavior. ") : L.T("LLM 暂不可用，继续默认行为并自动重试。", "LLM unavailable. Continuing default behavior and retrying automatically. "))
-                  + L.T("点击、拖拽等互动会通知所选 Ollama 模型；可对话请求唱歌、跳舞、敲碗、表情和移动。移动仍需开启上方开关。", "Clicks and dragging notify the selected Ollama model. Ask it to sing, dance, tap bowls, react, or move. Movement also requires the switch above.");
+                ? ""
+                : _pet.IsLlmBehaviorActive ? L.T("已连接当前模型", "Connected to the selected model")
+                : _pet.CanLlmReact ? L.T("可回应互动 · 动作保持默认", "Responding to interactions · Default movement")
+                : L.T("模型暂不可用，自动重试中", "Model unavailable · Retrying automatically");
             _sound.IsChecked = _pet.Settings.SoundEnabled;
             _volume.Value = _pet.Settings.SoundVolume * 100;
             _volume.IsEnabled = _pet.Settings.SoundEnabled;

@@ -37,9 +37,6 @@ internal sealed class SettingsWindow : Window
         side.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var brand = new StackPanel { Margin = new Thickness(26, 25, 24, 0) };
         brand.Children.Add(Ui.Text("AI  PET", 22, "#214332", true));
-        var subtitle = Ui.Text("DESKTOP COMPANION", 10, "#7A8D7C");
-        subtitle.Margin = new Thickness(1, 5, 0, 0);
-        brand.Children.Add(subtitle);
         side.Children.Add(brand);
 
         var sideBody = new StackPanel { Margin = new Thickness(20, 32, 20, 0), VerticalAlignment = VerticalAlignment.Top };
@@ -54,8 +51,6 @@ internal sealed class SettingsWindow : Window
         _live2DPreview.Visibility = Visibility.Collapsed;
         previewStage.Children.Add(_live2DPreview);
         sideBody.Children.Add(previewStage);
-        var caption = Ui.Text(L.T("当前角色", "Current character"), 11, "#81937F"); caption.TextAlignment = TextAlignment.Center;
-        sideBody.Children.Add(caption);
         _name = Ui.Text("", 26, "#193D2D", true); _name.TextAlignment = TextAlignment.Center; _name.Margin = new Thickness(0, 3, 0, 4);
         sideBody.Children.Add(_name);
         _status = Ui.Text("", 12, "#597D61"); _status.TextAlignment = TextAlignment.Center;
@@ -63,11 +58,9 @@ internal sealed class SettingsWindow : Window
         side.Children.Add(sideBody);
         var bottom = new StackPanel { Margin = new Thickness(24, 16, 24, 24) };
         Grid.SetRow(bottom, 2);
-        var settingsHint = Ui.Text(L.T("尺寸、桌面互动、音乐与声音等设置，已统一放到设置页面。", "Size, desktop interaction, music, and speech are now together in Settings."), 11, "#71826D");
-        settingsHint.TextWrapping = TextWrapping.Wrap; settingsHint.LineHeight = 19;
-        settingsHint.Margin = new Thickness(0, 0, 0, 12); bottom.Children.Add(settingsHint);
         var settings = Ui.Button(L.T("设置", "Settings"), (_, _) => openSettings?.Invoke()); settings.Name = "OpenSettings";
         settings.IsEnabled = openSettings != null;
+        settings.ToolTip = L.T("桌宠互动、模型与声音", "Pet interaction, models & speech");
         settings.Background = Ui.Brush("#214F38"); settings.Foreground = Brushes.White;
         System.Windows.Automation.AutomationProperties.SetName(settings, L.T("打开独立设置页面", "Open the dedicated settings window"));
         bottom.Children.Add(settings); side.Children.Add(bottom);
@@ -78,11 +71,9 @@ internal sealed class SettingsWindow : Window
         main.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         main.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         main.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var header = new Grid();
+        var header = new Grid { Margin = new Thickness(0, 0, 0, 20) };
         var headerStack = new StackPanel();
-        headerStack.Children.Add(Ui.Text(L.T("选一位，陪你工作", "Choose your companion"), 25, "#203E2C", true));
-        var desc = Ui.Text(L.T("你的 AI 角色，现在住在桌面上。", "Your AI characters, now on your desktop."), 13, "#899487");
-        desc.Margin = new Thickness(0, 8, 0, 17); headerStack.Children.Add(desc);
+        headerStack.Children.Add(Ui.Text(L.T("角色换装", "Character wardrobe"), 25, "#203E2C", true));
         header.Children.Add(headerStack);
         var badge = new Border { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, CornerRadius = new CornerRadius(9), Padding = new Thickness(10, 5, 10, 5), Background = Ui.Brush("#E3ECDC"), Child = Ui.Text(L.T("9 款皮肤", "9 skins"), 11, "#66815C") };
         header.Children.Add(badge);
@@ -113,7 +104,6 @@ internal sealed class SettingsWindow : Window
 
         var footer = new Border { CornerRadius = new CornerRadius(12), Background = Ui.Brush("#EAF0E5"), Padding = new Thickness(17, 13, 17, 13), Margin = new Thickness(0, 6, 10, 0) };
         var footerStack = new StackPanel();
-        footerStack.Children.Add(Ui.Text(L.T("小小操作，很快上手", "Simple controls"), 12, "#4D6A50", true));
         var tips = Ui.Text(L.T("左键表情，连点生气  ·  拖动移动  ·  右键聊天", "Left-click to react; repeat to annoy · Drag to move · Right-click for chat"), 11, "#7B8D78"); tips.TextWrapping = TextWrapping.Wrap; tips.Margin = new Thickness(0, 7, 0, 0); footerStack.Children.Add(tips);
         var version = Ui.VersionLabel(); version.Margin = new Thickness(0, 8, 0, 0); footerStack.Children.Add(version);
         var mediaButtons = new System.Windows.Controls.Primitives.UniformGrid { Columns = 2 };

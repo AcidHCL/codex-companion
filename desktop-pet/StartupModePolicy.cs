@@ -7,11 +7,14 @@ internal static class StartupModePolicy
     // These commands can touch the real pairing store, even when their output is
     // only a diagnostic report. A test-looking suffix is not proof of isolation.
     internal static bool UsesRealConnection(string[] args) => args.Any(value => value is
-        "--pair-codex" or "--connection-test" or "--desktop-environment-test" or "--integration-test");
+        "--pair-codex" or "--connection-test" or "--desktop-environment-test" or "--integration-test" or "--companion-runtime-test");
 
     // Keep this explicit list aligned with Main's returning test branches and
     // synthetic smoke modes. Unknown arguments may otherwise reach the real app.
     internal static bool IsIsolatedDiagnostic(string[] args) => !UsesRealConnection(args) && args.Any(value => value is
+        "--chat-api-test" or "--api-dashboard-test" or "--api-settings-ui-test" or
+        "--screen-understanding-test" or "--screen-understanding-ui-test" or "--screen-capture-test" or "--screen-capture-worker" or
+        "--work-companion-test" or "--work-companion-settings-test" or "--work-companion-ui-test" or "--work-companion-navigation-test" or "--work-companion-probe-test" or
         "--ollama-activity-ui-test" or "--ollama-activity-test" or "--ollama-activity-probe-test" or
         "--model-retention-ui-test" or "--scheduled-announcement-test" or "--scheduled-notice-ui-test" or "--scheduled-monitor-test" or
         "--localization-test" or "--localization-ui-test" or "--self-test" or "--speech-stream-live-test" or "--voice-worker-lifecycle-test" or "--speech-pcm-live-test" or "--streaming-text-test" or "--voice-input-test" or "--voice-input-ui-test" or "--voice-input-live-test" or "--microphone-test" or "--monitor-recovery-test" or "--lifecycle-log-test" or
