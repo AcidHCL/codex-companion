@@ -25,7 +25,7 @@
   关闭文字读取而只开启截图时，需要可用的视觉模型。这里没有独立的 OCR 服务。
 - 截图最长边 1280 像素，JPEG 不超过 1 MiB。文字和图片还会按当前模型的上下文容量缩减输入预算。
 - 读取运行在短命辅助进程中，单次最多等待 8 秒，避免第三方应用的 UIA/窗口绘制阻塞桌宠界面。
-  无法安全读取、内容为空或窗口身份变化时保持安静。
+  窗口切换、受保护或无法确认身份时跳过。如果应用切换或休息提醒恰好到期，遇到可恢复的读取故障会再次核对前台窗口和权限，再仅按应用活动判断是否回应。单独的定时读屏或手动查看不会用通用发言代替屏幕理解。
 - **全程使用当前选中的 Ollama 或 API 模型**；不会自动选择其他模型，也不会从 API 回退到 Ollama。
   Ollama 只使用已经驻留的模型：文字需要至少 4K 驻留上下文，图片还需要模型明确支持视觉且驻留上下文至少 8K。
   API 沿用连接中声明的图片能力，按保守的 8K 输入预算处理；这只是请求限制，不代表远程模型实际上下文上限。
@@ -67,8 +67,8 @@
 | `%LOCALAPPDATA%/AIPet/screen-understanding-settings.json` | 本模块选项 |
 | `%LOCALAPPDATA%/AIPet/learned-applications.json` | 有上限和有效期的应用分类 |
 
-原始文字和截图不落盘，不进入聊天历史、共享记忆或日志。最近理解摘要只保留在本次运行的设置状态里；
-关闭、重配或清除本段观察会清除临时状态。模型生成的短回应也不创建聊天回合。
+桌宠实际显示气泡时，当前对话会保存发言和一句事件概述，供继续追问。静默分析或已经过期的回应不会新增消息。
+设置页里较详细的最近理解摘要只在本次运行中显示。桌宠不保存截图和窗口原文。开启聊天的自动共享记忆后，当前模型可从已展示的发言与简短事件概述中选择值得保留的事。
 
 ## 代码边界与移除
 
@@ -117,8 +117,9 @@ model service (including API)** switch; switching providers never enables it aut
 
 For a manual check, click **Inspect after I return to the target window**, switch back to that application and pause
 input. A stable window and the existing exclusions, full-screen quiet and interaction priorities are still required.
-Automatic analysis is bounded and infrequent; it is not screen recording. Text/images and generated summaries are
-transient and never enter chat history or shared memory.
+When the pet displays a remark, the current chat saves it with a brief event summary so you can follow up.
+Silent or stale analyses create no message. The detailed analysis shown in settings is temporary. The pet does
+not store screenshots or verbatim window text. Automatic shared memory, when enabled in chat, uses only the displayed remark and its brief event summary from this feature.
 
 Only dedicated-app categories with confidence at least 0.85 may enter the feature's separate store after final
 foreground validation. Entries contain an app name, identity hash, category and limited metadata, expire after 90 days,

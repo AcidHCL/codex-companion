@@ -1,4 +1,4 @@
-# Codex Companion · 蓝色大肥鱼 1.40.0
+# Codex Companion · 蓝色大肥鱼 1.42.1
 
 [简体中文](README.md) | **English**
 
@@ -29,6 +29,9 @@ The application supports English and Simplified Chinese. Key Chinese labels are 
 
 ## Changelog
 
+- **1.42.1 · Proactive companion fixes.** Screen understanding can read windows with large numbers of controls. Leaving pet chat open in the background allows companionship to continue. If a capture fails, an eligible app-switch or break reminder can still use app activity. See **Settings → Proactive companion → Recent companion records** for skipped reactions.
+- **1.42.0 · Automatic shared memory.** The selected model can save preferences or memorable moments from new chat exchanges and displayed companion remarks for other conversations on the same service.
+- **1.41.0 · Follow up on companion remarks.** When the pet shows a remark, the current chat saves it alongside a brief description of what happened. You can follow up even when speech is turned off.
 - **1.40.0 · Cleaner interface:** Related controls are grouped together, repeated descriptions are reduced, and detailed help expands on demand in both languages. Future UI work follows the [design principles](DESIGN.md).
 - **1.39.0 · Global model selection:** Proactive companionship, screen understanding and scheduled summaries follow the selected Ollama/API model. Existing settings remain in place, speech stays independent, and switching cancels stale requests.
 - **1.38.0 · API chat:** Official OpenAI and compatible APIs, configurable connections, model switching, streaming, images and tools; locally encrypted keys and separate Ollama settings.
@@ -49,7 +52,7 @@ Keys are encrypted for the current Windows user and bound to the full base URL, 
 
 The selected connection controls chat, images, pet behavior, proactive companionship, screen understanding and scheduled-result summaries. Speech remains independent. Existing feature switches, scenes, intervals and exclusions still apply. API requests use provider billing; Ollama background requests use only the selected resident model, without switching to another loaded model.
 
-For remote API window text/images, enable **Screen understanding → Allow window content to be sent to remote services**. Screenshots additionally require a vision-capable model with image input enabled in connection settings. Upgrades do not turn these options on. Switching services/models cancels old requests; observations and summaries stay out of chat history and shared memory.
+To send window text or screenshots to a remote API, enable **Screen understanding → Allow window content to be sent to remote services**. Screenshots also require a vision-capable model with image input enabled. Switching services or models cancels pending requests. Raw window text, screenshots and scheduled-task summaries stay out of chat history and shared memory.
 
 ## Language switching and one-click restart
 
@@ -195,6 +198,8 @@ Start Ollama and install a model appropriate for your hardware. In the chat conn
 Models with image support accept images dropped, selected, or pasted into chat. Capabilities and results depend on the selected model; the character skin does not change the underlying model. The current connection settings do not provide API key or login authentication.
 
 The chat panel supports streamed replies, stopping generation, new conversations, conversation history, and shared memory. Records are stored locally, and reopening a conversation lets you continue it. Models use a limited context window, so the full saved history and the context sent with each request are not necessarily the same length. Enable Web (联网) to search for current information or read public webpage links, with sources displayed.
+
+Under **Chat → Memory**, you can turn off **Automatically save memorable moments** (on by default), or edit and delete saved entries. Automatic memory considers only new interactions. It uses an already-loaded model in Ollama mode and can make an additional request to the selected service in API mode.
 
 The chat model preload and unload controls affect only the selected model. They do not delete weights or change Ollama's global settings. Speech models have separate controls, and speech playback does not automatically unload the chat model.
 

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -89,6 +90,29 @@ internal static class ChatHistoryUiChecks
                 Require(window.CurrentConversationId == second && input.Text == "重启后仍在的草稿", "restart_restores_last_selected_conversation_and_draft");
                 Require(Named<WrapPanel>(window, "OllamaImagePreviews").Children.Count == 1, "restart_restores_pending_image_preview");
 
+                phase = "companion_followup";
+                const string spoken = "刚才那一局打得挺精彩。", eventSummary = "一局游戏刚刚结束。";
+                calls = client.Calls;
+                window.SaveDraftForTesting();
+                Require(window.TrySaveCompanionReaction(second, spoken, eventSummary), "shown_reaction_is_saved_in_active_chat");
+                var reaction = store.ReadTurns(second).Last();
+                Require(reaction.User == "" && reaction.Assistant == spoken && reaction.CompanionEventSummary == eventSummary &&
+                    reaction.Images.Count == 0 && reaction.Sources.Count == 0 && reaction.WebWarning == null,
+                    "reaction_only_stores_event_summary_and_spoken_words");
+                Require(client.Calls == calls && store.ListMemories(endpoint).Count == 0 &&
+                    store.GetConversation(second) is { HasDraft: true, Draft: "重启后仍在的草稿", DraftImages.Count: 1 },
+                    "background_save_preserves_pending_text_attachment_and_shared_memory");
+                await window.SwitchConversationAsync(first);
+                Require(!window.TrySaveCompanionReaction(second, spoken, eventSummary) && !window.TrySaveCompanionReaction(null, spoken, eventSummary),
+                    "stale_or_missing_target_never_moves_a_reaction_into_another_chat");
+                await window.SwitchConversationAsync(second);
+                Require(Descendants<TextBlock>(window).Any(t => t.Text.Contains(eventSummary, StringComparison.Ordinal)) &&
+                    Descendants<TextBox>(window).Any(t => t.IsReadOnly && t.Text == spoken), "reopening_shows_context_note_and_pet_reply");
+                input.Text = "你刚才怎么这么说？"; await window.SendAsync();
+                Require(client.Messages.Any(m => m.Role == "user" && m.Content.Contains("桌宠自动记录", StringComparison.Ordinal) && m.Content.Contains(eventSummary, StringComparison.Ordinal) && m.Images == null) &&
+                    client.Messages.Any(m => m.Role == "assistant" && m.Content == spoken),
+                    "followup_receives_attributed_event_and_actual_assistant_words");
+
                 phase = "paging_and_panels";
                 var many = store.CreateConversation(endpoint, persona, settings.OllamaModel);
                 for (int i = 0; i < 58; i++) store.AppendTurn(many.Id, Turn("历史问题 " + i, "历史回答 " + i, i == 0));
@@ -111,14 +135,44 @@ internal static class ChatHistoryUiChecks
                 Capture(panel, Path.Combine(evidence, "history-confirm-minimum.png"));
                 Click(panel, "ChatLibraryCancelDelete");
                 panel.Close(); panel = null;
-                panel = new SharedMemoryWindow(store, endpoint, true, enabled => settings.SharedMemoryEnabled = enabled) { ShowActivated = false, Topmost = false };
+                bool failPreferenceSave = false;
+                panel = new SharedMemoryWindow(store, endpoint, settings.SharedMemoryEnabled, settings.AutomaticMemoryEnabled, (enabled, automatic) =>
+                {
+                    if (failPreferenceSave) throw new IOException("synthetic failure");
+                    settings.SharedMemoryEnabled = enabled; settings.AutomaticMemoryEnabled = automatic;
+                }) { ShowActivated = false, Topmost = false };
                 panel.Show();
+                var autoMemory = Named<CheckBox>(panel, "SharedMemoryAutomatic");
+                var useMemory = Named<CheckBox>(panel, "SharedMemoryEnabled");
+                Require(autoMemory.IsChecked == true && autoMemory.IsEnabled, "automatic_memory_defaults_on");
+                autoMemory.IsChecked = false;
+                Require(!settings.AutomaticMemoryEnabled && settings.SharedMemoryEnabled, "automatic_toggle_preserves_memory_retrieval");
+                failPreferenceSave = true;
+                autoMemory.IsChecked = true;
+                Require(autoMemory.IsChecked == false && !settings.AutomaticMemoryEnabled, "failed_automatic_preference_save_reverts_checkbox");
+                failPreferenceSave = false;
+                autoMemory.IsChecked = true; useMemory.IsChecked = false;
+                Require(!autoMemory.IsEnabled && settings.AutomaticMemoryEnabled && !settings.SharedMemoryEnabled, "master_off_pauses_learning_and_preserves_preference");
                 Named<TextBox>(panel, "SharedMemoryTitle").Text = "称呼";
                 Named<TextBox>(panel, "SharedMemoryContent").Text = "用户的昵称是小海鲸";
                 Named<CheckBox>(panel, "SharedMemoryPinned").IsChecked = true; Click(panel, "SharedMemorySave");
                 Require(store.ListMemories(endpoint).Single().Pinned, "memory_panel_saves_pinned_record");
+                useMemory.IsChecked = true;
+                Require(autoMemory.IsEnabled && autoMemory.IsChecked == true, "master_on_restores_learning_preference");
                 Named<TextBox>(panel, "SharedMemoryContent").Text = "用户的昵称是小蓝鲸"; Click(panel, "SharedMemorySave");
                 Require(store.ListMemories(endpoint).Single().Content.Contains("小蓝鲸", StringComparison.Ordinal), "memory_panel_edits_record_without_duplicate");
+                long sourceSequence = store.ReadTurns(many.Id).Last().Sequence;
+                Require(store.TryAddAutomaticMemory(endpoint, many.Id, sourceSequence, "联机通关", "我们一起庆祝了第一次合作通关。"), "automatic_memory_added_for_library");
+                ((SharedMemoryWindow)panel).RefreshList();
+                var memoryList = Named<ListBox>(panel, "SharedMemoryList");
+                var autoRow = memoryList.Items.Cast<ListBoxItem>().Single(row => ((ChatSharedMemory)row.Tag).IsAutomatic);
+                Require(AutomationProperties.GetName(autoRow).Contains(L.T("自动", "Automatic"), StringComparison.Ordinal), "library_labels_automatic_origin");
+                memoryList.SelectedItem = autoRow;
+                Named<TextBox>(panel, "SharedMemoryContent").Text = "我们一起庆祝了双人合作通关。"; Click(panel, "SharedMemorySave");
+                var edited = store.ListMemories(endpoint).Single(item => item.Title == "联机通关");
+                Require(!edited.IsAutomatic && edited.Content.Contains("双人", StringComparison.Ordinal), "editing_automatic_entry_marks_it_user_maintained");
+                Click(panel, "SharedMemoryDelete"); Click(panel, "SharedMemoryConfirmDelete");
+                Require(store.ListMemories(endpoint).Count == 1 && store.ListMemories(endpoint)[0].Title == "称呼", "companion_memory_can_be_removed_in_library");
                 Capture(panel, Path.Combine(evidence, "memory-panel.png"));
                 panel.Close(); panel = null;
                 settings.SkinId = "02-gemini-small"; window.RefreshCharacter();
@@ -139,6 +193,8 @@ internal static class ChatHistoryUiChecks
                 await window.NewConversationAsync();
                 Require(window.CurrentConversationId == originalId && input.Text.Contains("保留", StringComparison.Ordinal), "failed_draft_save_blocks_destructive_switch");
                 faulty.FailDraft = false; faulty.FailAppend = true;
+                Require(!window.TrySaveCompanionReaction(originalId, spoken, eventSummary) && faulty.ReadTurns(originalId).Count == 0,
+                    "failed_companion_commit_is_not_reported_as_saved");
                 await window.SendAsync();
                 Require(input.Text.Contains("保留", StringComparison.Ordinal) && Descendants<TextBox>(window).Any(x => x.IsReadOnly && x.Text.Contains("合成模型的回答", StringComparison.Ordinal)), "failed_turn_save_keeps_answer_visible_and_restores_input");
                 Require(faulty.ReadTurns(originalId).Count == 0, "failed_turn_not_reported_as_durable_history");
@@ -204,6 +260,10 @@ internal static class ChatHistoryUiChecks
         public string? GetActiveConversationId(string e, string p) => inner.GetActiveConversationId(e, p);
         public void SetActiveConversation(string id) => inner.SetActiveConversation(id);
         public IReadOnlyList<ChatSharedMemory> ListMemories(string e) => inner.ListMemories(e);
+        public bool CanReviewTurnForAutomaticMemory(string endpoint, string conversation, long sequence)
+            => inner.CanReviewTurnForAutomaticMemory(endpoint, conversation, sequence);
+        public bool TryAddAutomaticMemory(string endpoint, string conversation, long sequence, string title, string content)
+            => inner.TryAddAutomaticMemory(endpoint, conversation, sequence, title, content);
         public ChatSharedMemory UpsertMemory(ChatSharedMemory m) => inner.UpsertMemory(m);
         public void DeleteMemory(string id) => inner.DeleteMemory(id);
         public void Dispose() => inner.Dispose();

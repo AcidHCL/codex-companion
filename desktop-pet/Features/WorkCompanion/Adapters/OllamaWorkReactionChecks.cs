@@ -84,12 +84,26 @@ internal static class OllamaWorkReactionChecks
                         system.Contains(english ? "not proof of playing a game" : "不代表正在玩游戏", StringComparison.Ordinal),
                         "context_hints_do_not_claim_screen_content_game_outcomes_or_media_understanding_" + language);
                     Check(system.Contains(english ? "natural English" : "一句中文", StringComparison.Ordinal), "locale_selects_reaction_language_" + language);
-                    return Reply(JsonSerializer.Serialize(new { text = english ? "Bowl aside; I am here if needed." : "饭碗先放一旁，需要本鲸就叫我。", expression = "none" }));
+                    return Reply(JsonSerializer.Serialize(new { text = english ? "Bowl aside; I am here if needed." : "饭碗先放一旁，需要本鲸就叫我。", expression = "none",
+                        summary = english ? "The foreground switched to a game." : "前台从工作场景切换到了游戏场景。" }));
                 });
                 using var client = new OllamaClient(new Uri("http://reaction-fixture.invalid:11434/"), handler, () => -1);
                 var reply = await OllamaWorkReactionPlanner.GenerateAsync(client, "selected:latest", "deepseek", candidate, CancellationToken.None);
                 Check(reply != null && reply.Expression == null && handler.Paths.SequenceEqual(new[] { "/api/tags", "/api/show", "/api/ps", "/api/chat" }),
                     "single_stateless_request_with_final_residency_check_" + language);
+                Check(reply!.EventSummary == (english ? "The foreground switched to a game." : "前台从工作场景切换到了游戏场景。"),
+                    "model_writes_followup_context_in_the_same_request_" + language);
+                string title = "Project confidential payroll draft";
+                var privateCandidate = candidate with { Title = title };
+                var unsafeSummary = await OllamaWorkReactionPlanner.GenerateAsync((_, _, _, _) => Task.FromResult<string?>(
+                    JsonSerializer.Serialize(new { text = "I can keep you company.", expression = "none", summary = "Editing " + title })),
+                    "selected:latest", "gpt", privateCandidate, CancellationToken.None);
+                Check(unsafeSummary is { EventSummary.Length: > 0 } && !unsafeSummary.EventSummary.Contains("payroll"),
+                    "title_quoted_in_summary_is_replaced_with_trigger_only_" + language);
+                Check(await OllamaWorkReactionPlanner.GenerateAsync((_, _, _, _) => Task.FromResult<string?>(
+                    JsonSerializer.Serialize(new { text = title, expression = "none", summary = "The app changed." })),
+                    "selected:latest", "gpt", privateCandidate, CancellationToken.None) == null,
+                    "private_title_in_utterance_is_not_shown_or_saved_" + language);
 
                 foreach (var (activity, key) in new[]
                 {

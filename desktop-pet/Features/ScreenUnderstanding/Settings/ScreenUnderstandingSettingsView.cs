@@ -58,8 +58,8 @@ internal sealed class ScreenUnderstandingSettingsView : UserControl, IDisposable
         AutomationProperties.SetName(_interval, L.T("自动理解最少间隔", "Minimum automatic-analysis interval"));
         Grid.SetColumn(_interval, 1); interval.Children.Add(_interval); read.Children.Add(interval);
         Details(read, "ScreenUnderstandingRules", L.T("运行方式", "How it works"), L.T(
-            "跟随当前聊天模型；Ollama 需已加载。仅按需读取当前窗口，沿用应用排除、全屏安静和聊天优先规则。输入或切换窗口会取消过期分析。\n\n文字与截图仅用于当次分析，不保存为截图文件、聊天记录或共享记忆；无法安全读取的窗口会跳过。",
-            "Uses the selected chat model; Ollama must already be loaded. Reads only the current window when needed, respecting exclusions, full-screen quiet and chat priority. Input or window changes cancel stale analysis.\n\nText and screenshots are used only for the current analysis and are not saved as files, chat history or shared memory. Windows that cannot be read safely are skipped."));
+            "使用当前聊天模型。Ollama 需已加载。按需读取前台窗口，遵守应用排除、全屏安静和聊天优先设置。输入或切换窗口会取消过期分析。\n\n截图和窗口原文仅供当次分析。桌宠显示气泡后，当前对话会保存发言和一句事件概述，方便追问。静默分析不会新增消息。",
+            "Uses the current chat model. Ollama must already be loaded. The pet reads the foreground window when needed and respects app exclusions, full-screen quiet and chat priority. Typing or switching windows cancels stale analysis.\n\nScreenshots and verbatim window text are used only for this analysis. When a bubble appears, the current chat saves the remark and a brief event summary for follow-up. Silent analysis adds no message."));
 
         var memory = Card(stack, L.T("应用分类记忆", "Remembered app categories"));
         _learn = Toggle(memory, "ScreenUnderstandingLearn", L.T("自动记住应用分类", "Remember app categories automatically"), value => Save(o => o with { LearnApplications = value }));

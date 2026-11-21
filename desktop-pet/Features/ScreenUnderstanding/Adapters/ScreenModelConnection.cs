@@ -40,6 +40,7 @@ internal static class ScreenModelConnection
         if (!ready.Available || imageBase64 != null && !ready.SupportsImages) return null;
         int budget = ScreenUnderstandingPlanner.EvidenceByteBudget(ready.ContextLength, instruction, imageBase64 != null);
         if (budget < 256 || Encoding.UTF8.GetByteCount(evidence) > budget) return null;
-        return await BackgroundModelRequests.GenerateApiAsync(api, model, instruction, evidence, imageBase64, ct).ConfigureAwait(false);
+        return await BackgroundModelRequests.GenerateApiAsync(api, model, instruction, evidence, imageBase64, ct,
+            onSubmit: WorkCompanion.CompanionDiagnostics.ModelRequestStarted).ConfigureAwait(false);
     }
 }

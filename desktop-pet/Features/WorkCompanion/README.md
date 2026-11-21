@@ -7,6 +7,8 @@ gaming, media and everyday use. It is disabled by default. Enable it in **Settin
 第一层自身只读前台应用名、活动时长；窗口标题默认不读取，需要独立开启。本层没有截图、OCR、
 正文读取、按键内容记录、网页访问或长期记忆。输入活动只使用 Windows 最后输入时间。
 可另行开启独立的 [ScreenUnderstanding 第二层](../ScreenUnderstanding/README.md)，按需理解当前窗口并记住应用分类。
+气泡发言和一句事件概述会保存在当前桌宠对话里。即使关闭朗读，也可以接着问桌宠刚才为什么这么说。
+未显示的回应不会创建消息。窗口原文和截图不存入对话。开启聊天的自动共享记忆后，当前模型可从已展示的发言与概述中选择值得保留的事。
 目录名、类型名和设置文件名保留 WorkCompanion，以兼容现有配置与可选构建开关。
 
 ## Activity contexts (1.36.0)
@@ -29,11 +31,11 @@ gaming, media and everyday use. It is disabled by default. Enable it in **Settin
 - `Core`: observations, trigger policy, controller, host interface and optional `IWorkContextExtension` seam. Synthetic tests do not read the desktop.
 - `Sensors`: read-only Windows foreground/session/idle observer. Excluded applications are checked before titles are read.
 - `Adapters`: stateless selected-provider planner and small partial-class adapters for existing chat/pet presentation.
-- `Settings`: separate options file and bilingual view. No observation/title/response is persisted.
+- `Settings`: separate options file and bilingual view. The settings page shows the latest reaction for this session.
 - `WorkCompanionModule`: subscriptions, two-second timer, lifecycle and composition.
 
 The application registers one optional module in `OptionalPetFeatures`, passes its generic settings contribution
-to `AppSettingsWindow`, and disposes it on exit. `DesktopSettings` and the chat/memory database are unchanged.
+to `AppSettingsWindow`, and disposes it on exit. The chat component owns persistence for displayed replies.
 `PetSpeechService.HasPendingSpeech` is a generic busy indicator covering synthesis as well as playback.
 
 Build without this feature with `dotnet build -p:EnableWorkCompanion=false` (or the same property with `publish`).
@@ -68,7 +70,9 @@ To remove it permanently, remove its guarded registration and its directory; gen
   remain authoritative; this module does not generate a duplicate completion announcement. Coordination uses the work switch.
 
 Settings alone are stored at `%LOCALAPPDATA%/AIPet/work-companion-settings.json`. Pause and observations are transient.
-The last reaction shown in the settings page is in memory only; “clear” removes it and resets the current work period.
+Clearing observations resets the work period and the last reaction shown in settings. When a bubble appears, the
+current pet chat saves the remark and a brief event summary, even when speech is off. Open that chat to follow up.
+Silent or discarded reactions create no message. Capture data stays out of chat. When automatic shared memory is enabled in chat, the selected model may save a memorable event from the displayed remark and its brief summary.
 Optional titles may contain private text: if enabled they are sent to the currently selected Ollama or API endpoint with the observation.
 An endpoint on another computer has the same destination semantics as normal chat.
 
@@ -83,7 +87,7 @@ are rejected. Raw content never enters this layer's observation records.
 
 Layer two owns a small app-category store with expiry and review, separate from chat/shared memory. A future third layer
 could add broader work goals, task continuity and preference memory; those capabilities are not implemented here.
-Do not silently add screenshot/body fields to `WorkObservation` or write automatic observations to `ChatMemoryStore`.
+Keep screenshots and window body text out of `WorkObservation`. Only the displayed remark and its brief event summary belong in chat.
 Keep shared scheduling and UI priority in the host boundary, and require explicit scope/retention controls for new sources.
 
 ## Checks

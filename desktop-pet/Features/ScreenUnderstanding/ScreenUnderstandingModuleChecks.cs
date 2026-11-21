@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,7 +21,7 @@ internal static class ScreenUnderstandingModuleChecks
 
         using (var fixture = new Fixture(new ScreenUnderstandingOptions()))
         {
-            var reply = await fixture.Generate(fixture.Candidate());
+            var reply = await fixture.Generate(fixture.Candidate() with { Kind = "app_changed" });
             Check(reply?.Text == "fallback" && fixture.Fallbacks == 1 && fixture.Capture.Requests.Count == 0 && fixture.ReadinessCalls == 0,
                 "disabled_layer_uses_metadata_fallback_without_model_preflight_or_capture");
             Check(fixture.Module.RequestContext(fixture.Observation()) == null, "disabled_layer_never_requests_initial_or_periodic_analysis");
@@ -91,6 +92,54 @@ internal static class ScreenUnderstandingModuleChecks
                 fixture.Capture.Requests.Count == 1 && !fixture.Capture.Requests[0].IncludeImage && fixture.AnalysisCalls == 0,
                 "text_read_rejection_never_falls_back_to_screenshot_" + status);
         }
+        foreach (string kind in new[] { "app_changed", "work_break", "context_requested" })
+        {
+            using var fixture = new Fixture();
+            fixture.Capture.Failure = "accessibility_limit";
+            var candidate = fixture.Candidate("code", WorkActivity.Work) with { Kind = kind, Title = "Private fixture title" };
+            var reply = await fixture.Generate(candidate);
+            Check(kind == "context_requested"
+                ? reply == null && fixture.Fallbacks == 0 && fixture.Capture.IdentityReads == 0
+                : reply?.Text == "fallback" && fixture.Fallbacks == 1 && fixture.Capture.IdentityReads == 1 &&
+                    fixture.FallbackCandidate is { App: "code", Title: null, WindowKey: null, ContextRequestKey: null } &&
+                    fixture.FallbackCandidate.Kind == kind,
+                "capture_limit_only_falls_back_to_existing_title_free_metadata_event_" + kind);
+        }
+        foreach (string status in new[] { "protected_content", "protected_window", "foreground_changed", "session_unavailable",
+            "excluded", "fullscreen_quiet", "invalid_request", "undocumented_failure" })
+        {
+            using var fixture = new Fixture();
+            fixture.Capture.Failure = status;
+            var reply = await fixture.Generate(fixture.Candidate() with { Kind = "app_changed" });
+            Check(reply == null && fixture.Fallbacks == 0 && fixture.AnalysisCalls == 0 && fixture.Capture.IdentityReads == 0,
+                "metadata_fallback_respects_rejection_" + status);
+        }
+        using (var fixture = new Fixture())
+        {
+            fixture.Module.RequestNextWindowAnalysis();
+            var candidate = fixture.Candidate() with { Kind = "app_changed", ContextRequestKey = fixture.Module.RequestContext(fixture.Observation()) };
+            fixture.Capture.Failure = "accessibility_unavailable";
+            Check(await fixture.Generate(candidate) == null && fixture.Fallbacks == 0 && fixture.AnalysisCalls == 0,
+                "an_explicit_screen_request_never_turns_into_a_metadata_remark_even_with_a_real_app_change");
+        }
+        using (var fixture = new Fixture())
+        {
+            fixture.Capture.Failure = "content_unavailable";
+            fixture.Capture.LoseIdentity = true;
+            Check(await fixture.Generate(fixture.Candidate() with { Kind = "app_changed" }) == null &&
+                fixture.Capture.IdentityReads == 1 && fixture.Fallbacks == 0, "foreground_must_still_match_before_metadata_is_sent");
+        }
+        foreach (bool fullscreen in new[] { false, true })
+        {
+            using var fixture = new Fixture();
+            fixture.Module.Configure(new WorkCompanionOptions { Enabled = true, QuietFullscreen = true,
+                ExcludedApps = new[] { fullscreen ? "anotherapp" : "mygame" } }, paused: false);
+            fixture.Capture.Failure = "accessibility_limit";
+            fixture.Capture.FullscreenOnRecheck = fullscreen;
+            Check(await fixture.Generate(fixture.Candidate() with { Kind = "app_changed" }) == null &&
+                fixture.Capture.RevalidatedRequest == fixture.Capture.Requests[0] && fixture.Fallbacks == 0,
+                "metadata_fallback_rechecks_the_original_capture_permissions_" + (fullscreen ? "now_fullscreen" : "excluded_app"));
+        }
         foreach (bool vision in new[] { false, true })
         {
             using var fixture = new Fixture(new ScreenUnderstandingOptions { Enabled = true, UseScreenshots = !vision });
@@ -104,7 +153,8 @@ internal static class ScreenUnderstandingModuleChecks
         {
             var candidate = fixture.Candidate();
             var reply = await fixture.Generate(candidate);
-            Check(reply?.Text == fixture.Analysis.Text && fixture.Capture.Requests.Count == 1 && fixture.Capture.Requests[0].IncludeImage,
+            Check(reply?.Text == fixture.Analysis.Text && reply?.EventSummary == fixture.Analysis.EventSummary &&
+                fixture.Capture.Requests.Count == 1 && fixture.Capture.Requests[0].IncludeImage,
                 "unfamiliar_app_requests_a_bounded_image_when_vision_is_available");
             Check(fixture.Memory.List().Count == 0 && fixture.Module.Status.LastSummary == null && !File.Exists(fixture.MemoryPath),
                 "generation_alone_cannot_persist_memory_or_publish_a_screen_summary");
@@ -112,6 +162,33 @@ internal static class ScreenUnderstandingModuleChecks
             fixture.Module.FinishCandidate(candidate, accepted: true);
             Check(fixture.Memory.List().Count == 0 && fixture.Module.Status.LastSummary == null,
                 "discarded_candidate_cannot_be_accepted_later_to_teach_memory");
+        }
+        foreach (string? visualEvent in new[] { "error", "Customer Galaxy's exact invoice text.", null })
+        {
+            using var fixture = new Fixture();
+            fixture.Capture.Text = "";
+            fixture.Analysis = fixture.Analysis with { VisualEvent = visualEvent, Summary = "A character was selecting equipment." };
+            var candidate = fixture.Candidate();
+            var reply = await fixture.Generate(candidate);
+            fixture.Module.FinishCandidate(candidate, true);
+            Check(reply is { ContextOnly: false } &&
+                reply.EventSummary == ScreenUnderstandingPlanner.DescribeVisualEvent(visualEvent == "error" ? "error" : "other", L.IsEnglish) &&
+                fixture.Module.Status.LastSummary == fixture.Analysis.Summary,
+                "pixel_only_history_accepts_only_the_visual_event_category_while_status_keeps_detail_" + (visualEvent ?? "missing"));
+        }
+        foreach (bool echoInSpeech in new[] { false, true })
+        {
+            using var fixture = new Fixture();
+            fixture.Capture.Text = "Quarterly payroll spreadsheet\nConfidential employee figures";
+            fixture.Analysis = fixture.Analysis with
+            {
+                EventSummary = "The user opened the quarterly payroll spreadsheet.",
+                Text = echoInSpeech ? "I noticed the confidential employee figures." : "Shall I keep you company?"
+            };
+            var reply = await fixture.Generate(fixture.Candidate());
+            Check(echoInSpeech ? reply is { ContextOnly: true, Text: "", EventSummary: "" } :
+                reply is { ContextOnly: false, EventSummary.Length: > 0 } && !reply.EventSummary.Contains("payroll"),
+                "raw_screen_excerpts_do_not_reach_the_chat_turn_" + echoInSpeech);
         }
         using (var fixture = new Fixture())
         {
@@ -245,10 +322,12 @@ internal static class ScreenUnderstandingModuleChecks
         internal readonly OllamaClient Client;
         internal ScreenUnderstandingModule Module { get; }
         internal ScreenModelReadiness Readiness = new(true, true, true, "resident") { ContextLength = 8192 };
-        internal ScreenAnalysis Analysis = new(WorkActivity.Game, .94, true, "Synthetic game menu is visible.", "A short companion remark.", "happy");
+        internal ScreenAnalysis Analysis = new(WorkActivity.Game, .94, true, "Synthetic game menu is visible.", "A short companion remark.", "happy")
+            { EventSummary = "A game menu opened." };
         internal Func<ScreenCaptureResult, CancellationToken, Task<ScreenAnalysis?>>? Analyze;
         internal ScreenCaptureResult? AnalyzedCapture;
         internal int ReadinessCalls, AnalysisCalls, Fallbacks;
+        internal WorkReactionCandidate? FallbackCandidate;
         internal bool SaveFails;
         internal CancellationToken AnalysisToken;
 
@@ -270,7 +349,7 @@ internal static class ScreenUnderstandingModuleChecks
         internal WorkObservation Observation(string app = "mygame", string windowKey = "123:ABC", bool own = false, bool fullscreen = false) =>
             new(Now, app, null, windowKey, TimeSpan.FromSeconds(6), true, fullscreen, own) { Activity = WorkActivity.Daily };
         internal Task<WorkReactionReply?> Generate(WorkReactionCandidate candidate) => Module.GenerateAsync(Client, "fixture-model", "deepseek", candidate,
-            () => { Fallbacks++; return Task.FromResult<WorkReactionReply?>(new("fallback", null)); }, CancellationToken.None);
+            metadata => { Fallbacks++; FallbackCandidate = metadata; return Task.FromResult<WorkReactionReply?>(new("fallback", null)); }, CancellationToken.None);
         public void Dispose()
         {
             Module.Dispose(); Client.Dispose();
@@ -288,7 +367,8 @@ internal static class ScreenUnderstandingModuleChecks
         internal string Text = new('x', 320);
         internal string Identity = new('a', 64);
         internal int IdentityReads;
-        internal bool WrongWindow, DropImage;
+        internal bool WrongWindow, DropImage, LoseIdentity, FullscreenOnRecheck;
+        internal ScreenCaptureRequest? RevalidatedRequest;
         internal string? Failure, FirstFailure;
         public Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureRequest request, CancellationToken ct)
         {
@@ -299,7 +379,13 @@ internal static class ScreenUnderstandingModuleChecks
                     WrongWindow ? "456:DEF" : request.WindowKey, Identity));
         }
         public Task<string?> ReadIdentityAsync(string app, string windowKey, CancellationToken ct)
-        { ct.ThrowIfCancellationRequested(); IdentityReads++; return Task.FromResult<string?>(Identity); }
+        { ct.ThrowIfCancellationRequested(); IdentityReads++; return Task.FromResult<string?>(LoseIdentity ? null : Identity); }
+        public Task<bool> IsCurrentWindowAllowedAsync(ScreenCaptureRequest request, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested(); IdentityReads++; RevalidatedRequest = request;
+            return Task.FromResult(!LoseIdentity && (!FullscreenOnRecheck || request.AllowFullscreen) &&
+                !request.ExcludedApps.Contains(request.App, StringComparer.OrdinalIgnoreCase));
+        }
     }
     private sealed class NoNetworkHandler : HttpMessageHandler
     {

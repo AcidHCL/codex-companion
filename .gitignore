@@ -38,6 +38,11 @@
 **/development-checks/
 **/development-backups/
 **/diagnostics/
+!/desktop-pet/Features/WorkCompanion/Diagnostics/
+/desktop-pet/Features/WorkCompanion/Diagnostics/*
+!/desktop-pet/Features/WorkCompanion/Diagnostics/CompanionDiagnostics.cs
+!/desktop-pet/Features/WorkCompanion/Diagnostics/CompanionDiagnosticsChecks.cs
+!/desktop-pet/Features/WorkCompanion/Diagnostics/CompanionRuntimeProbe.cs
 **/status.json
 **/settings.json
 **/connection.dat

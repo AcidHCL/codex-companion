@@ -69,7 +69,7 @@ internal sealed partial class OllamaChatWindow
         try
         {
             await StopGenerationAsync(); CheckConfiguration(operation, revision);
-            await _modelCallGate.WaitAsync(operation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(operation.Token); entered = true;
             if (!SaveCurrentDraft()) throw new InvalidDataException(L.T("请先保存当前聊天草稿，再切换连接。", "Save the current chat draft before switching connections."));
             candidate = update.UseApi ? _apiClientFactory(profile) : _clientFactory(OllamaEndpoint.Parse(_settings.OllamaAddress));
             string model = update.UseApi ? profile.Model : _settings.OllamaModel;

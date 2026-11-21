@@ -73,7 +73,7 @@ internal sealed partial class OllamaChatWindow
             string.Equals(persona, _settings.SkinId, StringComparison.OrdinalIgnoreCase) && english == L.IsEnglish;
         try
         {
-            await _modelCallGate.WaitAsync(cancellation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(cancellation.Token); entered = true;
             cancellation.Token.ThrowIfCancellationRequested();
             if (!Current()) return null;
             if (client is OllamaClient)
@@ -82,9 +82,9 @@ internal sealed partial class OllamaChatWindow
                 if (activity.ActiveInference > 0 || activity.ActiveMaintenance > 0 ||
                     activity.GraceUntil is { } grace && grace > DateTimeOffset.UtcNow) return null;
             }
-            else CompanionDiagnostics.Record("model", "model_request");
-            Task<WorkReactionReply?> Fallback() => OllamaWorkReactionPlanner.GenerateAsync(client, model, persona, candidate, cancellation.Token);
-            var reply = contextExtension == null ? await Fallback() :
+            Task<WorkReactionReply?> Fallback(WorkReactionCandidate observation) =>
+                OllamaWorkReactionPlanner.GenerateAsync(client, model, persona, observation, cancellation.Token);
+            var reply = contextExtension == null ? await Fallback(candidate) :
                 await contextExtension.GenerateAsync(client, model, persona, candidate, Fallback, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             return Current() ? reply : null;

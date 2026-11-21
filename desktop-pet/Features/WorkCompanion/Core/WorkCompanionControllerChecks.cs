@@ -251,7 +251,7 @@ internal static class WorkCompanionControllerChecks
         {
             using var fixture = new Fixture();
             var generation = fixture.Host.BlockGeneration();
-            var presentation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var presentation = new TaskCompletionSource<WorkPresentation>(TaskCreationOptions.RunContinuationsAsynchronously);
             var presentationEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             fixture.Host.Presentation = (_, _, _, _) =>
             {
@@ -274,7 +274,7 @@ internal static class WorkCompanionControllerChecks
                 case "disable": fixture.Controller.UpdateOptions(fixture.Controller.Options with { Enabled = false }); break;
             }
             var status = fixture.Controller.Status;
-            presentation.SetResult(true);
+            presentation.SetResult(WorkPresentation.SavedToChat);
             await fixture.Controller.PendingTask;
             Require(fixture.Controller.Status == status && fixture.Controller.Status.LastReaction == null,
                 "late async presentation completion cannot restore cleared reaction state: " + action);
@@ -373,7 +373,7 @@ internal static class WorkCompanionControllerChecks
         {
             var generation = fixture.Host.BlockGeneration();
             await fixture.Trigger();
-            Require(fixture.Host.LastCandidate is { Kind: "context_requested", WindowKey: "Reader-window", ContextRequestKey: "fixture-context-1" } &&
+            Require(fixture.Host.LastCandidate is { Kind: "app_changed", WindowKey: "Reader-window", ContextRequestKey: "fixture-context-1" } &&
                 fixture.Host.LastCandidate.ExpiresAt - fixture.Host.LastCandidate.At == TimeSpan.FromSeconds(50),
                 "optional context request retains the exact target and grants a bounded fifty-second candidate");
             fixture.Clock.Set(21);
@@ -573,7 +573,7 @@ internal static class WorkCompanionControllerChecks
         public WorkReactionCandidate? LastCandidate { get; private set; }
         public bool LastSpeak { get; private set; }
         public CancellationToken GenerationToken { get; private set; }
-        public Func<WorkReactionReply, WorkHostState, bool, CancellationToken, Task<bool>>? Presentation { get; set; }
+        public Func<WorkReactionReply, WorkHostState, bool, CancellationToken, Task<WorkPresentation>>? Presentation { get; set; }
         private Task<WorkReactionReply?>? _generation;
 
         public TaskCompletionSource<WorkReactionReply?> BlockGeneration()
@@ -592,11 +592,11 @@ internal static class WorkCompanionControllerChecks
             _generation = null;
             return generation ?? Task.FromResult<WorkReactionReply?>(null);
         }
-        public Task<bool> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct)
+        public Task<WorkPresentation> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct)
         {
             Presentations++;
             LastSpeak = speak;
-            return Presentation?.Invoke(reply, expected, speak, ct) ?? Task.FromResult(true);
+            return Presentation?.Invoke(reply, expected, speak, ct) ?? Task.FromResult(WorkPresentation.SavedToChat);
         }
         public void FinishCandidate(WorkReactionCandidate candidate, bool accepted)
         { if (accepted) FinishedAccepted++; else FinishedRejected++; }
@@ -614,7 +614,7 @@ internal static class WorkCompanionControllerChecks
         public string? RequestContext(WorkObservation observation) => ContextRequest;
         public bool IsExplicitRequest(WorkReactionCandidate candidate) => Explicit;
         public Task<WorkReactionReply?> GenerateAsync(IOllamaClient client, string model, string persona,
-            WorkReactionCandidate candidate, Func<Task<WorkReactionReply?>> fallback, CancellationToken ct) => fallback();
+            WorkReactionCandidate candidate, Func<WorkReactionCandidate, Task<WorkReactionReply?>> fallback, CancellationToken ct) => fallback(candidate);
         public void FinishCandidate(WorkReactionCandidate candidate, bool accepted) { }
         public void ClearTransientState() { }
         internal void Invalidate() => Invalidated?.Invoke();

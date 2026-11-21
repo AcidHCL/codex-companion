@@ -41,6 +41,7 @@ internal sealed class DesktopSettings
     public int OllamaKeepAliveMinutes { get; set; } = ModelRetentionPolicy.DefaultOllama;
     public bool WebSearchEnabled { get; set; } = true;
     public bool SharedMemoryEnabled { get; set; } = true;
+    public bool AutomaticMemoryEnabled { get; set; } = true;
     public bool LlmBehaviorEnabled { get; set; } = false;
     // Local ownership labels only. No message text, pairing data, or account data.
     public Dictionary<string, string> TaskSourceOverrides { get; set; } = new(StringComparer.Ordinal);

@@ -128,12 +128,21 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
         candidate.ContextRequestKey?.StartsWith("manual:" + _manualSequence + ":", StringComparison.Ordinal) == true;
 
     public async Task<WorkReactionReply?> GenerateAsync(IOllamaClient client, string model, string persona,
-        WorkReactionCandidate candidate, Func<Task<WorkReactionReply?>> fallback, CancellationToken ct)
+        WorkReactionCandidate candidate, Func<WorkReactionCandidate, Task<WorkReactionReply?>> fallback, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        if (_disposed || _paused || !_companion.Enabled || !_companion.ObserveApplications ||
+            !ActivityEnabled(candidate.Activity) || candidate.ExpiresAt <= _now()) return null;
         bool explicitRequest = IsExplicitRequest(candidate);
-        if (!Active || !_options.ReadWindowText && !_options.UseScreenshots || string.IsNullOrWhiteSpace(candidate.WindowKey) ||
-            !ActivityEnabled(candidate.Activity) || !explicitRequest && _now() < _nextAttempt)
-            return await fallback();
+        bool metadataEvent = !explicitRequest && (candidate.Kind switch
+        {
+            "app_changed" => _companion.ReactToAppChanges,
+            "work_break" or "game_break" or "media_break" or "daily_break" => _companion.BreakReminders,
+            _ => false
+        });
+        if (!_options.Enabled || !_options.ReadWindowText && !_options.UseScreenshots ||
+            string.IsNullOrWhiteSpace(candidate.WindowKey) || !explicitRequest && _now() < _nextAttempt)
+            return metadataEvent ? await fallback(candidate) : null;
         if (!client.Endpoint.IsLoopback && !_options.AllowRemoteEndpoint)
         {
             CompanionDiagnostics.Record("screen", "remote_disabled");
@@ -185,12 +194,30 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
             if (image && !request.IncludeImage && needsImage)
                 captured = await _capture.CaptureAsync(request with { IncludeImage = true }, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
-            if (!Active || candidate.ExpiresAt <= _now() || !captured.Success || captured.WindowKey != candidate.WindowKey)
+            if (!Active || candidate.ExpiresAt <= _now())
+            { CompanionDiagnostics.Record("policy", "stale_result"); return null; }
+            if (!captured.Success || captured.WindowKey != candidate.WindowKey)
             {
-                CompanionDiagnostics.Record("screen", captured.Status is "protected_content" ? "protected_content" :
-                    captured.Status is "capture_timeout" ? "capture_timeout" : "screen_capture_failed");
+                var reason = CompanionDiagnosticCatalog.ScreenCaptureReason(captured.Success ? "foreground_changed" : captured.Status);
+                CompanionDiagnostics.Record("screen", reason.Code);
                 SetStatus(L.T("本次窗口无法读取", "This window could not be read"),
-                    CaptureReason(captured.Status));
+                    L.T(reason.Zh, reason.En));
+                // Recovery is for an independently eligible event, never an invented
+                // screen observation. Unknown failures, changed targets and privacy
+                // denials fail closed. Recheck the foreground identity before calling
+                // the metadata planner, which receives neither title nor screen data.
+                if (!captured.Success && metadataEvent && captured.Status is
+                    ("accessibility_limit" or "accessibility_unavailable" or "accessibility_timeout" or "content_unavailable"
+                        or "capture_timeout" or "worker_unavailable" or "worker_isolation_unavailable"))
+                {
+                    bool targetAllowed = await _capture.IsCurrentWindowAllowedAsync(request, cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (targetAllowed && Active && candidate.ExpiresAt > _now())
+                    {
+                        CompanionDiagnostics.Record("policy", "metadata_fallback");
+                        return await fallback(candidate with { Title = null, WindowKey = null, ContextRequestKey = null });
+                    }
+                }
                 return null;
             }
             if (captured.Text.Length == 0 && captured.ImageBase64 == null)
@@ -202,7 +229,10 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
             var analysis = await _models.Analyze(client, model, persona, candidate, captured, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             if (!Active || analysis == null) { CompanionDiagnostics.Record("screen", "no_result"); SetStatus(L.T("本次理解没有可靠结果", "No reliable understanding this time")); return null; }
-            CompanionDiagnostics.Record("screen", analysis.Text.Length == 0 ? "model_silent" : "screen_result");
+            bool filtered = analysis.Text.Length > 0 && !WorkReactionPrivacy.CanShare(analysis.Text, candidate.Title, captured.Text);
+            if (filtered)
+                analysis = analysis with { Text = "", Expression = null };
+            CompanionDiagnostics.Record("screen", filtered ? "reply_filtered" : analysis.Text.Length == 0 ? "model_silent" : "screen_result");
             bool mayLearn = _options.LearnApplications && analysis.ReusableApp &&
                 analysis.Activity != null && analysis.Confidence >= LearnedApplicationStore.MinimumConfidence &&
                 !IsMultipurpose(candidate.App) && !CompanionActivityClassifier.HasBuiltInCategory(candidate.App) &&
@@ -211,7 +241,14 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
             // Store only validated structured output temporarily. Pixels/text
             // are released with the local capture after this method returns.
             _pending[candidate.Id] = new Pending(candidate.App, captured.ApplicationIdentity, analysis, mayLearn);
-            return new WorkReactionReply(analysis.Text, analysis.Expression) { ContextOnly = analysis.Text.Length == 0 };
+            return new WorkReactionReply(analysis.Text, analysis.Expression)
+            {
+                ContextOnly = analysis.Text.Length == 0,
+                EventSummary = analysis.Text.Length == 0 ? "" :
+                    ScreenUnderstandingPlanner.ImageWithoutReadableText(captured.ImageBase64, captured.Text) ?
+                    ScreenUnderstandingPlanner.DescribeVisualEvent(analysis.VisualEvent, L.IsEnglish) :
+                    WorkReactionPrivacy.EventSummary(analysis.EventSummary, candidate, L.IsEnglish, captured.Text, screen: true)
+            };
         }
         catch (OperationCanceledException)
         {
@@ -245,7 +282,7 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
         SetStatus(learned ? L.T("已理解并记住应用分类", "Understood and remembered the app category") :
             L.T("已理解当前窗口", "Current window understood"),
             learned ? L.T("只保存应用身份和分类；可在下方纠正或删除。", "Only app identity and category were saved. Correct or delete them below.") :
-            L.T("理解摘要只留在本次运行中；多用途应用不会凭单个页面记成固定分类。", "The summary stays in memory for this run. A multipurpose app is not classified permanently from one page."));
+            L.T("多用途应用不会凭单个页面记成固定分类。", "Multipurpose apps are not assigned a lasting category from a single page."));
     }
 
     public IReadOnlyList<LearnedApplication> GetMemories() => _memory.List();
@@ -287,13 +324,6 @@ internal sealed class ScreenUnderstandingModule : IWorkContextExtension, IScreen
     {
         WorkActivity.Work => _companion.WorkEnabled, WorkActivity.Game => _companion.GameEnabled,
         WorkActivity.Media => _companion.MediaEnabled, _ => _companion.DailyEnabled
-    };
-    private static string CaptureReason(string status) => status switch
-    {
-        "password" or "sensitive_content" or "protected_content" => L.T("窗口含敏感输入，本次已跳过。", "Sensitive input was found; this window was skipped."),
-        "timeout" or "capture_timeout" => L.T("该应用没有及时提供内容，已停止读取。", "The app did not provide content in time; reading stopped."),
-        "fullscreen_quiet" => L.T("已开启全屏时安静，不读取全屏窗口。", "Fullscreen quiet mode is on; fullscreen windows are not read."),
-        _ => L.T("窗口可能已切换、被排除、无法提供内容，或当前会话不可用。", "The window may have changed, be excluded, expose no usable content, or the session may be unavailable.")
     };
     public void Dispose()
     {

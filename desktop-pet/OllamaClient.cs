@@ -267,7 +267,8 @@ internal sealed partial class OllamaClient : IOllamaClient
     // an explicit app preference; legacy read-only clients leave it unspecified.
     // The caller owns
     // this dedicated client's lifetime and a short overall cancellation deadline.
-    internal async Task<string?> SummarizeResidentAsync(string model, string instruction, string source, CancellationToken ct)
+    internal async Task<string?> SummarizeResidentAsync(string model, string instruction, string source, CancellationToken ct,
+        bool requireWholeSource = false, Action? onSubmit = null)
     {
         RequireSupportedModel(model);
         ct.ThrowIfCancellationRequested();
@@ -284,8 +285,8 @@ internal sealed partial class OllamaClient : IOllamaClient
 
         // Match the already allocated context exactly. A conservative UTF-8
         // budget also leaves room for instructions, template, and a short reply.
-        int inputBytes = Math.Min(36_000, resident.ContextLength.Value - 1024 - Encoding.UTF8.GetByteCount(instruction));
-        if (inputBytes < 512) return null;
+        int inputBytes = Math.Min(36_000, BackgroundModelRequests.TextByteBudget(instruction, resident.ContextLength.Value));
+        if (inputBytes < 512 || (requireWholeSource && Encoding.UTF8.GetByteCount(source) > inputBytes)) return null;
         source = BoundSummarySource(source, inputBytes);
         using var request = JsonRequest("api/chat", new
         {
@@ -297,6 +298,8 @@ internal sealed partial class OllamaClient : IOllamaClient
             options = new { num_ctx = resident.ContextLength.Value, num_predict = 512, temperature = 0.2 }
         });
         using var activity = OllamaRequestActivity.Begin(Endpoint);
+        ct.ThrowIfCancellationRequested();
+        onSubmit?.Invoke();
         using var response = await SendAsync(request, ct, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, ct, ct).ConfigureAwait(false);
         string body = await ReadBodyAsync(response, 64 * 1024, truncate: false, ct, ct).ConfigureAwait(false);

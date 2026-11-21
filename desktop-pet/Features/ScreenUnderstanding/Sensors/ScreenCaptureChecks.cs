@@ -18,6 +18,48 @@ namespace DesktopPet.ScreenUnderstanding;
 
 internal static class ScreenCaptureChecks
 {
+    // UI Automation can inspect this test process's own controls even when
+    // Windows keeps the user's foreground app active. No desktop pixels here.
+    internal static async Task<object> CheckDenseWindowTextAsync()
+    {
+        var content = new Canvas();
+        for (int index = 0; index < 320; index++)
+        {
+            var cell = new TextBlock { Text = "Cell " + index };
+            Canvas.SetLeft(cell, (index % 20) * 29);
+            Canvas.SetTop(cell, (index / 20) * 18);
+            content.Children.Add(cell);
+        }
+        var password = new PasswordBox { Width = 120, Height = 28, Visibility = Visibility.Collapsed };
+        Canvas.SetTop(password, 292);
+        content.Children.Add(password);
+        var window = new Window { Width = 650, Height = 380, Content = content, ShowInTaskbar = false,
+            ShowActivated = false, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+        try
+        {
+            window.Show(); await Settle(window);
+            var topLeft = content.PointToScreen(new System.Windows.Point());
+            var bottomRight = content.PointToScreen(new System.Windows.Point(content.ActualWidth, content.ActualHeight));
+            var bounds = System.Drawing.Rectangle.FromLTRB((int)topLeft.X, (int)topLeft.Y, (int)bottomRight.X, (int)bottomRight.Y);
+            var snapshot = new ScreenWindowSnapshot((uint)Environment.ProcessId, new WindowInteropHelper(window).Handle,
+                "fixture", 0, bounds, bounds, false);
+            var readable = await Task.Run(() => ScreenWindowText.Read(snapshot, true, Stopwatch.StartNew()));
+            if (!readable.Safe || !readable.Text.Contains("Cell ", StringComparison.Ordinal) ||
+                readable.Text.Length > ScreenCapturePolicy.MaximumText)
+                throw new InvalidOperationException("Large safe accessibility tree returned " + readable.Status + ".");
+            password.Visibility = Visibility.Visible; await Settle(window);
+            foreach (bool includeText in new[] { true, false })
+            {
+                var guarded = await Task.Run(() => ScreenWindowText.Read(snapshot, includeText, Stopwatch.StartNew()));
+                if (guarded.Safe || guarded.Status != "protected_content" || guarded.Text.Length != 0)
+                    throw new InvalidOperationException("A late password escaped the full-window check.");
+            }
+            return new { passed = true, ordinaryControls = 320, boundedTextRead = true,
+                latePasswordBlocksTextAndImageOnly = true };
+        }
+        finally { window.Close(); }
+    }
+
     // The only actual UI/image in these checks is a purpose-built test window.
     // Raw captures stay in memory and are never printed, saved, or sent to a model.
     internal static async Task<object> RunAsync()

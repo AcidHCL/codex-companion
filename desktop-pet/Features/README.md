@@ -1,7 +1,7 @@
 # Optional features / 可选功能模块
 
 桌宠的主动陪伴按层组织，由 `OptionalPetFeatures` 注册生命周期和设置页。
-功能代码、独立设置、诊断和平台适配保留在各自目录；聊天窗口和桌宠只提供通用的调度、取消与展示接口。
+功能代码、独立设置、诊断和平台适配保留在各自目录。聊天组件负责将已显示的发言和一句事件概述写入当前对话，供用户继续追问。
 
 | 模块 | 范围 | 运行时默认 | 构建开关 |
 | --- | --- | --- | --- |
@@ -27,5 +27,6 @@ dotnet build -p:EnableWorkCompanion=false
 The optional modules are composed through `OptionalPetFeatures`. Layer one owns lightweight
 foreground/activity observations and reaction scheduling; it does not capture content itself.
 Layer two adds opt-in current-window text/images and a separate, bounded app-category store through
-`IWorkContextExtension`. Raw content never becomes chat history or shared memory. Both features are
+`IWorkContextExtension`. After a bubble appears, the current pet chat saves the remark and a brief account of
+what happened for follow-up. Raw window text and screenshots stay out of chat and shared memory. Both features are
 off at runtime by default; disabling the layer-one build flag excludes both layers.

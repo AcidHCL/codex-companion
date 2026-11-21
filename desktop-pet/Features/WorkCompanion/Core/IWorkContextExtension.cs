@@ -15,7 +15,7 @@ internal interface IWorkContextExtension
     string? RequestContext(WorkObservation observation);
     bool IsExplicitRequest(WorkReactionCandidate candidate);
     Task<WorkReactionReply?> GenerateAsync(IOllamaClient client, string model, string persona,
-        WorkReactionCandidate candidate, Func<Task<WorkReactionReply?>> fallback, CancellationToken ct);
+        WorkReactionCandidate candidate, Func<WorkReactionCandidate, Task<WorkReactionReply?>> fallback, CancellationToken ct);
     void FinishCandidate(WorkReactionCandidate candidate, bool accepted);
     void ClearTransientState();
 }

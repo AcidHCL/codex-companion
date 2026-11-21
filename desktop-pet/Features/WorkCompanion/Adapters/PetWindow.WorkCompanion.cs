@@ -15,23 +15,31 @@ internal sealed partial class PetWindow
     private long? _workSpeechRevision;
     internal long WorkCompanionBehaviorRevision => _behaviorRevision;
     internal bool CanObserveWorkDesktop => CompanionSurfacesAvailable && !DisplayRenderingPaused;
-    internal string WorkReactionBlockCode => !CanObserveWorkDesktop ? "observer_unavailable" :
-        IsCompanionOpen || _menuOpen ? "pet_ui_open" :
-        _voice?.HasPendingSpeech == true ? "speech_busy" :
-        IsChatBusy || _voiceInputActive || _voiceStudioActive ? "chat_busy" :
-        _pointerPressed || _nativePointerDrag || PhysicalBehaviorBusy || _manualScene ? "interaction_busy" : "host_busy";
-    internal bool CanPresentWorkReaction => CompanionSurfacesAvailable && !DisplayRenderingPaused &&
-        !_pointerPressed && !_nativePointerDrag && !PhysicalBehaviorBusy && !_manualScene &&
-        !_menuOpen && !IsCompanionOpen && !IsChatBusy && !_voiceInputActive && !_voiceStudioActive &&
-        _voice?.HasPendingSpeech != true && _bubble.Visibility != Visibility.Visible;
+    internal string? WorkReactionBlockCode(OllamaChatWindow? chat)
+    {
+        if (!CanObserveWorkDesktop) return "observer_unavailable";
+        // An attached chat can stay open while the user works in another app.
+        // The action rail, an active chat, and an in-progress turn still take priority.
+        bool backgroundChat = chat is { IsVisible: true, IsActive: false, IsKeyboardFocusWithin: false } &&
+            ReferenceEquals(chat.Owner, this);
+        if (_menuOpen || IsCompanionOpen && !backgroundChat) return "pet_ui_open";
+        if (_voice?.HasPendingSpeech == true) return "speech_busy";
+        if (IsChatBusy || _voiceInputActive || _voiceStudioActive) return "chat_busy";
+        if (_pointerPressed || _nativePointerDrag || PhysicalBehaviorBusy || _manualScene) return "interaction_busy";
+        return _bubble.Visibility == Visibility.Visible ? "host_busy" : null;
+    }
 
-    internal async Task<bool> PresentWorkReactionAsync(WorkReactionReply reply, bool speak,
-        long expectedBubble, CancellationToken ct)
+    internal async Task<WorkPresentation> PresentWorkReactionAsync(WorkReactionReply reply, bool speak,
+        long expectedBubble, CancellationToken ct, OllamaChatWindow session)
     {
         Dispatcher.VerifyAccess(); ct.ThrowIfCancellationRequested();
-        if (!CanPresentWorkReaction || SpeechBubbleRevision != expectedBubble) return false;
+        if (WorkReactionBlockCode(session) != null || SpeechBubbleRevision != expectedBubble) return WorkPresentation.Skipped;
         ShowSpeechBubble(reply.Text);
         _workBubbleRevision = SpeechBubbleRevision;
+        // Commit before any asynchronous animation or user follow-up can switch the chat.
+        var result = session.TrySaveCompanionReaction(reply.TargetConversationId, reply.Text, reply.EventSummary)
+            ? WorkPresentation.SavedToChat : WorkPresentation.Shown;
+        if (result == WorkPresentation.Shown) CompanionDiagnostics.Record("presentation", "chat_save_failed");
         if (speak)
         {
             long? before = _voice?.SpeechRevision;
@@ -39,7 +47,7 @@ internal sealed partial class PetWindow
             _workSpeechRevision = _voice?.SpeechRevision != before ? _voice?.SpeechRevision : null;
         }
         string? expression = reply.Expression switch { "happy" => "happy", "surprised" => "startled", _ => null };
-        if (expression == null || !CanPlayPerformance(expression)) return true;
+        if (expression == null || !CanPlayPerformance(expression)) return result;
         var transition = PreviewSceneCoreAsync(expression, llmOwned: true);
         long command = _sceneCommand;
         _workExpressionCommand = command;
@@ -51,7 +59,7 @@ internal sealed partial class PetWindow
         }
         catch (Exception ex) when (!GraphicsFailure.IsFatal(ex))
         { if (_workExpressionCommand == command) CancelWorkExpression(); }
-        return true; // The text was already shown even if an optional animation failed.
+        return result;
     }
 
     internal void CancelWorkExpression()

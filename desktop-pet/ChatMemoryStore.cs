@@ -7,19 +7,28 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 
 namespace DesktopPet;
 
 internal sealed record ChatStoredImage(string Name, string Base64);
 internal sealed record ChatStoredTurn(long Sequence, string User, string Assistant, string Model,
-    IReadOnlyList<ChatStoredImage> Images, IReadOnlyList<PetWebSource> Sources, string? WebWarning, DateTimeOffset CreatedUtc);
+    IReadOnlyList<ChatStoredImage> Images, IReadOnlyList<PetWebSource> Sources, string? WebWarning, DateTimeOffset CreatedUtc)
+{
+    // Absent in older payloads and ordinary chat turns.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompanionEventSummary { get; init; }
+}
 internal sealed record ChatConversation(string Id, string Endpoint, string PersonaKey, string Model, string Title,
     DateTimeOffset CreatedUtc, DateTimeOffset UpdatedUtc, string Draft, IReadOnlyList<ChatStoredImage> DraftImages)
 {
     public bool HasDraft { get; init; }
 }
-internal sealed record ChatSharedMemory(string Id, string Endpoint, string Title, string Content, bool Pinned, DateTimeOffset UpdatedUtc);
+internal sealed record ChatSharedMemory(string Id, string Endpoint, string Title, string Content, bool Pinned, DateTimeOffset UpdatedUtc)
+{
+    public bool IsAutomatic { get; init; }
+}
 
 internal interface IChatMemoryStore : IDisposable
 {
@@ -37,6 +46,8 @@ internal interface IChatMemoryStore : IDisposable
     void SetActiveConversation(string id);
     IReadOnlyList<ChatSharedMemory> ListMemories(string endpoint);
     ChatSharedMemory UpsertMemory(ChatSharedMemory memory);
+    bool CanReviewTurnForAutomaticMemory(string endpoint, string sourceConversationId, long sourceSequence);
+    bool TryAddAutomaticMemory(string endpoint, string sourceConversationId, long sourceSequence, string title, string content);
     void DeleteMemory(string id);
 }
 
@@ -50,7 +61,7 @@ internal sealed class ChatMemoryStoreException : Exception
 // accidental disclosure/other Windows accounts, not software running as the same user.
 internal sealed class ChatMemoryStore : IChatMemoryStore
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private const int ApplicationId = 0x4149504D;
     private const int MaximumImageCharacters = 16 * 1024 * 1024;
     private const int MaximumPayloadBytes = 40 * 1024 * 1024;
@@ -87,12 +98,8 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
                 throw new InvalidDataException("Existing database has no recognized schema version.");
             Execute(null, "PRAGMA busy_timeout=3000; PRAGMA trusted_schema=OFF; PRAGMA temp_store=MEMORY; PRAGMA secure_delete=ON;");
             if (DatabasePath != ":memory:") Execute(null, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
-            if (version == 0) InitializeSchema();
-            // Validate tables before accepting a connection, without rewriting existing data.
-            _ = Scalar(null, "SELECT COUNT(*) FROM conversations;");
-            _ = Scalar(null, "SELECT COUNT(*) FROM turns;");
-            _ = Scalar(null, "SELECT COUNT(*) FROM shared_memories;");
-            _ = Scalar(null, "SELECT COUNT(*) FROM active_conversations;");
+            if (version < SchemaVersion) InitializeOrUpgradeSchema();
+            else ValidateSchema(null);
         }
         catch (Exception ex)
         {
@@ -102,10 +109,12 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         }
     }
 
-    private void InitializeSchema()
+    private void InitializeOrUpgradeSchema()
     {
         using var transaction = connection.BeginTransaction();
-        Execute(transaction, """
+        int version = Convert.ToInt32(Scalar(transaction, "PRAGMA user_version;"), CultureInfo.InvariantCulture);
+        if (version > SchemaVersion) throw new InvalidDataException("Unsupported chat database version.");
+        if (version == 0) Execute(transaction, """
             CREATE TABLE conversations (
                 id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, persona_key TEXT NOT NULL, model TEXT NOT NULL,
                 title BLOB NOT NULL, title_auto INTEGER NOT NULL DEFAULT 1,
@@ -127,10 +136,27 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
             );
             CREATE INDEX memories_scope ON shared_memories(endpoint, pinned DESC, updated_utc DESC);
             PRAGMA application_id=1095323725;
-            PRAGMA user_version=1;
             """);
+        if (version is 0 or 1) Execute(transaction, """
+            CREATE TABLE automatic_memory_sources (
+                conversation_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+                PRIMARY KEY (conversation_id,sequence),
+                FOREIGN KEY (conversation_id,sequence) REFERENCES turns(conversation_id,sequence) ON DELETE CASCADE
+            ) WITHOUT ROWID;
+            PRAGMA user_version=2;
+            """);
+        ValidateSchema(transaction);
         transaction.Commit();
     }
+
+    // Verify required columns without scanning or decrypting existing data. A failed upgrade rolls back.
+    private void ValidateSchema(SqliteTransaction? transaction) => Execute(transaction, """
+        SELECT id,endpoint,persona_key,model,title,title_auto,created_utc,updated_utc,draft,has_draft FROM conversations LIMIT 0;
+        SELECT conversation_id,sequence,payload FROM turns LIMIT 0;
+        SELECT id,endpoint,payload,pinned,updated_utc FROM shared_memories LIMIT 0;
+        SELECT endpoint,persona_key,conversation_id FROM active_conversations LIMIT 0;
+        SELECT conversation_id,sequence FROM automatic_memory_sources LIMIT 0;
+        """);
 
     public IReadOnlyList<ChatConversation> ListConversations(string endpoint, string personaKey)
     {
@@ -212,13 +238,20 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         {
             using var transaction = connection.BeginTransaction();
             if (Scalar(transaction, "SELECT id FROM conversations WHERE id=$id;", ("$id", id)) is null) throw new InvalidOperationException(L.T("对话已不存在，请重新选择对话。", "This conversation no longer exists. Select another conversation."));
+            if (turn.CompanionEventSummary != null && Scalar(transaction, "SELECT 1 FROM active_conversations WHERE conversation_id=$id;", ("$id", id)) is null)
+                throw new InvalidOperationException(L.T("当前对话已经切换。", "The active conversation has changed."));
             long sequence = Convert.ToInt64(Scalar(transaction, "SELECT COALESCE(MAX(sequence),0)+1 FROM turns WHERE conversation_id=$id;", ("$id", id)), CultureInfo.InvariantCulture);
             var now = DateTimeOffset.UtcNow;
             // Full page text was transient retrieval evidence, not permanent conversation memory.
             var sanitized = turn with { Sequence = sequence, Sources = turn.Sources.Select(source => source with { Text = "" }).ToArray(), CreatedUtc = turn.CreatedUtc == default ? now : turn.CreatedUtc.ToUniversalTime() };
             Execute(transaction, "INSERT INTO turns(conversation_id,sequence,payload) VALUES($id,$sequence,$payload);", ("$id", id), ("$sequence", sequence), ("$payload", Encode(sanitized)));
-            Execute(transaction, "UPDATE conversations SET model=$model,updated_utc=$now,draft=$draft,has_draft=0,title=CASE WHEN title_auto=1 AND $sequence=1 THEN $title ELSE title END WHERE id=$id;",
-                ("$model", turn.Model), ("$now", Stamp(now)), ("$draft", Encode(new DraftPayload("", Array.Empty<ChatStoredImage>()))), ("$sequence", sequence), ("$title", Encode(DeriveTitle(turn.User))), ("$id", id));
+            Execute(transaction, """
+                UPDATE conversations SET model=$model,updated_utc=$now,
+                    draft=COALESCE($emptyDraft,draft),has_draft=CASE WHEN $emptyDraft IS NULL THEN has_draft ELSE 0 END,
+                    title=CASE WHEN title_auto=1 AND $sequence=1 THEN $title ELSE title END WHERE id=$id;
+                """, ("$model", turn.Model), ("$now", Stamp(now)),
+                ("$emptyDraft", turn.CompanionEventSummary == null ? (object)Encode(new DraftPayload("", Array.Empty<ChatStoredImage>())) : DBNull.Value),
+                ("$sequence", sequence), ("$title", Encode(DeriveTitle(turn.CompanionEventSummary ?? turn.User))), ("$id", id));
             transaction.Commit();
             return sequence;
         });
@@ -275,18 +308,21 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     public IReadOnlyList<ChatSharedMemory> ListMemories(string endpoint)
     {
         endpoint = ScopeEndpoint(endpoint);
-        return Locked(() =>
+        return Locked(() => ReadMemories(endpoint, null));
+    }
+
+    private IReadOnlyList<ChatSharedMemory> ReadMemories(string endpoint, SqliteTransaction? transaction)
+    {
+        using var command = Command(transaction, "SELECT id,endpoint,payload,pinned,updated_utc FROM shared_memories WHERE endpoint=$endpoint ORDER BY pinned DESC,updated_utc DESC,id LIMIT $limit;", ("$endpoint", endpoint), ("$limit", MaximumMemories));
+        using var reader = command.ExecuteReader();
+        var result = new List<ChatSharedMemory>();
+        while (reader.Read())
         {
-            using var command = Command(null, "SELECT id,endpoint,payload,pinned,updated_utc FROM shared_memories WHERE endpoint=$endpoint ORDER BY pinned DESC,updated_utc DESC,id LIMIT $limit;", ("$endpoint", endpoint), ("$limit", MaximumMemories));
-            using var reader = command.ExecuteReader();
-            var result = new List<ChatSharedMemory>();
-            while (reader.Read())
-            {
-                var payload = Decode<MemoryPayload>(reader.GetFieldValue<byte[]>(2));
-                result.Add(new ChatSharedMemory(reader.GetString(0), reader.GetString(1), payload.Title, payload.Content, reader.GetBoolean(3), Date(reader.GetString(4))));
-            }
-            return (IReadOnlyList<ChatSharedMemory>)result;
-        });
+            var payload = Decode<MemoryPayload>(reader.GetFieldValue<byte[]>(2));
+            result.Add(new ChatSharedMemory(reader.GetString(0), reader.GetString(1), payload.Title, payload.Content,
+                reader.GetBoolean(3), Date(reader.GetString(4))) { IsAutomatic = payload.IsAutomatic });
+        }
+        return result;
     }
 
     public ChatSharedMemory UpsertMemory(ChatSharedMemory memory)
@@ -315,6 +351,61 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     {
         id = ValidId(id);
         Locked(() => { Execute(null, "DELETE FROM shared_memories WHERE id=$id;", ("$id", id)); return true; });
+    }
+
+    private const string UnreviewedTurnSql = """
+        SELECT t.conversation_id,t.sequence FROM turns t JOIN conversations c ON c.id=t.conversation_id
+        WHERE t.conversation_id=$id AND t.sequence=$sequence AND c.endpoint=$endpoint
+            AND NOT EXISTS (SELECT 1 FROM automatic_memory_sources r WHERE r.conversation_id=t.conversation_id AND r.sequence=t.sequence)
+        """;
+
+    public bool CanReviewTurnForAutomaticMemory(string endpoint, string sourceConversationId, long sourceSequence)
+    {
+        endpoint = ScopeEndpoint(endpoint);
+        sourceConversationId = ValidId(sourceConversationId);
+        return sourceSequence > 0 && Locked(() => Scalar(null, UnreviewedTurnSql,
+            ("$id", sourceConversationId), ("$sequence", sourceSequence), ("$endpoint", endpoint)) is not null);
+    }
+
+    public bool TryAddAutomaticMemory(string endpoint, string sourceConversationId, long sourceSequence, string title, string content)
+    {
+        endpoint = ScopeEndpoint(endpoint);
+        sourceConversationId = ValidId(sourceConversationId);
+        title = ValidText(title?.Trim(), MaximumMemoryTitleCharacters, false, nameof(title));
+        content = ValidText(content?.Trim(), MaximumMemoryContentCharacters, false, nameof(content));
+        if (sourceSequence <= 0 || SharedMemoryContext.ContainsLikelySecret(title) || SharedMemoryContext.ContainsLikelySecret(content))
+            return false;
+        string key = MemoryComparisonKey(content);
+        if (key.Length == 0) return false;
+        return Locked(() =>
+        {
+            using var transaction = connection.BeginTransaction();
+            // Claim the specific committed turn atomically. The receipt survives edits or deletion
+            // of the note so a retried model result cannot restore a note the user just removed.
+            int claimed = Execute(transaction, "INSERT INTO automatic_memory_sources(conversation_id,sequence) " + UnreviewedTurnSql,
+                ("$id", sourceConversationId), ("$sequence", sourceSequence), ("$endpoint", endpoint));
+            if (claimed == 0) return false;
+            var entries = ReadMemories(endpoint, transaction);
+            // Leave capacity for manual notes and never evict an existing memory.
+            bool add = entries.Count < MaximumMemories && entries.Count(entry => entry.IsAutomatic) < MaximumMemories / 2 &&
+                !entries.Any(entry => MemoryComparisonKey(entry.Content) == key);
+            if (add)
+            {
+                var payload = Encode(new MemoryPayload(title, content) { IsAutomatic = true });
+                Execute(transaction, "INSERT INTO shared_memories(id,endpoint,payload,pinned,updated_utc) VALUES($id,$endpoint,$payload,0,$now);",
+                    ("$id", Guid.NewGuid().ToString("N")), ("$endpoint", endpoint), ("$payload", payload), ("$now", Stamp(DateTimeOffset.UtcNow)));
+            }
+            transaction.Commit();
+            return add;
+        });
+    }
+
+    private static string MemoryComparisonKey(string value)
+    {
+        // Keep word boundaries, decimal points, signs and negation. Similar topics can express opposite facts.
+        string compact = string.Join(" ", value.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return compact.TrimEnd('.', '。', '!', '?', '…').ToUpperInvariant();
     }
 
     private T Locked<T>(Func<T> action)
@@ -383,8 +474,15 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
     {
         ValidText(turn.User, 12000, true, nameof(turn.User)); ValidText(turn.Assistant, 512 * 1024, false, nameof(turn.Assistant)); ValidModel(turn.Model);
         ValidateImages(turn.Images);
-        if (string.IsNullOrWhiteSpace(turn.User) && turn.Images.Count == 0) throw new ArgumentException(L.T("对话问题不能为空。", "A conversation question cannot be empty."), nameof(turn));
         ArgumentNullException.ThrowIfNull(turn.Sources);
+        if (turn.CompanionEventSummary is { } summary)
+        {
+            ValidText(summary, 500, false, nameof(turn.CompanionEventSummary));
+            if (turn.User.Length != 0 || turn.Images.Count != 0 || turn.Sources.Count != 0 || turn.WebWarning != null)
+                throw new ArgumentException("A companion event can store only its summary and the displayed reply.", nameof(turn));
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(turn.User) && turn.Images.Count == 0) throw new ArgumentException(L.T("对话问题不能为空。", "A conversation question cannot be empty."), nameof(turn));
         if (turn.Sources.Count > 20) throw new ArgumentException(L.T("引用来源数量过多。", "Too many sources."), nameof(turn));
         foreach (var source in turn.Sources)
         {
@@ -412,7 +510,11 @@ internal sealed class ChatMemoryStore : IChatMemoryStore
         finally { CryptographicOperations.ZeroMemory(clear); }
     }
     private sealed record DraftPayload(string Text, IReadOnlyList<ChatStoredImage> Images);
-    private sealed record MemoryPayload(string Title, string Content);
+    private sealed record MemoryPayload(string Title, string Content)
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool IsAutomatic { get; init; }
+    }
 }
 
 internal static class ChatDataProtection

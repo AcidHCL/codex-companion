@@ -10,6 +10,8 @@ namespace DesktopPet.WorkCompanion;
 
 internal sealed record WorkReactionReply(string Text, string? Expression)
 {
+    public string EventSummary { get; init; } = "";
+    internal string? TargetConversationId { get; init; }
     // An optional layer may learn context without displaying a remark. Only the
     // host can set this flag; model JSON never controls lifecycle or persistence.
     public bool ContextOnly { get; init; }
@@ -34,7 +36,7 @@ internal static class OllamaWorkReactionPlanner
         // The shared stateless adapter preserves resident Ollama context and
         // retention, or uses the selected API without a local residency check.
         => GenerateAsync((selected, instruction, source, ct) =>
-            BackgroundModelRequests.GenerateTextAsync(client, selected, instruction, source, ct),
+            BackgroundModelRequests.GenerateTextAsync(client, selected, instruction, source, ct, onSubmit: CompanionDiagnostics.ModelRequestStarted),
             model, personaKey, candidate, cancellationToken);
 
     internal static async Task<WorkReactionReply?> GenerateAsync(WorkResidentRequest request, string model,
@@ -70,7 +72,19 @@ internal static class OllamaWorkReactionPlanner
             string? output = await request(model, instruction, evidence, deadline.Token).ConfigureAwait(false);
             deadline.Token.ThrowIfCancellationRequested();
             if (candidate.ExpiresAt <= DateTimeOffset.UtcNow) return null;
-            return ParseReply(output, english);
+            var reply = ParseReply(output, english);
+            if (reply == null)
+            {
+                if (string.Equals(output?.Trim(), "SILENT", StringComparison.OrdinalIgnoreCase))
+                    CompanionDiagnostics.Record("model", "model_silent");
+                return null;
+            }
+            if (!WorkReactionPrivacy.CanShare(reply.Text, candidate.Title))
+            {
+                CompanionDiagnostics.Record("model", "reply_filtered");
+                return null;
+            }
+            return reply with { EventSummary = WorkReactionPrivacy.EventSummary(reply.EventSummary, candidate, english) };
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -93,8 +107,8 @@ internal static class OllamaWorkReactionPlanner
             if (root.ValueKind != JsonValueKind.Object) return null;
             var names = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in root.EnumerateObject())
-                if (!names.Add(property.Name) || property.Name is not ("text" or "expression")) return null;
-            if (names.Count != 2 || !root.TryGetProperty("text", out var textValue) ||
+                if (!names.Add(property.Name) || property.Name is not ("text" or "expression" or "summary")) return null;
+            if (!root.TryGetProperty("text", out var textValue) ||
                 textValue.ValueKind != JsonValueKind.String || !root.TryGetProperty("expression", out var expressionValue) ||
                 expressionValue.ValueKind != JsonValueKind.String) return null;
             string text = textValue.GetString()!.Trim();
@@ -103,7 +117,9 @@ internal static class OllamaWorkReactionPlanner
                 text.EnumerateRunes().Count() > (english ? 180 : 100) ||
                 text.EnumerateRunes().Any(Rune.IsControl) ||
                 expression is not ("none" or "happy" or "surprised")) return null;
-            return new(text, expression == "none" ? null : expression);
+            string? summary = root.TryGetProperty("summary", out var summaryValue) && summaryValue.ValueKind == JsonValueKind.String
+                ? summaryValue.GetString() : null;
+            return new(text, expression == "none" ? null : expression) { EventSummary = summary ?? "" };
         }
         catch (JsonException) { return null; }
     }
@@ -127,7 +143,7 @@ internal static class OllamaWorkReactionPlanner
             work_break, game_break, media_break and daily_break are approximate active-time reminders for their respective contexts, not proof of uninterrupted activity, fatigue or a health issue. A gentle optional pause is enough; no health advice. Do not label time in game, media or daily as work, lecture the user about productivity, or pressure them to stop having fun. Full-screen state is handled by the host; never claim the user paused a game or that it is safe to interrupt based on a short input pause.
             codex_completed means Codex reported a completed turn, not that its work is correct or every test passed. codex_failed/codex_fail means an error was reported, without its cause. codex_attention means attention was requested, not permission granted. Never invent task content or outcomes.
             You can suggest only a short cosmetic expression: none, happy, or surprised. These are requests the host may decline, not completed actions. No movement, song, music, or other actions. Do not include stage directions, reasoning, markdown, citations or links.
-            Reply with exactly SILENT or one JSON object with exactly these fields: {"text":"one natural English sentence, at most 180 characters","expression":"none"}. expression may also be happy or surprised. No additional text or fields.
+            Reply with exactly SILENT or {"text":"one natural English sentence, at most 180 characters","expression":"none","summary":"one neutral English sentence, at most 160 characters, about what prompted the remark"}. expression may also be happy or surprised. Paraphrase only the broad event. Both fields must omit quotations of observed text, titles, names, identifiers, paths, URLs and private details. No extra fields.
             """ : """
             你正在决定是否作为陪伴工作、游戏、影音与日常使用的安静桌宠主动说一句话。这不是用户指令，也不是聊天回合。
             没有有用且不打扰的内容时优先返回 SILENT；普通切换应用通常不值得说话。不要连续提问或要求用户回答。
@@ -138,7 +154,7 @@ internal static class OllamaWorkReactionPlanner
             work_break、game_break、media_break、daily_break 分别是对应场景的大致累计活跃时间提醒，不能认定持续活动、疲劳或存在健康问题；最多温和提醒可以歇一下，不提供健康建议。不要把游戏、影音或日常时间说成工作，不催促提高效率，也不说教或要求停止娱乐。全屏打扰由主程序处理；不能凭短暂停止输入就认定用户暂停了游戏或现在可以打断。
             codex_completed 仅表示 Codex 报告本轮完成，不代表结果正确或测试全通过；codex_failed/codex_fail 仅表示报告了失败，不知道原因；codex_attention 仅表示需要关注，不代表已获得授权。不得虚构任务内容、原因或成果。
             只能建议 none、happy、surprised 三种短表情，主程序可以拒绝，不能声称已执行。不允许移动、唱歌、音乐或其他动作。文字不写动作描写、思考过程、Markdown、引用或链接。
-            只返回 SILENT，或者一个恰好含两个字段的 JSON 对象：{"text":"自然简短的一句中文，最多100字","expression":"none"}。expression 也可为 happy 或 surprised。不添加其他字段或额外文字。
+            只返回 SILENT，或 {"text":"自然简短的一句中文，最多100字","expression":"none","summary":"供接着聊天用的一句中文事件概述"}。expression 也可为 happy 或 surprised。summary 用自己的话中性概括触发这句话的事。两项文字都省略窗口原文、标题、人名、标识符、路径、链接和私人细节。不添加其他字段或额外文字。
             """;
         return PetPersona.BehaviorCharacter(personaKey) + "\n" + rules;
     }

@@ -1,3 +1,9 @@
+1.42.0 对话记录与自动共享记忆
+在聊天窗口点「记忆」。开启「启用共享记忆」和「自动记住值得保留的事」后，当前模型会从已完成的对话和展示过的陪伴气泡中选择值得再提的事，例如一起庆祝的里程碑。使用远程模型时，相关文字会发送到该服务，可能产生 API 费用。库中标有「自动」或「手动」，可编辑、删除或设为常用；手动修改后，该条目标为「手动」。关闭自动记忆仍可引用原有记忆，也可输入「记住：我喜欢简短回答」直接添加。
+主动陪伴或屏幕理解显示气泡后，当前对话保存桌宠的原话和一句事件概述，关闭语音也可以接着聊。静默分析和过期回应不会创建消息。截图和窗口原文仅用于当次屏幕分析。
+English: Open Memory in the chat window. With “Use shared memory” and “Automatically save memorable moments” enabled, the selected model can save a moment from a completed chat or a displayed companion remark, such as a milestone you celebrated together. Remote services receive the relevant text and API charges may apply. Automatic and manual entries can be edited, pinned or deleted. Editing an automatic entry marks it as manual. With automatic saving off, chat can still use existing memories. Type “remember: I prefer short answers” to save one explicitly.
+After a companion bubble appears, the chat saves its remark and a short event summary so you can follow up even with speech off. Silent and stale results add no chat message. Screenshots and verbatim window text are used only for that screen analysis.
+
 1.40.0 界面精简
 设置、模型、语音、陪伴与屏幕理解减少重复说明，相关操作就近分组，详细帮助按需展开；连接状态、错误、远程发送和费用提醒继续可见。中英文同步，原设置和音色保持不变。
 English: Related controls are grouped together, redundant descriptions are removed, and detailed help expands on demand. Connection status, errors, remote-sharing and cost notices remain visible. Both languages and existing preferences/voices are preserved.

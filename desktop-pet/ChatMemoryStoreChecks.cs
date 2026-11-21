@@ -137,6 +137,19 @@ internal static class ChatMemoryStoreChecks
         }
         var futureOriginal = File.ReadAllBytes(future);
         Check(Reject(() => { using var ignored = new ChatMemoryStore(future); }) && File.ReadAllBytes(future).SequenceEqual(futureOriginal), "newer_schema_is_rejected_without_destructive_migration");
+        string incomplete = Path.Combine(root, "incomplete-v1.db");
+        using (var originalV1 = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = incomplete, Pooling = false }.ToString()))
+        {
+            originalV1.Open();
+            using var setup = originalV1.CreateCommand();
+            setup.CommandText = "CREATE TABLE turns(conversation_id TEXT,sequence INTEGER,payload BLOB,PRIMARY KEY(conversation_id,sequence)); PRAGMA application_id=1095323725; PRAGMA user_version=1;";
+            setup.ExecuteNonQuery();
+            Check(Reject(() => { using var ignored = new ChatMemoryStore(incomplete); }), "incomplete_v1_reports_upgrade_failure");
+            setup.CommandText = "PRAGMA user_version;";
+            bool versionPreserved = Convert.ToInt64(setup.ExecuteScalar()) == 1;
+            setup.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name='automatic_memory_sources';";
+            Check(versionPreserved && Convert.ToInt64(setup.ExecuteScalar()) == 0, "failed_upgrade_preserves_version_and_rolls_back_new_table");
+        }
         string damagedPayload = Path.Combine(root, "damaged-payload.db"); string damagedId;
         using (var good = new ChatMemoryStore(damagedPayload)) { damagedId = good.CreateConversation(local, persona, OllamaModels.FastModel).Id; }
         using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = damagedPayload, Pooling = false }.ToString()))
@@ -146,6 +159,74 @@ internal static class ChatMemoryStoreChecks
         using (var damaged = new ChatMemoryStore(damagedPayload))
             Check(Reject(() => damaged.GetConversation(damagedId)) && File.Exists(damagedPayload), "failed_decryption_reports_error_without_erasing_database");
         Check(Path.GetFullPath(database).StartsWith(Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) && !string.Equals(database, ChatMemoryStore.DefaultPath, StringComparison.OrdinalIgnoreCase), "all_tests_are_isolated_from_real_user_database_and_pairing");
+        CheckAutomaticMemories(Path.Combine(root, "automatic-upgrade.db"), Check);
         return new { passed = true, assertions = checks.Count, database, evidence = root, userDataUntouched = true, checks };
+    }
+
+    private static void CheckAutomaticMemories(string database, Action<bool, string> check)
+    {
+        const string endpoint = "http://127.0.0.1:11434";
+        const string other = "api:https://other.example.test/v1";
+        const string note = "The user and pet celebrated their first paper together.";
+        string id, manualId;
+        long turn;
+        var input = new ChatStoredTurn(0, "Let's celebrate", "Congratulations!", OllamaModels.FastModel,
+            Array.Empty<ChatStoredImage>(), Array.Empty<PetWebSource>(), null, default);
+        using (var store = new ChatMemoryStore(database))
+        {
+            id = store.CreateConversation(endpoint, "deepseek", input.Model).Id;
+            turn = store.AppendTurn(id, input);
+            manualId = store.UpsertMemory(new("", endpoint, "Manual note", "My favorite tea is oolong.", true, default)).Id;
+        }
+        // Produce the v1 schema with existing DPAPI payloads in this test-only database.
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false }.ToString()))
+        {
+            connection.Open();
+            using var setup = connection.CreateCommand();
+            setup.CommandText = "DROP TABLE automatic_memory_sources; PRAGMA user_version=1;";
+            setup.ExecuteNonQuery();
+        }
+        using var first = new ChatMemoryStore(database);
+        using var second = new ChatMemoryStore(database);
+        var manual = first.ListMemories(endpoint).Single();
+        check(manual.Id == manualId && manual.Pinned && !manual.IsAutomatic && first.ReadTurns(id).Single().User == input.User,
+            "v1_upgrade_preserves_manual_memory_and_encrypted_chat");
+        check(first.CanReviewTurnForAutomaticMemory(endpoint, id, turn) &&
+            !first.CanReviewTurnForAutomaticMemory(other, id, turn) && !first.CanReviewTurnForAutomaticMemory(endpoint, id, 99),
+            "only_existing_source_turn_in_matching_service_is_eligible");
+        check(!first.TryAddAutomaticMemory(other, id, turn, "Wrong service", note) &&
+            !first.TryAddAutomaticMemory(endpoint, id, 99, "Missing turn", note) &&
+            !first.TryAddAutomaticMemory(endpoint, id, turn, "Key", "api_key=1234567890123"),
+            "wrong_service_missing_turn_and_detected_secrets_are_rejected");
+        bool a = false, b = false;
+        System.Threading.Tasks.Parallel.Invoke(
+            () => a = first.TryAddAutomaticMemory(endpoint, id, turn, "Celebration", note),
+            () => b = second.TryAddAutomaticMemory(endpoint, id, turn, "Celebration", note));
+        var auto = first.ListMemories(endpoint).Single(memory => memory.IsAutomatic);
+        check(a != b && !auto.Pinned && auto.Content == note && !first.CanReviewTurnForAutomaticMemory(endpoint, id, turn),
+            "concurrent_duplicate_source_writes_one_unpinned_automatic_memory");
+        long next = first.AppendTurn(id, input);
+        check(!first.TryAddAutomaticMemory(endpoint, id, next, "A different title", "MY favorite tea is Oolong！") &&
+            first.ListMemories(endpoint).Single(memory => memory.Id == manualId) == manual &&
+            !first.CanReviewTurnForAutomaticMemory(endpoint, id, next),
+            "punctuation_case_duplicate_keeps_manual_note_untouched_and_marks_source");
+        var edit = first.UpsertMemory(auto with { Content = "A revised celebration.", Pinned = true });
+        check(!edit.IsAutomatic && !second.ListMemories(endpoint).Single(memory => memory.Id == edit.Id).IsAutomatic &&
+            !first.TryAddAutomaticMemory(endpoint, id, turn, "Stale title", note), "editing_an_automatic_memory_makes_it_user_managed");
+        first.DeleteMemory(edit.Id);
+        check(!second.TryAddAutomaticMemory(endpoint, id, turn, "Stale retry", note) && first.ListMemories(endpoint).Count == 1,
+            "retry_after_memory_deletion_cannot_recreate_the_deleted_note");
+        foreach (string distinct in new[] { "I like a 1.5 hour hike.", "I like a 15 hour hike.", "I do not like a 15 hour hike." })
+        {
+            long hiking = first.AppendTurn(id, input);
+            check(first.TryAddAutomaticMemory(endpoint, id, hiking, "Hiking", distinct),
+                "same_topic_distinct_quantities_and_negation_remain_distinct_" + hiking);
+        }
+        long last = first.AppendTurn(id, input);
+        first.DeleteConversation(id);
+        check(!first.CanReviewTurnForAutomaticMemory(endpoint, id, last) &&
+            !second.TryAddAutomaticMemory(endpoint, id, last, "Late response", note) &&
+            first.ListMemories(endpoint).Count == 4 && first.ListMemories(endpoint).Any(entry => entry.Id == manualId),
+            "deleting_source_keeps_saved_notes_but_cannot_commit_a_delayed_result");
     }
 }

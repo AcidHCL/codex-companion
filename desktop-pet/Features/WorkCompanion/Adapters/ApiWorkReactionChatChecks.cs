@@ -27,7 +27,7 @@ internal static class ApiWorkReactionChatChecks
             string snapshot = fixture.Snapshot();
             using var otherLocalWork = OllamaRequestActivity.Begin(OllamaEndpoint.Parse(fixture.Settings.OllamaAddress), maintenance: true);
             var reply = await fixture.Window.ReactToWorkAsync(OllamaWorkReactionChecks.Candidate(), CancellationToken.None);
-            Check(reply == new WorkReactionReply("我在旁边陪你。", "happy"), "selected_api_reacts_even_while_ollama_has_maintenance_work");
+            Check(reply is { Text: "我在旁边陪你。", Expression: "happy", EventSummary.Length: > 0 }, "selected_api_reacts_even_while_ollama_has_maintenance_work");
             Check(fixture.ApiBodies.Count == 1 && fixture.OllamaPaths.Count == 0 &&
                 fixture.ApiPaths.All(p => p == "/v1/chat/completions"), "api_companion_never_queries_ollama_or_api_model_residency");
             using var payload = JsonDocument.Parse(fixture.ApiBodies[0]);
@@ -87,6 +87,44 @@ internal static class ApiWorkReactionChatChecks
                     "switch_never_loads_unloads_or_presents_old_reaction_" + toOllama);
             }
             finally { released.TrySetResult(true); fixture.Window.CancelWorkReaction(); await work; if (change != null) await change; }
+        }
+
+        using (var fixture = new Fixture((_, _) => Task.FromResult(Completion(
+            "{\"text\":\"我在这里陪你。\",\"expression\":\"none\"}")), skinId: "gemini"))
+        {
+            var pet = HiddenPet(fixture.Settings);
+            pet.Opacity = 0; pet.ShowActivated = false; pet.ShowInTaskbar = false; pet.Topmost = false;
+            using var host = new PetWorkCompanionHost(pet, () => fixture.Window, () => fixture.Window);
+            try
+            {
+                pet.Show();
+                var until = DateTimeOffset.UtcNow.AddSeconds(5);
+                while (!host.Capture().Available && DateTimeOffset.UtcNow < until) await Task.Delay(20);
+                var expected = host.Capture();
+                string originalId = fixture.Window.CurrentConversationId!;
+                int before = fixture.Store.ReadTurns(originalId).Count;
+                var reply = await host.GenerateAsync(OllamaWorkReactionChecks.Candidate(), CancellationToken.None);
+                Check(reply?.TargetConversationId == originalId && fixture.Store.ReadTurns(originalId).Count == before,
+                    "generation_binds_current_chat_without_writing_before_display");
+                Check(await host.PresentAsync(reply! with { ContextOnly = true }, expected, false, CancellationToken.None) == WorkPresentation.Skipped,
+                    "context_only_screen_update_creates_no_chat_entry");
+                await fixture.Window.NewConversationAsync();
+                string newId = fixture.Window.CurrentConversationId!;
+                Check(newId != originalId && await host.PresentAsync(reply!, expected, false, CancellationToken.None) == WorkPresentation.Skipped &&
+                    fixture.Store.ReadTurns(originalId).Count == before && fixture.Store.ReadTurns(newId).Count == 0,
+                    "switch_between_generation_and_display_discards_reply_in_both_chats");
+                expected = host.Capture();
+                reply = await host.GenerateAsync(OllamaWorkReactionChecks.Candidate(), CancellationToken.None);
+                Check(reply?.TargetConversationId == newId && await host.PresentAsync(reply!, expected, false, CancellationToken.None) == WorkPresentation.SavedToChat,
+                    "a_displayed_bubble_is_saved_with_speech_off");
+                var saved = fixture.Store.ReadTurns(newId).Single();
+                Check(saved.Assistant == reply!.Text && !string.IsNullOrWhiteSpace(saved.CompanionEventSummary) &&
+                    saved.CompanionEventSummary == reply.EventSummary && saved.Images.Count == 0 && saved.User.Length == 0,
+                    "saved_assistant_remark_and_brief_context_match_visible_event");
+                Check(await host.PresentAsync(reply, expected, false, CancellationToken.None) == WorkPresentation.Skipped &&
+                    fixture.Store.ReadTurns(newId).Count == 1, "obsolete_bubble_revision_cannot_duplicate_a_remark");
+            }
+            finally { host.Dispose(); pet.Close(); }
         }
 
         string scheduledSource = "EXTERNAL_SCHEDULE_RESULT: " + new string('x', 500);

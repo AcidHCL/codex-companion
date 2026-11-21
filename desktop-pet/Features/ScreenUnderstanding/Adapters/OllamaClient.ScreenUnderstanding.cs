@@ -63,7 +63,7 @@ internal sealed partial class OllamaClient
             options = new { num_ctx = ready.ContextLength, num_predict = 768, temperature = 0.2 }
         });
         using var activity = OllamaRequestActivity.Begin(Endpoint);
-        WorkCompanion.CompanionDiagnostics.Record("model", "model_request");
+        WorkCompanion.CompanionDiagnostics.ModelRequestStarted();
         using var response = await SendAsync(request, ct, ct).ConfigureAwait(false);
         await EnsureSuccessAsync(response, ct, ct).ConfigureAwait(false);
         string body = await ReadBodyAsync(response, 64 * 1024, truncate: false, ct, ct).ConfigureAwait(false);

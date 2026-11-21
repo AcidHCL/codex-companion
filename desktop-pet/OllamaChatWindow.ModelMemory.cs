@@ -91,7 +91,7 @@ internal sealed partial class OllamaChatWindow
         RefreshControls();
         try
         {
-            await _modelCallGate.WaitAsync(operation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(operation.Token); entered = true;
             if (validateSelection)
             {
                 // Check only the chosen model. CheckConnectionAsync is unsuitable

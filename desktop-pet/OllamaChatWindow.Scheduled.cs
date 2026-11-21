@@ -45,7 +45,7 @@ internal sealed partial class OllamaChatWindow
             epoch == Interlocked.Read(ref _behaviorEpoch) && persona == _settings.SkinId && language == _settings.Language;
         try
         {
-            await _modelCallGate.WaitAsync(cancellation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(cancellation.Token); entered = true;
             cancellation.Token.ThrowIfCancellationRequested();
             if (!Current()) return ScheduledTaskAnnouncementResult.Fallback;
             var result = await ScheduledTaskAnnouncement.CreateWithClientAsync(output, model, client, cancellation.Token);

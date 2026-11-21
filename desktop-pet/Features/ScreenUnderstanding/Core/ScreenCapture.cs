@@ -19,4 +19,5 @@ internal interface IScreenWindowCapture
 {
     Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureRequest request, CancellationToken ct);
     Task<string?> ReadIdentityAsync(string app, string windowKey, CancellationToken ct);
+    Task<bool> IsCurrentWindowAllowedAsync(ScreenCaptureRequest request, CancellationToken ct) => Task.FromResult(false);
 }

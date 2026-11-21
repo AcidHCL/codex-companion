@@ -26,6 +26,8 @@ internal static class SharedMemoryContextChecks
         Check(related.SelectedCount == 1 && related.Profile.SystemPrompt.Contains("香菜") && !related.Profile.SystemPrompt.Contains("杭州"), "chinese_bigram_retrieval_excludes_unrelated_memory");
         Check(related.Profile.Key == persona.Key && related.Profile.Welcome == persona.Welcome && related.Profile.Thinking == persona.Thinking, "memory_does_not_change_skin_or_persona_ui");
         Check(related.Profile.SystemPrompt.StartsWith(persona.SystemPrompt, StringComparison.Ordinal) && related.Profile.SystemPrompt.Contains("2026-10-11"), "original_system_prompt_and_saved_date_are_preserved");
+        var auto = SharedMemoryContext.Build(persona, "饮食偏好", new[] { food with { IsAutomatic = true } });
+        Check(auto.Profile.SystemPrompt.Contains("\"origin\":\"auto\"") && related.Profile.SystemPrompt.Contains("\"origin\":\"user\""), "model_selected_memories_identified_in_retrieval");
         Check(SharedMemoryContext.Build(persona, "请帮我计算圆周率", new[] { food, travel }).SelectedCount == 0, "unrelated_unpinned_records_are_not_sent");
         Check(SharedMemoryContext.Build(persona, "我的偏好是什么？", new[] { Memory("preference", "回答方式", "我喜欢简短回答。") }).SelectedCount == 1, "ordinary_preference_question_can_recall_explicit_like_statement");
         Check(SharedMemoryContext.Build(persona, "我叫什么名字？", new[] { Memory("name", "称呼", "我叫小林。") }).Profile.SystemPrompt.Contains("小林"), "name_question_retrieves_saved_self_introduction");

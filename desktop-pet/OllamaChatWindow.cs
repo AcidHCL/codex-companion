@@ -86,7 +86,8 @@ internal sealed partial class OllamaChatWindow : Window
     private Task? _sessionTransition;
     private string _inflightDraft = "";
     private OllamaChatImage[] _inflightImages = Array.Empty<OllamaChatImage>();
-    private Window? _libraryWindow, _memoryWindow;
+    private Window? _libraryWindow;
+    private SharedMemoryWindow? _memoryWindow;
     private string _personaKey;
     private TextBlock? _welcome;
 
@@ -361,6 +362,7 @@ internal sealed partial class OllamaChatWindow : Window
         _stopSpeech?.Invoke();
         SaveCurrentDraft(); _draftTimer.Stop();
         _shutdown = true;
+        DiscardAutomaticMemoryQueue();
         InvalidateBehaviorContext(); NotifyBehaviorAvailability();
         CancelConfiguration(); _connectionWindow?.Close(); _libraryWindow?.Close(); _memoryWindow?.Close();
         _lifetime.Cancel(); _generationCancellation?.Cancel();
@@ -509,7 +511,7 @@ internal sealed partial class OllamaChatWindow : Window
         bool entered = false;
         try
         {
-            await _modelCallGate.WaitAsync(cancellation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(cancellation.Token); entered = true;
             cancellation.Token.ThrowIfCancellationRequested();
             if (epoch != Interlocked.Read(ref _behaviorEpoch)) return null;
             _lastUsedModel = model;
@@ -539,6 +541,29 @@ internal sealed partial class OllamaChatWindow : Window
     }
 
     internal string? CurrentConversationId => _conversation?.Id;
+
+    internal bool TrySaveCompanionReaction(string? expectedConversationId, string spokenText, string eventSummary)
+    {
+        Dispatcher.VerifyAccess();
+        if (_shutdown || _sessionSwitching || _switching || _configuring || _conversation == null ||
+            _conversation.Id != expectedConversationId || _conversation.Endpoint != EndpointScope(_client.Endpoint) ||
+            !string.Equals(_conversation.PersonaKey, _settings.SkinId, StringComparison.OrdinalIgnoreCase)) return false;
+
+        var turn = new ChatStoredTurn(0, "", spokenText, StorageModel, Array.Empty<ChatStoredImage>(),
+            Array.Empty<PetWebSource>(), null, DateTimeOffset.UtcNow) { CompanionEventSummary = eventSummary };
+        long sequence;
+        try { sequence = _chatStore.AppendTurn(_conversation.Id, turn); }
+        catch (Exception ex) { ReportStorageFailure(ex); return false; }
+
+        if (_welcome != null) { _messages.Children.Remove(_welcome); _welcome = null; }
+        RenderStoredTurn(turn with { Sequence = sequence }, Array.Empty<OllamaChatImage>());
+        LimitVisibleHistory();
+        _scroll.ScrollToEnd();
+        try { UpdateConversationTitle(); }
+        catch (Exception ex) { ReportStorageFailure(ex); }
+        QueueAutomaticMemory(expectedConversationId!, sequence, eventSummary, spokenText, companion: true);
+        return true;
+    }
 
     private string EndpointScope(Uri endpoint) => ChatModelConnection.Scope(endpoint, _settings.UseChatApi);
     private string StorageModel => string.IsNullOrEmpty(_model) ? "unconfigured" : _model;
@@ -604,11 +629,23 @@ internal sealed partial class OllamaChatWindow : Window
 
     private void RenderStoredTurn(ChatStoredTurn turn, IReadOnlyList<OllamaChatImage> images)
     {
-        var userView = AddMessage(L.T("你", "You"), turn.User, true, images, out _);
+        string context = turn.User;
+        FrameworkElement contextView;
+        if (turn.CompanionEventSummary is { } summary)
+        {
+            var note = Ui.Text(L.T("主动陪伴 · ", "Companion · ") + summary, 11, "#536953");
+            note.Margin = new Thickness(2, 4, 2, 5);
+            note.TextWrapping = TextWrapping.Wrap;
+            _messages.Children.Add(note);
+            contextView = note;
+            // Keep alternating input/assistant roles for local chat templates, with explicit provenance.
+            context = L.T("（桌宠自动记录的事件）", "(Desktop event automatically recorded by the companion) ") + summary;
+        }
+        else contextView = AddMessage(L.T("你", "You"), turn.User, true, images, out _);
         var assistantView = AddMessage(_characterName(), turn.Assistant, false, Array.Empty<OllamaChatImage>(), out _);
         AddSources(assistantView, turn.Sources); AddWebWarning(assistantView, turn.WebWarning);
-        _history.Add(new ChatTurn(new OllamaMessage("user", turn.User, images.Count == 0 ? null : images.Select(image => image.Base64).ToArray()),
-            new OllamaMessage("assistant", PetWebAnswerContext.Remember(turn.Assistant, turn.Sources, turn.WebWarning)), userView, assistantView, _personaKey, turn.Sequence));
+        _history.Add(new ChatTurn(new OllamaMessage("user", context, images.Count == 0 ? null : images.Select(image => image.Base64).ToArray()),
+            new OllamaMessage("assistant", PetWebAnswerContext.Remember(turn.Assistant, turn.Sources, turn.WebWarning)), contextView, assistantView, _personaKey, turn.Sequence));
     }
 
     internal void LoadOlderMessages()
@@ -709,11 +746,14 @@ internal sealed partial class OllamaChatWindow : Window
         if (_shutdown || _generating || _sessionSwitching || _switching || _configuring) return;
         try
         {
-            var window = new SharedMemoryWindow(_chatStore, EndpointScope(_client.Endpoint), _settings.SharedMemoryEnabled, enabled =>
+            var window = new SharedMemoryWindow(_chatStore, EndpointScope(_client.Endpoint), _settings.SharedMemoryEnabled, _settings.AutomaticMemoryEnabled, (enabled, automatic) =>
             {
                 bool previous = _settings.SharedMemoryEnabled;
-                try { _settings.SharedMemoryEnabled = enabled; _saveSettings(); }
-                catch { _settings.SharedMemoryEnabled = previous; throw; }
+                bool previousAutomatic = _settings.AutomaticMemoryEnabled;
+                _settings.SharedMemoryEnabled = enabled; _settings.AutomaticMemoryEnabled = automatic;
+                try { _saveSettings(); }
+                catch { _settings.SharedMemoryEnabled = previous; _settings.AutomaticMemoryEnabled = previousAutomatic; throw; }
+                if (!enabled || !automatic) DiscardAutomaticMemoryQueue();
             }, initialContent) { Owner = this, Topmost = Topmost };
             _memoryWindow = window; window.ShowDialog(); _memoryWindow = null;
             if (!_shutdown) SetStatus(_settings.SharedMemoryEnabled ? L.T("共享记忆已开启：只取相关记忆用于回复，可随时编辑或删除。", "Shared memory enabled. Only relevant memories are used; you can edit or delete them at any time.") : L.T("共享记忆已关闭，已保存内容仍可在记忆库管理。", "Shared memory disabled. Saved entries are still available in the memory library."));
@@ -968,7 +1008,7 @@ internal sealed partial class OllamaChatWindow : Window
         {
             await StopGenerationAsync();
             CheckConfiguration(operation, revision);
-            await _modelCallGate.WaitAsync(operation.Token); entered = true;
+            await EnterForegroundModelLaneAsync(operation.Token); entered = true;
             CheckConfiguration(operation, revision);
             var installed = await client.ListModelsAsync(operation.Token);
             CheckConfiguration(operation, revision);
@@ -1202,7 +1242,7 @@ internal sealed partial class OllamaChatWindow : Window
         bool modelGateEntered = false;
         try
         {
-            await _modelCallGate.WaitAsync(cancellation.Token); modelGateEntered = true;
+            await EnterForegroundModelLaneAsync(cancellation.Token); modelGateEntered = true;
             var context = BuildContext(user, persona, out var dropped);
             _lastUsedModel = model;
             var client = _client;
@@ -1267,6 +1307,7 @@ internal sealed partial class OllamaChatWindow : Window
             AddWebWarning(assistantView, webWarning);
             _history.Add(new ChatTurn(user, new OllamaMessage("assistant", PetWebAnswerContext.Remember(answer, sources, webWarning)), userView, assistantView, persona.Key, sequence));
             LimitVisibleHistory();
+            QueueAutomaticMemory(conversationId, sequence, prompt, answer, companion: false);
             var rate = completed.TokensPerSecond is > 0 ? L.T($" · {completed.TokensPerSecond:0.0} tokens/秒", $" · {completed.TokensPerSecond:0.0} tokens/s") : "";
             SetStatus(L.T("回复完成", "Reply complete") + rate + (webWarning != null ? L.T(" · 联网受限，详情见回复下方提示。", " · Web access limited; see the notice below the reply.") : sources.Count > 0 ? L.T($" · 已附 {sources.Count} 个网页来源。", $" · {sources.Count} web sources attached.") : _capabilities.SupportsImages == false ? L.T(" · 可继续文字聊天。", " · You can continue with text.") : L.T(" · 可继续聊天或发送图片。", " · Continue chatting or send an image.")), webWarning != null);
             string bubbleText = answer.Length <= 100 ? answer : answer[..100] + "…";

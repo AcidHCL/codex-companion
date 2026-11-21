@@ -106,6 +106,9 @@ internal static class PetCompanionUiChecks
                 var rail = companion.ActionsWindow!;
                 await SettleAsync(rail);
                 Require(companion.IsOpen && pet.IsCompanionOpen, "opening_rail_marks_companion_open");
+#if WORK_COMPANION
+                Require(pet.WorkReactionBlockCode(chat) == "pet_ui_open", "action_rail_defers_proactive_remarks");
+#endif
                 Require(rail.Owner == pet && rail.WindowStyle == WindowStyle.None && !rail.ShowInTaskbar, "rail_is_owned_borderless_without_taskbar_entry");
                 Require((WorldFoot(pet) - initialFoot).Length <= 1.5 && SameRect(Body(pet), initialBody, 1.5), "opening_actions_preserves_character_geometry_and_feet");
                 Require(Contains(work, Bounds(rail), 2), "rail_stays_in_current_monitor_work_area");
@@ -128,6 +131,19 @@ internal static class PetCompanionUiChecks
                 await SettleAsync(chat);
                 Require(chatClicks == 1 && chat.Owner == pet && chat.WindowStyle == WindowStyle.None && !chat.ShowInTaskbar, "chat_icon_opens_owned_borderless_panel");
                 Require(companion.IsOpen && pet.IsCompanionOpen, "open_chat_retains_companion_interaction_state");
+#if WORK_COMPANION
+                var otherWindow = new Window { ShowInTaskbar = false, Width = 150, Height = 90 };
+                try
+                {
+                    chat.Activate(); chat.FocusComposer(); await SettleAsync(chat);
+                    Require(pet.WorkReactionBlockCode(chat) == "pet_ui_open", "active_chat_defers_proactive_remarks");
+                    otherWindow.Show(); otherWindow.Activate(); await SettleAsync(otherWindow);
+                    Require(otherWindow.IsActive && chat.IsVisible && pet.WorkReactionBlockCode(chat) != "pet_ui_open",
+                        "open_background_chat_does_not_block_other_apps");
+                }
+                finally { otherWindow.Close(); }
+                chat.Activate(); chat.FocusComposer();
+#endif
                 long chatStyle = GetWindowLongPtr(new WindowInteropHelper(chat).Handle, -20).ToInt64();
                 Require((chatStyle & (0x08000000L | 0x00000020L)) == 0, "chat_accepts_keyboard_and_pointer_input");
                 Require((WorldFoot(pet) - initialFoot).Length <= 1.5, "opening_attached_chat_does_not_move_pet_feet");

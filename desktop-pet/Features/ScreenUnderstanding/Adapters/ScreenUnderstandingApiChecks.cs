@@ -173,7 +173,7 @@ internal static class ScreenUnderstandingApiChecks
             Module.Configure(new WorkCompanionOptions { Enabled = true }, false);
         }
         internal Task<WorkReactionReply?> Generate(CancellationToken ct = default) => Module.GenerateAsync(Client,
-            "selected-api-model", "gpt", Candidate, () => throw new InvalidOperationException("Unexpected local fallback"), ct);
+            "selected-api-model", "gpt", Candidate, _ => throw new InvalidOperationException("Unexpected local fallback"), ct);
         public void Dispose()
         {
             Module.Dispose(); Client.Dispose();

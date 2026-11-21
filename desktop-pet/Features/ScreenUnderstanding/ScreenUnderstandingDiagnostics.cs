@@ -32,7 +32,11 @@ internal static class ScreenUnderstandingDiagnostics
             timeout.Start();
             try
             {
-                if (captureFixture) reports["capture"] = await ScreenCaptureChecks.RunAsync();
+                if (captureFixture)
+                {
+                    reports["denseWindowText"] = await ScreenCaptureChecks.CheckDenseWindowTextAsync();
+                    reports["capture"] = await ScreenCaptureChecks.RunAsync();
+                }
                 else
                 {
                     reports["settingsMemory"] = ScreenUnderstandingSettingsChecks.Run();

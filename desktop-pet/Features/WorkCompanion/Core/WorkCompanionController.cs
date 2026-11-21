@@ -8,11 +8,13 @@ namespace DesktopPet.WorkCompanion;
 internal sealed record WorkHostState(bool Available, string ContextKey, long Revision, string? Reason = null,
     bool CanObserve = true);
 
+internal enum WorkPresentation { Skipped, Shown, SavedToChat }
+
 internal interface IWorkCompanionHost
 {
     WorkHostState Capture();
     Task<WorkReactionReply?> GenerateAsync(WorkReactionCandidate candidate, CancellationToken ct);
-    Task<bool> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct);
+    Task<WorkPresentation> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct);
     void FinishCandidate(WorkReactionCandidate candidate, bool accepted) { }
 }
 
@@ -192,7 +194,7 @@ internal sealed class WorkCompanionController : IWorkCompanionSettingsHost, IDis
             cancellation.CancelAfter(_contextExtension?.ResponseTimeout ?? TimeSpan.FromSeconds(25));
             _responseCancellation = cancellation;
             SetStatus(L.T("正在考虑是否回应", "Considering whether to respond"),
-                L.T("使用当前聊天服务和模型；Ollama 需已加载，API 按需请求。回应不写入对话记录或共享记忆。", "Uses the selected chat service and model: already-loaded Ollama or API on demand. Reactions stay out of chat history and shared memory."));
+                L.T("使用当前聊天模型。实际展示的发言和事件概述会保存到当前对话。", "Uses the selected chat model. Displayed remarks and a brief event summary are saved to the current conversation."));
             PendingTask = RespondAsync(candidate, host, _epoch, cancellation);
         }
         catch (OperationCanceledException) { }
@@ -253,21 +255,23 @@ internal sealed class WorkCompanionController : IWorkCompanionSettingsHost, IDis
                     L.T("没有需要打扰你的内容；应用识别结果可在屏幕理解页查看。", "No interruption is needed. App recognition is available in Screen understanding."));
                 return;
             }
-            bool presented;
+            WorkPresentation presentation;
             // Showing our own bubble/expression changes host availability and
             // revision. Pause polling only during this presentation, otherwise
             // it would cancel itself; explicit invalidation still cancels it.
             _presenting = true;
-            try { presented = await _host.PresentAsync(reply, expected, _options.SpeakReactions, ct); }
+            try { presentation = await _host.PresentAsync(reply, expected, _options.SpeakReactions, ct); }
             finally { _presenting = false; }
             ct.ThrowIfCancellationRequested();
             if (_disposed || epoch != _epoch || !ShouldObserve) return;
-            if (presented)
+            if (presentation != WorkPresentation.Skipped)
             {
                 CompanionDiagnostics.Record("presentation", "presented");
                 _lastReaction = reply.Text;
                 SetStatus(L.T("已作出轻量回应", "A brief response was shown"),
-                    L.T("这条回应只在桌宠显示，不保存到对话或记忆。", "This response is shown by the pet only, not saved to chat or memory."));
+                    presentation == WorkPresentation.SavedToChat
+                        ? L.T("已保存到当前对话，可以接着聊。", "Saved to the current conversation. You can follow up in chat.")
+                        : L.T("发言已展示，但未能保存到对话。", "The remark was shown, but could not be saved to chat."));
             }
         }
         catch (OperationCanceledException) { CompanionDiagnostics.Record("policy", "cancelled"); }

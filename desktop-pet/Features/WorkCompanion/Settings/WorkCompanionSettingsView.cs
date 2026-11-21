@@ -79,8 +79,8 @@ internal sealed class WorkCompanionSettingsView : UserControl, IDisposable
         observe.Children.Add(Paragraph(L.T("所选信息会发给当前模型服务，窗口标题可能含私人文字；API 可能产生费用。",
             "Selected information goes to the current model service. Titles may contain private text; API usage may incur charges.")));
         Details(observe, "WorkCompanionRules", L.T("运行方式", "How it works"), L.T(
-            "跟随当前聊天模型；Ollama 只使用已加载模型，API 按需请求。正文与截图需在屏幕理解页单独开启。\n\n观察与回应只保留在本次运行中，不写入聊天或共享记忆。密码管理器和系统安全窗口始终跳过。浏览器及未知应用默认归为日常，可在下方修改分类。",
-            "Uses the selected chat model: Ollama must already be loaded; APIs are called on demand. Enable text or screenshots separately on the Screen understanding page.\n\nObservations and reactions last only for this session and do not enter chat or shared memory. Password managers and secure system windows are skipped. Browsers and unknown apps default to everyday use; override them below."));
+            "使用当前聊天模型。Ollama 需已加载，API 按需调用。窗口文字和截图在「屏幕理解」中单独开启。\n\n气泡发言及事件概述会存入当前对话。聊天窗口的「记忆」控制是否从中自动记下值得保留的事。密码管理器和系统安全窗口会被跳过。浏览器和未知应用默认归为日常，可在下方修改分类。",
+            "Uses the selected chat model. Ollama must already be loaded. API models are called on demand. Enable window text and screenshots under Screen understanding.\n\nDisplayed remarks and brief event summaries are saved to the current chat. Memory in the chat window controls whether the model can also save a shared memory from them. Password managers and secure system windows are skipped. Browsers and unknown apps default to everyday use. You can change their categories below."));
 
         var contexts = Card(stack, L.T("场景与休息提醒", "Contexts and break reminders"));
         _breaks = Toggle(contexts, "WorkCompanionBreakReminders", L.T("提醒休息", "Suggest breaks"), value => Save(o => o with { BreakReminders = value }));

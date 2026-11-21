@@ -4,8 +4,7 @@ using System.Threading.Tasks;
 
 namespace DesktopPet.WorkCompanion;
 
-// The boundary to existing application services. Metadata/retention/history
-// behavior stays owned by the existing clients; work policy cannot edit it.
+// Observation and model generation remain separate from committing a visible chat remark.
 internal sealed class PetWorkCompanionHost : IWorkCompanionHost, IDisposable
 {
     private readonly PetWindow _pet;
@@ -23,17 +22,18 @@ internal sealed class PetWorkCompanionHost : IWorkCompanionHost, IDisposable
     public WorkHostState Capture()
     {
         var settings = _pet.Settings;
+        var chat = _getChat();
         string context = string.Join("\0", ChatModelConnection.Scope(ChatModelConnection.ActiveEndpoint(settings), settings.UseChatApi),
             ChatModelConnection.ActiveModel(settings),
             settings.UseChatApi ? settings.ApiProfile.SupportsImages.ToString() : "",
             settings.UseChatApi ? settings.ApiProfile.SupportsTools.ToString() : "",
             settings.Language, _pet.CurrentSkin.Id, _pet.WorkCompanionBehaviorRevision,
-            _getChat()?.ModelConnectionRevision ?? 0);
-        var chat = _getChat();
-        bool available = !_disposed && _pet.CanPresentWorkReaction && chat?.IsWorkContextAvailable != false;
+            chat?.ModelConnectionRevision ?? 0);
+        string? petBlocked = _pet.WorkReactionBlockCode(chat);
+        bool available = !_disposed && petBlocked == null && chat?.IsWorkContextAvailable != false;
         string? modelBlocked = available ? null : chat?.WorkCompanionModelBlockReason;
         if (!available && !_disposed) CompanionDiagnostics.Record("presentation",
-            !_pet.CanPresentWorkReaction ? _pet.WorkReactionBlockCode : modelBlocked != null ? "model_not_ready" : "chat_busy");
+            petBlocked ?? (modelBlocked != null ? "model_not_ready" : "chat_busy"));
         return new WorkHostState(available, context, _pet.SpeechBubbleRevision,
             available ? null : modelBlocked ?? L.T("聊天、语音、操作桌宠或其他提示优先。", "Chat, speech, pet interaction and other notices take priority."),
             CanObserve: !_disposed && _pet.CanObserveWorkDesktop);
@@ -45,6 +45,7 @@ internal sealed class PetWorkCompanionHost : IWorkCompanionHost, IDisposable
         var session = _getChat() ?? _ensureChat();
         if (session == null || !session.CanReactToWork) { CompanionDiagnostics.Record("model", "model_busy"); return null; }
         var expected = Capture();
+        string? conversationId = session.CurrentConversationId;
         if (!session.WorkCompanionUsesApi)
         {
             var endpoint = session.WorkCompanionEndpoint.AbsoluteUri;
@@ -59,17 +60,22 @@ internal sealed class PetWorkCompanionHost : IWorkCompanionHost, IDisposable
             { CompanionDiagnostics.Record("model", "model_busy"); return null; }
         }
         ct.ThrowIfCancellationRequested();
-        if (!WorkCompanionController.SameContext(expected, Capture()) || !ReferenceEquals(session, _getChat())) return null;
-        return await session.ReactToWorkAsync(candidate, ct, _contextExtension);
+        if (!WorkCompanionController.SameContext(expected, Capture()) || !ReferenceEquals(session, _getChat()) ||
+            session.CurrentConversationId != conversationId) return null;
+        var reply = await session.ReactToWorkAsync(candidate, ct, _contextExtension);
+        return reply == null ? null : reply with { TargetConversationId = conversationId };
     }
 
     public void FinishCandidate(WorkReactionCandidate candidate, bool accepted) =>
         _contextExtension?.FinishCandidate(candidate, accepted);
 
-    public Task<bool> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct)
+    public Task<WorkPresentation> PresentAsync(WorkReactionReply reply, WorkHostState expected, bool speak, CancellationToken ct)
     {
-        if (_disposed || !WorkCompanionController.SameContext(expected, Capture())) return Task.FromResult(false);
-        return _pet.PresentWorkReactionAsync(reply, speak, expected.Revision, ct);
+        var session = _getChat();
+        if (_disposed || reply.ContextOnly || session == null || session.CurrentConversationId != reply.TargetConversationId ||
+            !WorkCompanionController.SameContext(expected, Capture()))
+            return Task.FromResult(WorkPresentation.Skipped);
+        return _pet.PresentWorkReactionAsync(reply, speak, expected.Revision, ct, session);
     }
 
     public void Dispose()

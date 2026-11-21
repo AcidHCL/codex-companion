@@ -32,6 +32,8 @@ internal static class ChatApiIntegrationChecks
                 void Check(bool value, string name) { if (!value) throw new InvalidOperationException(name); checks.Add(name); }
                 transport = await OpenAiCompatibleClientChecks.RunAsync();
                 storage = ChatApiSettingsChecks.Run(AppContext.BaseDirectory);
+                await AutomaticMemoryJudgeChecks.RunAsync();
+                await CheckAutomaticMemoryAsync(Check);
                 await CheckHiddenApiReactionsAsync(Check);
                 string fixture = Path.Combine(AppContext.BaseDirectory, "api-integration-fixture-" + Guid.NewGuid().ToString("N"));
                 var keys = new ApiKeyStore(fixture);
@@ -111,6 +113,86 @@ internal static class ChatApiIntegrationChecks
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
         { try { return Find<T>(VisualTreeHelper.GetChild(parent, i), name); } catch (KeyNotFoundException) { } }
         throw new KeyNotFoundException(name);
+    }
+
+    private static async Task CheckAutomaticMemoryAsync(Action<bool, string> check)
+    {
+        const string milestone = "我们的第一个双人解谜游戏终于上线了！";
+        const string spoken = "今天得盖个鲸尾章庆祝。";
+        var profile = new ChatApiProfile { BaseUrl = "https://memory.example.test/v1", Model = "memory-fixture" };
+        var settings = new DesktopSettings { UseChatApi = true, ApiProfile = profile, SharedMemoryEnabled = true,
+            AutomaticMemoryEnabled = true, WebSearchEnabled = false, LlmBehaviorEnabled = false, SpeechEnabled = false };
+        int chatCalls = 0, reviewCalls = 0;
+        string latestSystem = "";
+        bool holdReview = false;
+        var began = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new ApiHandler(async (request, ct) =>
+        {
+            using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+            var messages = payload.RootElement.GetProperty("messages");
+            string input = messages[messages.GetArrayLength() - 1].GetProperty("content").GetString()!;
+            string reply = "听起来不错。";
+            if (input.StartsWith("{", StringComparison.Ordinal))
+            {
+                using var data = JsonDocument.Parse(input);
+                var source = data.RootElement;
+                ++reviewCalls;
+                if (holdReview) { began.TrySetResult(true); await Task.Delay(Timeout.Infinite, ct); }
+                reply = source.GetProperty("source").GetString() == "displayed_companion_event"
+                    ? JsonSerializer.Serialize(new {kind="moment",title="鲸尾章",content="桌宠用鲸尾章的玩笑庆祝游戏首发。",evidence="鲸尾章"})
+                    : source.GetProperty("user_text").GetString() == milestone
+                        ? JsonSerializer.Serialize(new {kind="user",title="游戏上线",content="用户的第一个双人解谜游戏已经上线。",evidence="双人解谜游戏终于上线"})
+                        : "null";
+            }
+            else
+            {
+                ++chatCalls;
+                latestSystem = messages[0].GetProperty("content").GetString()!;
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new
+                { choices = new[] { new { finish_reason = "stop", message = new { role = "assistant", content = reply } } } }),
+                System.Text.Encoding.UTF8, "application/json") };
+        });
+        var store = new ChatMemoryStore(":memory:");
+        var client = new OpenAiCompatibleClient(profile.Endpoint, () => null, profile.Model, false, false, handler);
+        var chat = new OllamaChatWindow(settings, () => "DeepSeek", _ => { }, _ => { }, () => { }, client, chatStore: store);
+        try
+        {
+            chat.Measure(new Size(460, 550)); chat.Arrange(new Rect(0, 0, 460, 550));
+            var input = Find<TextBox>((DependencyObject)chat.Content, "OllamaChatInput");
+            string scope = ChatModelConnection.Scope(profile.Endpoint, true);
+            input.Text = milestone;
+            await chat.SendAsync();
+            await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(8));
+            var first = store.ListMemories(scope).Single();
+            check(first.IsAutomatic && first.Content.Contains("双人解谜游戏"), "completed_chat_produces_a_labeled_automatic_memory");
+            await chat.NewConversationAsync();
+            string id = chat.CurrentConversationId!;
+            input.Text = "我们的解谜游戏进展怎么样了？";
+            await chat.SendAsync();
+            await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(8));
+            check(latestSystem.Contains("双人解谜游戏") && store.ListMemories(scope).Count == 1 && chatCalls == 2,
+                "new_chat_recalls_learned_milestone_and_null_decision_writes_nothing");
+            check(chat.TrySaveCompanionReaction(id, spoken, "用户和桌宠庆祝游戏首发。"), "accepted_companion_remark_enters_chat");
+            await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(8));
+            check(store.ListMemories(scope).Any(n => n.IsAutomatic && n.Content.Contains("鲸尾章")) && reviewCalls == 3 &&
+                store.ReadTurns(id).Count == 2, "companion_moment_crosses_chats_without_extra_chat_turn");
+
+            // A disabled setting must win over an in-flight decision, even if the provider returns later.
+            holdReview = true;
+            chat.TrySaveCompanionReaction(id, spoken, "桌宠再次提起游戏首发。");
+            await began.Task.WaitAsync(TimeSpan.FromSeconds(8));
+            settings.AutomaticMemoryEnabled = false;
+            input.Text = "新问题优先。";
+            await chat.SendAsync().WaitAsync(TimeSpan.FromSeconds(4));
+            await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(4));
+            check(chatCalls == 3 && store.ListMemories(scope).Count == 2 && reviewCalls == 4,
+                "foreground_preempts_review_and_disable_prevents_a_late_automatic_write");
+            input.Text = "记住：以后称呼我小鲸。"; await chat.SendAsync();
+            check(store.ListMemories(scope).Any(n => !n.IsAutomatic && n.Content.Contains("小鲸")) && reviewCalls == 4,
+                "explicit_save_still_works_with_learning_off");
+        }
+        finally { chat.Shutdown(); }
     }
 
     private static async Task CheckHiddenApiReactionsAsync(Action<bool, string> check)

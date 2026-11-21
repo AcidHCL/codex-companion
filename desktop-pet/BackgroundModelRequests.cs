@@ -10,16 +10,19 @@ namespace DesktopPet;
 // client's lifetime. This lane never reads/writes chat, memory or speech state.
 internal static class BackgroundModelRequests
 {
+    internal static int TextByteBudget(string instruction, int contextLength = 8192) =>
+        contextLength - 1024 - Encoding.UTF8.GetByteCount(instruction);
+
     internal static Task<string?> GenerateTextAsync(IOllamaClient client, string model,
-        string instruction, string source, CancellationToken ct) => client switch
+        string instruction, string source, CancellationToken ct, bool requireWholeSource = false, Action? onSubmit = null) => client switch
     {
-        OllamaClient ollama => ollama.SummarizeResidentAsync(model, instruction, source, ct),
-        OpenAiCompatibleClient api => GenerateApiAsync(api, model, instruction, source, null, ct),
+        OllamaClient ollama => ollama.SummarizeResidentAsync(model, instruction, source, ct, requireWholeSource, onSubmit),
+        OpenAiCompatibleClient api => GenerateApiAsync(api, model, instruction, source, null, ct, requireWholeSource, onSubmit),
         _ => Task.FromResult<string?>(null)
     };
 
     internal static async Task<string?> GenerateApiAsync(OpenAiCompatibleClient client, string model,
-        string instruction, string source, string? imageBase64, CancellationToken ct)
+        string instruction, string source, string? imageBase64, CancellationToken ct, bool requireWholeSource = false, Action? onSubmit = null)
     {
         ct.ThrowIfCancellationRequested();
         if (!client.CanAttemptBackgroundRequest || !ChatApiModel.IsValid(model) ||
@@ -28,8 +31,8 @@ internal static class BackgroundModelRequests
         var capabilities = await client.GetModelInfoAsync(model, ct).ConfigureAwait(false);
         if (capabilities.SupportsChat != true || imageBase64 != null && capabilities.SupportsImages != true) return null;
         // A conservative 8K budget, including the existing screen instruction.
-        int budget = Math.Min(24_000, 8192 - Encoding.UTF8.GetByteCount(instruction) - 1024 - (imageBase64 != null ? 3072 : 0));
-        if (budget < 256) return null;
+        int budget = Math.Min(24_000, TextByteBudget(instruction) - (imageBase64 != null ? 3072 : 0));
+        if (budget < 256 || (requireWholeSource && Encoding.UTF8.GetByteCount(source) > budget)) return null;
         source = BoundSource(source, budget);
         var messages = new[]
         {
@@ -40,6 +43,8 @@ internal static class BackgroundModelRequests
         bool done = false;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(35));
+        deadline.Token.ThrowIfCancellationRequested();
+        onSubmit?.Invoke();
         await foreach (var delta in client.ChatAsync(model, messages, deadline.Token).ConfigureAwait(false))
         {
             deadline.Token.ThrowIfCancellationRequested();

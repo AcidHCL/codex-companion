@@ -100,12 +100,13 @@ internal static class ScreenCaptureNative
                 using var pixels = CapturePixels(before!);
                 if (pixels != null) image = Encode(pixels);
             }
-            if (!TrySnapshot(request.App, request.WindowKey, request.AllowFullscreen, request.ExcludedApps, out var after, out _, fixture) ||
-                before != after) return ScreenCaptureResult.Unavailable("foreground_changed");
+            if (!TrySnapshot(request.App, request.WindowKey, request.AllowFullscreen, request.ExcludedApps, out var after, out status, fixture))
+                return ScreenCaptureResult.Unavailable(status);
+            if (before != after) return ScreenCaptureResult.Unavailable("foreground_changed");
             // Check provider protection again: a password dialog/field may have
             // appeared without changing the root HWND during image capture.
-            if (!ScreenWindowText.Read(before!, false, watch).Safe)
-                return ScreenCaptureResult.Unavailable("protected_content");
+            var finalProtection = ScreenWindowText.Read(before!, false, watch);
+            if (!finalProtection.Safe) return ScreenCaptureResult.Unavailable(finalProtection.Status);
             if (text.Length == 0 && image == null) return ScreenCaptureResult.Unavailable("content_unavailable");
             return new(true, image == null && request.IncludeImage ? "text_only" : "captured", text, image,
                 request.WindowKey, before!.Identity);

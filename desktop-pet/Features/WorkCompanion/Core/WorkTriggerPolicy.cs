@@ -103,34 +103,28 @@ internal sealed class WorkTriggerPolicy
         // release its offer; the next sample must qualify a fresh candidate.
         // Resuming input invalidates any candidate, including an in-flight reply.
         if (_candidate != null || !stable || !IsQuiet(observation)) return null;
-        if (!string.IsNullOrEmpty(contextRequestKey) && contextRequestKey != _offeredContextRequest)
-        {
-            _offeredContextRequest = contextRequestKey;
-            var candidate = Offer("context_requested", observation, key, "context_requested:" + key);
-            _candidate = candidate with { ContextRequestKey = contextRequestKey };
-            return _candidate;
-        }
+        // Keep the actual app change or reminder when it coincides with a screen
+        // opportunity. A screen-only opportunity must never invent either event.
+        if (string.IsNullOrEmpty(contextRequestKey) || contextRequestKey == _offeredContextRequest)
+            contextRequestKey = null;
         int breakMinutes = Math.Clamp(breakAfterMinutes, 1, 240);
         if (breakReminders && !_breakOffered && ActiveMinutes >= breakMinutes)
         {
             _breakOffered = true;
             string kind = CompanionActivityClassifier.Key(observation.Activity) + "_break";
-            return Offer(kind, observation, key, kind);
+            return Offer(kind, observation, key, kind, contextRequestKey);
         }
         if (!reactAppChanges)
-        {
             _transitionOffered = true;
-            return null;
-        }
-        if (_hasTransition && !_transitionOffered)
+        else if (_hasTransition && !_transitionOffered)
         {
             _transitionOffered = true;
             string topic = "app_changed:" + key;
-            if (_handledTopics.TryGetValue(topic, out var handledAt) && observation.At - handledAt < TopicCooldown)
-                return null;
-            return Offer("app_changed", observation, key, topic);
+            if (!_handledTopics.TryGetValue(topic, out var handledAt) || observation.At - handledAt >= TopicCooldown)
+                return Offer("app_changed", observation, key, topic, contextRequestKey);
         }
-        return null;
+        return contextRequestKey == null ? null :
+            Offer("context_requested", observation, key, "context_requested:" + key, contextRequestKey);
     }
 
     public bool IsCurrent(WorkReactionCandidate candidate, DateTimeOffset now) =>
@@ -164,9 +158,9 @@ internal sealed class WorkTriggerPolicy
     public void ReleaseCandidate(WorkReactionCandidate candidate)
     {
         if (_candidate?.Id != candidate.Id) return;
-        if (candidate.Kind == "context_requested" && _offeredContextRequest == candidate.ContextRequestKey)
+        if (candidate.ContextRequestKey != null && _offeredContextRequest == candidate.ContextRequestKey)
             _offeredContextRequest = null;
-        else if (candidate.Kind == "app_changed") _transitionOffered = false;
+        if (candidate.Kind == "app_changed") _transitionOffered = false;
         else if (candidate.Kind.EndsWith("_break", StringComparison.Ordinal)) _breakOffered = false;
         ClearCandidate();
     }
@@ -177,15 +171,17 @@ internal sealed class WorkTriggerPolicy
         _handledTopics.Clear();
     }
 
-    private WorkReactionCandidate Offer(string kind, WorkObservation observation, string key, string topic)
+    private WorkReactionCandidate Offer(string kind, WorkObservation observation, string key, string topic, string? contextRequestKey)
     {
+        if (contextRequestKey != null) _offeredContextRequest = contextRequestKey;
         _candidate = new WorkReactionCandidate(Guid.NewGuid().ToString("N"), kind, observation.At,
             observation.At + _candidateLifetime, observation.App, observation.WindowTitle,
             kind is "app_changed" or "context_requested" ? _previousApp : null, ActiveMinutes)
         {
             Activity = observation.Activity,
             PreviousActivity = kind is "app_changed" or "context_requested" ? _previousActivity : null,
-            WindowKey = observation.WindowKey
+            WindowKey = observation.WindowKey,
+            ContextRequestKey = contextRequestKey
         };
         _candidateWindowKey = key;
         _candidateTopic = topic;

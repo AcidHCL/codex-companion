@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -16,20 +17,29 @@ internal sealed class WindowsScreenWindowCapture : IScreenWindowCapture
     internal const int MaximumRequestCharacters = 16_384;
     internal static readonly TimeSpan Timeout = TimeSpan.FromSeconds(8);
 
-    public Task<string?> ReadIdentityAsync(string app, string windowKey, CancellationToken ct) =>
+    public async Task<string?> ReadIdentityAsync(string app, string windowKey, CancellationToken ct) =>
+        (await ReadIdentityAsync(app, windowKey, true, Array.Empty<string>(), ct).ConfigureAwait(false)).Identity;
+
+    public async Task<bool> IsCurrentWindowAllowedAsync(ScreenCaptureRequest request, CancellationToken ct) =>
+        (await ReadIdentityAsync(request.App, request.WindowKey, request.AllowFullscreen, request.ExcludedApps, ct)
+            .ConfigureAwait(false)).Identity != null;
+
+    private static Task<(string? Identity, string Status)> ReadIdentityAsync(string app, string windowKey,
+        bool allowFullscreen, IReadOnlyList<string> excludedApps, CancellationToken ct) =>
         Task.Run(() =>
         {
             ct.ThrowIfCancellationRequested();
-            return ScreenCaptureNative.TrySnapshot(app, windowKey, true, Array.Empty<string>(), out var snapshot, out _)
-                ? snapshot!.Identity : null;
+            ScreenCaptureNative.TrySnapshot(app, windowKey, allowFullscreen, excludedApps, out var snapshot, out string status);
+            return (snapshot?.Identity, status);
         }, ct);
 
     public async Task<ScreenCaptureResult> CaptureAsync(ScreenCaptureRequest request, CancellationToken ct)
     {
         if (!ScreenCapturePolicy.ValidRequest(request)) return ScreenCaptureResult.Unavailable("invalid_request");
         ct.ThrowIfCancellationRequested();
-        string? identity = await ReadIdentityAsync(request.App, request.WindowKey, ct).ConfigureAwait(false);
-        if (identity == null) return ScreenCaptureResult.Unavailable("foreground_unavailable");
+        var (identity, status) = await ReadIdentityAsync(request.App, request.WindowKey, request.AllowFullscreen,
+            request.ExcludedApps, ct).ConfigureAwait(false);
+        if (identity == null) return ScreenCaptureResult.Unavailable(status);
         string executable = Path.Combine(AppContext.BaseDirectory, "DesktopPet.exe");
         if (!File.Exists(executable)) return ScreenCaptureResult.Unavailable("worker_unavailable");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -71,7 +81,9 @@ internal sealed class WindowsScreenWindowCapture : IScreenWindowCapture
             if (result.ApplicationIdentity != identity) return ScreenCaptureResult.Unavailable("foreground_changed");
             // Window switches while stdout is being drained revoke even a
             // successful helper result. No output is retained on rejection.
-            string? current = await ReadIdentityAsync(request.App, request.WindowKey, deadline.Token).ConfigureAwait(false);
+            var (current, rejection) = await ReadIdentityAsync(request.App, request.WindowKey, request.AllowFullscreen,
+                request.ExcludedApps, deadline.Token).ConfigureAwait(false);
+            if (current == null) return ScreenCaptureResult.Unavailable(rejection);
             return current == identity ? result : ScreenCaptureResult.Unavailable("foreground_changed");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }

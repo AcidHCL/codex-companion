@@ -35,7 +35,7 @@ internal static class OllamaWorkReactionChatChecks
             Check(!fixture.Window.IsVisible && !fixture.Settings.LlmBehaviorEnabled && fixture.Window.CanReactToWork,
                 "hidden_work_host_does_not_require_behavior_mode_or_UI_connection_refresh");
             var reply = await fixture.Window.ReactToWorkAsync(OllamaWorkReactionChecks.Candidate(), CancellationToken.None);
-            Check(reply == new WorkReactionReply("需要帮忙就叫我。", "happy"), "structured_work_reply_returned_to_host_only");
+            Check(reply is { Text: "需要帮忙就叫我。", Expression: "happy", EventSummary.Length: > 0 }, "structured_work_reply_returned_to_host_only");
             Check(fixture.Snapshot() == before && fixture.Input.Text == "SECRET_UNSENT_DRAFT",
                 "work_observation_and_reply_never_change_history_shared_memory_or_draft");
             Check(fixture.SayCalls == 0 && fixture.BusyCalls == 0 && fixture.SaveSettingsCalls == 0 &&
