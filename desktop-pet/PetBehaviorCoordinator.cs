@@ -17,6 +17,7 @@ internal sealed class PetBehaviorCoordinator : IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _reaction;
     private OllamaChatWindow? _attached;
+    private string? _interactionConversationId;
     private bool _disposed, _ticking, _refreshing;
     private DateTimeOffset _nextProbe;
     private long _epoch;
@@ -28,6 +29,7 @@ internal sealed class PetBehaviorCoordinator : IDisposable
         _timer.Tick += Tick;
         _pet.InteractionOccurred += OnInteraction;
         _pet.BehaviorInvalidated += OnHostInvalidated;
+        _pet.CompanionSurfacesUnavailable += CancelPending;
         RefreshMode();
     }
 
@@ -42,13 +44,13 @@ internal sealed class PetBehaviorCoordinator : IDisposable
             bool requested = _pet.Settings.LlmBehaviorEnabled;
             _pet.SetExplicitBehaviorCommandsActive(requested && session?.BehaviorCommandsReady == true);
             _pet.SetLlmBehaviorActive(requested && session?.BehaviorServiceReady == true);
-            if (requested) _timer.Start();
+            if (requested) _timer.Start(); else _timer.Stop();
             // Cancel only this coordinator's own pending interaction here.
             // RefreshMode also runs for ordinary animation/voice status updates;
             // a repeated "off" refresh must not cancel other background lanes.
             // An actual preference change is already invalidated by the chat
             // session above, and _reaction is linked to the interaction request.
-            else { _timer.Stop(); CancelPending(); }
+            if (!requested || session?.BehaviorReactionReady != true) CancelPending();
         }
         finally { _refreshing = false; }
     }
@@ -56,23 +58,29 @@ internal sealed class PetBehaviorCoordinator : IDisposable
     private void Attach(OllamaChatWindow? session)
     {
         if (ReferenceEquals(session, _attached)) return;
+        CancelPending();
         if (_attached != null) { _attached.BehaviorAvailabilityChanged -= OnAvailability; _attached.BehaviorContextInvalidated -= OnContextInvalidated; }
         _attached = session;
         if (session != null) { session.BehaviorAvailabilityChanged += OnAvailability; session.BehaviorContextInvalidated += OnContextInvalidated; }
     }
     private void OnAvailability() => RefreshMode();
     private void OnContextInvalidated()
-    { CancelPending(); _pet.InvalidateLlmBehavior(); _nextProbe = DateTimeOffset.MinValue; }
+    { CancelPending(); _pet.ResetBehaviorInteractionContext(); _nextProbe = DateTimeOffset.MinValue; }
     private void OnHostInvalidated()
     { _epoch++; _queue.InvalidatePending(); CancelReaction(); _getSession()?.CancelBehaviorReaction(); }
     private void CancelPending()
-    { _epoch++; _queue.Clear(); CancelReaction(); }
+    { _epoch++; _queue.Clear(); _interactionConversationId = null; CancelReaction(); }
     private void CancelReaction()
     { try { _reaction?.Cancel(); } catch (ObjectDisposedException) { } }
     private void OnInteraction(PetInteractionEvent item)
     {
-        if (_disposed || !_pet.Settings.LlmBehaviorEnabled || !_pet.CompanionSurfacesAvailable) return;
-        _epoch++; CancelReaction(); _getSession()?.CancelBehaviorReaction();
+        var session = _getSession();
+        if (_disposed || !_pet.Settings.LlmBehaviorEnabled || !_pet.CompanionSurfacesAvailable ||
+            session?.BehaviorReactionReady != true) return;
+        Attach(session);
+        if (_interactionConversationId != session.CurrentConversationId) CancelPending();
+        _interactionConversationId = session.CurrentConversationId;
+        _epoch++; CancelReaction(); session.CancelBehaviorReaction();
         _queue.Offer(item);
     }
 
@@ -102,14 +110,22 @@ internal sealed class PetBehaviorCoordinator : IDisposable
             }
             // Text-only models can acknowledge a click without receiving any
             // action tools or taking over the default movement controller.
-            if (!session.BehaviorReactionReady) { _queue.Clear(); return; }
+            if (!session.BehaviorReactionReady || !ReferenceEquals(session, _attached)) return;
             if (!_queue.TryTake(DateTimeOffset.UtcNow, session.CanReactToInteraction, out var interaction) || interaction == null) return;
+            string? conversationId = _interactionConversationId;
+            if (conversationId != session.CurrentConversationId) return;
             long epoch = _epoch;
             using var reaction = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
             reaction.CancelAfter(TimeSpan.FromSeconds(25)); _reaction = reaction;
             string? answer = await session.ReactToInteractionAsync(interaction, reaction.Token);
-            if (!reaction.IsCancellationRequested && !_disposed && epoch == _epoch && _pet.Settings.LlmBehaviorEnabled && _pet.CompanionSurfacesAvailable && !string.IsNullOrWhiteSpace(answer))
-                _pet.SayChatAnswer(answer, answer.Length <= 120 ? answer : answer[..120] + "…");
+            if (reaction.IsCancellationRequested || _disposed || epoch != _epoch || !_pet.Settings.LlmBehaviorEnabled ||
+                !session.BehaviorReactionReady ||
+                !ReferenceEquals(session, _getSession()) || conversationId != session.CurrentConversationId || string.IsNullOrWhiteSpace(answer)) return;
+
+            // Presentation and commit share one dispatcher turn. SILENT, cancelled
+            // requests and local fallback lines never reach the transcript.
+            if (_pet.TrySayInteractionReply(answer))
+                session.TrySaveCompanionReaction(conversationId, answer, interaction.DescribeForChat(L.IsEnglish));
         }
         catch (OperationCanceledException) { }
         catch (Exception) { if (!_disposed) _pet.SetLlmBehaviorActive(false); }
@@ -121,6 +137,7 @@ internal sealed class PetBehaviorCoordinator : IDisposable
         if (_disposed) return;
         _disposed = true; _timer.Stop(); _timer.Tick -= Tick;
         _pet.InteractionOccurred -= OnInteraction; _pet.BehaviorInvalidated -= OnHostInvalidated;
+        _pet.CompanionSurfacesUnavailable -= CancelPending;
         Attach(null); CancelPending(); _lifetime.Cancel(); _lifetime.Dispose();
         _pet.SetExplicitBehaviorCommandsActive(false);
         _pet.SetLlmBehaviorActive(false);

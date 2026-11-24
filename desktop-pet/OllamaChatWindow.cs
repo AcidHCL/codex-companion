@@ -633,7 +633,7 @@ internal sealed partial class OllamaChatWindow : Window
         FrameworkElement contextView;
         if (turn.CompanionEventSummary is { } summary)
         {
-            var note = Ui.Text(L.T("主动陪伴 · ", "Companion · ") + summary, 11, "#536953");
+            var note = Ui.Text(L.T("桌宠事件 · ", "Pet event · ") + summary, 11, "#536953");
             note.Margin = new Thickness(2, 4, 2, 5);
             note.TextWrapping = TextWrapping.Wrap;
             _messages.Children.Add(note);

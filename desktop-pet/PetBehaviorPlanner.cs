@@ -137,7 +137,7 @@ internal static class PetBehaviorPlanner
                     at = interaction.OccurredAt, state = snapshot.State, clickCount, repeatedClicks = clickCount > 1,
                     localClickReactionPlayed = clickReaction
                 })),
-            new("user", L.T("请对刚才的桌宠事件作出简短反应；这是一轮独立事件处理，不加入用户聊天记录。", "React briefly to the pet event. This is a separate event handler, not a user chat message."))
+            new("user", L.T("请以角色口吻回应刚才的互动，想保持安静时回复 SILENT。", "React to the interaction in character, or reply SILENT to stay quiet."))
         };
         if (tools.Count == 0) return await CollectSpeechAsync(client, model, context, ct).ConfigureAwait(false);
         var plan = await CollectPlanAsync(client, model, context, tools, 1, ct).ConfigureAwait(false);

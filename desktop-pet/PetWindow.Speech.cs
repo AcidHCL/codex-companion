@@ -58,6 +58,14 @@ internal sealed partial class PetWindow
         SpeakText(fullAnswer, PetSpeechSource.Chat);
     }
 
+    internal bool TrySayInteractionReply(string text)
+    {
+        if (!BehaviorAvailable || !CompanionSurfacesAvailable) return false;
+        ShowSpeechBubble(text, expanded: text.Length > 120);
+        SpeakText(text, PetSpeechSource.Chat);
+        return true;
+    }
+
     public void SetSpeechEnabled(bool enabled)
     {
         Settings.SpeechEnabled = enabled;

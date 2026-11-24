@@ -11,7 +11,7 @@
     <RootNamespace>DesktopPet</RootNamespace>
     <PlatformTarget>x64</PlatformTarget>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.42.1</Version>
+    <Version>1.43.0</Version>
     <EnableWorkCompanion Condition="'$(EnableWorkCompanion)' == ''">true</EnableWorkCompanion>
     <DefineConstants Condition="'$(EnableWorkCompanion)' == 'true'">$(DefineConstants);WORK_COMPANION</DefineConstants>
     <EnableScreenUnderstanding Condition="'$(EnableScreenUnderstanding)' == ''">true</EnableScreenUnderstanding>

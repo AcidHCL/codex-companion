@@ -119,11 +119,14 @@ internal static class ChatApiIntegrationChecks
     {
         const string milestone = "我们的第一个双人解谜游戏终于上线了！";
         const string spoken = "今天得盖个鲸尾章庆祝。";
+        const string mouseReply = "再点一下，这枚鲸尾邮票可就盖好了。";
+        string mouseSummary = new PetInteractionEvent("clicked", default, 0, ClickCount: 3).DescribeForChat(false);
         var profile = new ChatApiProfile { BaseUrl = "https://memory.example.test/v1", Model = "memory-fixture" };
         var settings = new DesktopSettings { UseChatApi = true, ApiProfile = profile, SharedMemoryEnabled = true,
             AutomaticMemoryEnabled = true, WebSearchEnabled = false, LlmBehaviorEnabled = false, SpeechEnabled = false };
         int chatCalls = 0, reviewCalls = 0;
         string latestSystem = "";
+        var mouseEvidence = new List<(string Summary, string Reply, bool NoUserText)>();
         bool holdReview = false;
         var began = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var handler = new ApiHandler(async (request, ct) =>
@@ -138,9 +141,20 @@ internal static class ChatApiIntegrationChecks
                 var source = data.RootElement;
                 ++reviewCalls;
                 if (holdReview) { began.TrySetResult(true); await Task.Delay(Timeout.Infinite, ct); }
-                reply = source.GetProperty("source").GetString() == "displayed_companion_event"
-                    ? JsonSerializer.Serialize(new {kind="moment",title="鲸尾章",content="桌宠用鲸尾章的玩笑庆祝游戏首发。",evidence="鲸尾章"})
-                    : source.GetProperty("user_text").GetString() == milestone
+                if (source.GetProperty("source").GetString() == "displayed_companion_event")
+                {
+                    string summary = source.GetProperty("event_summary").GetString()!;
+                    string petReply = source.GetProperty("pet_reply").GetString()!;
+                    if (summary == mouseSummary)
+                    {
+                        mouseEvidence.Add((summary, petReply, source.GetProperty("user_text").ValueKind == JsonValueKind.Null));
+                        reply = petReply == mouseReply
+                            ? JsonSerializer.Serialize(new {kind="moment",title="鲸尾邮票",content="桌宠把被连点打趣成盖鲸尾邮票。",evidence="鲸尾邮票"})
+                            : "null";
+                    }
+                    else reply = JsonSerializer.Serialize(new {kind="moment",title="鲸尾章",content="桌宠用鲸尾章的玩笑庆祝游戏首发。",evidence="鲸尾章"});
+                }
+                else reply = source.GetProperty("user_text").GetString() == milestone
                         ? JsonSerializer.Serialize(new {kind="user",title="游戏上线",content="用户的第一个双人解谜游戏已经上线。",evidence="双人解谜游戏终于上线"})
                         : "null";
             }
@@ -177,6 +191,13 @@ internal static class ChatApiIntegrationChecks
             await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(8));
             check(store.ListMemories(scope).Any(n => n.IsAutomatic && n.Content.Contains("鲸尾章")) && reviewCalls == 3 &&
                 store.ReadTurns(id).Count == 2, "companion_moment_crosses_chats_without_extra_chat_turn");
+            const string ordinary = "嗯，怎么啦？";
+            check(chat.TrySaveCompanionReaction(id, ordinary, mouseSummary) &&
+                chat.TrySaveCompanionReaction(id, mouseReply, mouseSummary), "mouse_remarks_enter_chat_before_memory_review");
+            await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(8));
+            check(mouseEvidence.SequenceEqual(new[] { (mouseSummary, ordinary, true), (mouseSummary, mouseReply, true) }) &&
+                store.ListMemories(scope).Count == 3 && store.ListMemories(scope).Any(n => n.IsAutomatic && n.Title == "鲸尾邮票") &&
+                store.ReadTurns(id).Count == 4, "judge_receives_only_factual_mouse_summary_and_spoken_reply_and_can_decline_or_keep_it");
 
             // A disabled setting must win over an in-flight decision, even if the provider returns later.
             holdReview = true;
@@ -186,10 +207,10 @@ internal static class ChatApiIntegrationChecks
             input.Text = "新问题优先。";
             await chat.SendAsync().WaitAsync(TimeSpan.FromSeconds(4));
             await chat.PendingAutomaticMemoryForTesting.WaitAsync(TimeSpan.FromSeconds(4));
-            check(chatCalls == 3 && store.ListMemories(scope).Count == 2 && reviewCalls == 4,
+            check(chatCalls == 3 && store.ListMemories(scope).Count == 3 && reviewCalls == 6,
                 "foreground_preempts_review_and_disable_prevents_a_late_automatic_write");
             input.Text = "记住：以后称呼我小鲸。"; await chat.SendAsync();
-            check(store.ListMemories(scope).Any(n => !n.IsAutomatic && n.Content.Contains("小鲸")) && reviewCalls == 4,
+            check(store.ListMemories(scope).Any(n => !n.IsAutomatic && n.Content.Contains("小鲸")) && reviewCalls == 6,
                 "explicit_save_still_works_with_learning_off");
         }
         finally { chat.Shutdown(); }

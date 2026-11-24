@@ -87,6 +87,30 @@ internal static class PetInteractionQueueChecks
         ordered.Offer(new("landed", now.AddSeconds(2), 3));
         Check(ordered.TryTake(now.AddSeconds(3), true, out var clearedItem) && clearedItem!.ClickCount == 0 && clearedItem.ClickReaction == null,
             "context_clear_discards_click_summary_as_well_as_pending_event");
+        Check(clearedItem!.DescribeForChat(false) == "桌宠刚刚落地了。" && clearedItem.DescribeForChat(true) == "A moment ago, the pet landed.",
+            "landing_alone_does_not_imply_a_user_picked_up_or_threw_the_pet");
+        var clicks = new PetInteractionEvent("clicked", now, 4, new[] { "clicked", "clicked", "clicked" }, ClickCount: 3, ClickReaction: "angry");
+        Check(clicks.DescribeForChat(false) == "桌宠刚刚被连点了 3 下。" && clicks.DescribeForChat(true) == "A moment ago, the pet was clicked 3 times in quick succession.",
+            "repeated_clicks_are_described_once_without_inventing_the_pets_emotion");
+        Check((clicks with { ClickCount = 1 }).DescribeForChat(false) == "桌宠刚刚被点了一下。" &&
+            (clicks with { ClickCount = int.MaxValue }).DescribeForChat(true).Contains("repeatedly"),
+            "single_click_and_saturated_count_are_distinct");
+        var drop = new PetInteractionEvent("landed", now, 5, new[] { "drag_started", "fall_started", "released", "landed" });
+        Check(drop.DescribeForChat(false) == "桌宠刚刚被拎起，被松开，开始下落，落地了。" &&
+            drop.DescribeForChat(true) == "A moment ago, the pet was picked up, was released, started falling, and landed.",
+            "pickup_fall_release_and_landing_are_grounded_in_the_recorded_edges");
+        var released = drop with { Kind = "released", RecentKinds = new[] { "fall_started", "released" } };
+        var falling = drop with { Kind = "fall_started", RecentKinds = null };
+        Check(released.DescribeForChat(false) == "桌宠刚刚被松开，开始下落。" &&
+            (falling with { RecentKinds = new[] { "released", "fall_started" } }).DescribeForChat(true) == released.DescribeForChat(true),
+            "dropping_off_an_edge_reads_as_release_then_fall_regardless_of_callback_order");
+        Check(falling.DescribeForChat(false) == "桌宠刚刚开始下落。" && falling.DescribeForChat(true) == "A moment ago, the pet started falling.",
+            "falling_without_a_release_does_not_imply_a_user_gesture");
+        Check((drop with { ClickCount = 12 }).DescribeForChat(false).StartsWith("桌宠刚刚被连点了 12 下，被拎起"),
+            "a_retained_click_burst_precedes_newer_gesture_edges_when_evicted_from_the_trail");
+        Check((drop with { Kind = "unknown" }).DescribeForChat(false).Length == 0 &&
+            (drop with { RecentKinds = new[] { "unknown", "landed" } }).DescribeForChat(true) == "A moment ago, the pet landed.",
+            "unsupported_gesture_metadata_never_enters_the_chat_summary");
         return new { assertions = checks.Count, checks };
     }
 }

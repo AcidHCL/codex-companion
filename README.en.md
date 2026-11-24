@@ -1,4 +1,4 @@
-# Codex Companion · 蓝色大肥鱼 1.42.1
+# Codex Companion · 蓝色大肥鱼 1.43.0
 
 [简体中文](README.md) | **English**
 
@@ -29,6 +29,7 @@ The application supports English and Simplified Chinese. Key Chinese labels are 
 
 ## Changelog
 
+- **1.43.0 · Follow up on mouse interactions.** With a model connected and LLM behavior enabled, the current chat saves what happened and what the pet said when it reacts to a click, pickup, or landing. With automatic shared memory enabled, the model can keep a favorite moment for future chats.
 - **1.42.1 · Proactive companion fixes.** Screen understanding can read windows with large numbers of controls. Leaving pet chat open in the background allows companionship to continue. If a capture fails, an eligible app-switch or break reminder can still use app activity. See **Settings → Proactive companion → Recent companion records** for skipped reactions.
 - **1.42.0 · Automatic shared memory.** The selected model can save preferences or memorable moments from new chat exchanges and displayed companion remarks for other conversations on the same service.
 - **1.41.0 · Follow up on companion remarks.** When the pet shows a remark, the current chat saves it alongside a brief description of what happened. You can follow up even when speech is turned off.
@@ -187,7 +188,7 @@ The repository does not include the compiled output of these commands. WebView2,
 - **Scene animations (场景动画):** preview actions, switch between classic and newer animation sets, or import custom packs.
 - **System tray:** show, hide, or quit the pet.
 
-Click reactions do not require a model connection. DeepSeek and GPT currently have matching animations; other skins respond with bubbles. When LLM behavior mode (LLM 行为模式) is enabled and Ollama is connected, click counts and the expressions already played are combined into a notification to the model. Background reactions are limited to once every 10 seconds, with user chat taking priority. Regular chat models can respond verbally; tool-capable models can also choose expressions. These events are not saved as user chat messages. Dragging requires holding and moving the mouse; clicks do not interrupt a manually started performance or a physics-driven action.
+Click reactions do not require a model connection. DeepSeek and GPT currently have matching animations; other skins respond with bubbles. When LLM behavior mode (LLM 行为模式) is enabled and Ollama or an API is connected, click counts and the expressions already played are combined into a notification to the model. Background reactions are limited to once every 10 seconds, with user chat taking priority. Regular chat models can respond verbally; tool-capable models can also choose expressions. Replies shown in a bubble appear in the current chat. Dragging requires holding and moving the mouse; clicks do not interrupt a manually started performance or a physics-driven action.
 
 Further instructions, currently in Chinese: [First use](首次使用.txt) · [Scene animations](desktop-pet/动画说明.txt) · [Live2D](desktop-pet/Live2D说明.txt)
 

@@ -22,13 +22,20 @@ internal sealed partial class PetWindow : IPetBehaviorHost
     internal event Action? BehaviorStateChanged;
     internal event Action? BehaviorInvalidated;
 
-    // Explicit song commands can work with a text-only model. They do not
-    // transfer autonomous movement or passive reactions away from default mode.
+    // Text-only models can speak on clicks without taking over autonomous movement.
     internal void SetExplicitBehaviorCommandsActive(bool active)
     {
         Dispatcher.VerifyAccess();
         if (_explicitBehaviorCommandsActive == active) return;
         _explicitBehaviorCommandsActive = active;
+        ResetBehaviorInteractionContext();
+    }
+
+    internal void ResetBehaviorInteractionContext()
+    {
+        // A burst can span a chat switch, or a reconnect within its three-second window.
+        ++_clickGeneration;
+        _clickSequence.Reset();
         InvalidateLlmBehavior();
     }
 

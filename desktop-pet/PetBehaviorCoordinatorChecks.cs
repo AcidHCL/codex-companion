@@ -25,7 +25,7 @@ internal static class PetBehaviorCoordinatorChecks
         string evidence = Path.Combine(AppContext.BaseDirectory, "pet-behavior-coordinator-evidence", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(evidence);
         var app = new Application { Resources = Ui.CreateResources(), ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+        var timeout = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         var client = new FixtureClient();
         PetWindow? pet = null;
         OllamaChatWindow? session = null;
@@ -107,14 +107,18 @@ internal static class PetBehaviorCoordinatorChecks
                     "hide_discards_queued_interaction_and_performs_no_background_request");
                 pet.Show();
                 await Until(() => pet.CompanionSurfacesAvailable);
+                string firstId = session!.CurrentConversationId!;
+                const string draft = "还没发出去的草稿";
+                store!.SaveDraft(firstId, draft, Array.Empty<ChatStoredImage>());
                 phase = "background_reaction";
                 await pet.ReactToClickAsync();
                 await Until(() => Descendants<TextBlock>(pet).Any(item => item.Text == FixtureClient.Answer));
                 Require(client.InferenceCalls == 1 && session?.IsVisible == false && client.LastMessages.Any(message => message.Content.Contains("clicked", StringComparison.Ordinal)),
                     "real_timer_sends_clicked_event_and_displays_background_bubble_without_opening_chat");
-                var conversations = store!.ListConversations(OllamaEndpoint.DefaultAddress, settings.SkinId);
-                Require(conversations.Count == 1 && store.ReadTurns(conversations[0].Id).Count == 0,
-                    "passive_reaction_does_not_add_fake_user_turn_to_history");
+                var click = store.ReadTurns(firstId).Single();
+                Require(click.User == "" && click.Assistant == FixtureClient.Answer && click.CompanionEventSummary?.Contains("点") == true &&
+                    click.Images.Count == 0 && click.Sources.Count == 0 && click.WebWarning == null && store.GetConversation(firstId)?.Draft == draft,
+                    "one_shown_click_remark_and_factual_note_saved_without_a_user_turn_or_draft_change");
                 phase = "text_only_model";
                 client.SupportsTools = false; await session!.CheckConnectionAsync(); coordinator.RefreshMode();
                 var textOnlySnapshot = await pet.GetSnapshotAsync(CancellationToken.None);
@@ -122,27 +126,96 @@ internal static class PetBehaviorCoordinatorChecks
                     "text_only_explicit_commands_do_not_take_over_default_autonomous_movement");
                 var unavailable = await pet.ExecuteAsync(new PetBehaviorCommand("walk", Direction: "left"), textOnlySnapshot.Revision, CancellationToken.None);
                 Require(!unavailable.Accepted, "text_only_command_permission_does_not_enable_arbitrary_movement");
-                // Use a fresh coordinator for this separate capability case;
-                // cooldown behavior is covered by PetInteractionQueueChecks.
-                coordinator.Dispose();
-                coordinator = new PetBehaviorCoordinator(pet, () => session,
-                    () => throw new InvalidOperationException("The existing text-only session must be reused."));
-                await pet.ReactToClickAsync();
-                await Until(() => client.InferenceCalls == 2);
-                await Until(() => session.CanReactToInteraction);
+                // Each independent scenario starts with a fresh cooldown. The
+                // real queue's timing and coalescing have their own checks.
+                void ResetCoordinator()
+                {
+                    coordinator.Dispose();
+                    coordinator = new PetBehaviorCoordinator(pet, () => session,
+                        () => throw new InvalidOperationException("The existing session must be reused."));
+                }
+                ResetCoordinator();
+                const string releaseReply = "下次松手前记得提醒我呀。";
+                client.Reply = releaseReply;
+                pet.BeginBehaviorPointerInteraction();
+                pet.CompleteBehaviorPointerInteraction(forceDrag: true);
+                await Until(() => Descendants<TextBlock>(pet).Any(item => item.Text == releaseReply));
+                var afterRelease = store.ReadTurns(firstId);
                 Require(!pet.IsLlmBehaviorActive && session.BehaviorReactionReady && !session.BehaviorServiceReady &&
-                    client.LastMessages.Any(message => message.Content.Contains("clicked", StringComparison.Ordinal)) &&
+                    client.LastMessages.Any(message => message.Content.Contains("drag_started") && message.Content.Contains("released")) &&
                     client.LastMessages.Any(message => message.Content.Contains("本轮没有动作工具", StringComparison.Ordinal)),
-                    "text_only_model_consumes_click_queue_without_tools_or_movement_takeover");
-                Require(!session.IsVisible && store.ReadTurns(conversations[0].Id).Count == 0,
-                    "text_only_passive_response_keeps_composer_hidden_and_history_unchanged");
+                    "text_only_model_observes_pickup_and_release_without_taking_over_movement");
+                string releaseSummary = new PetInteractionEvent("released", default, 0, RecentKinds: new[] { "drag_started", "released" }).DescribeForChat(false);
+                Require(!session.IsVisible && client.InferenceCalls == 2 && afterRelease.Count == 2 &&
+                    afterRelease[1].Assistant == releaseReply && afterRelease[1].User == "" && afterRelease[1].CompanionEventSummary == releaseSummary,
+                    "coalesced_pickup_and_release_save_exactly_one_displayed_remark");
+
+                phase = "silent_reaction";
+                ResetCoordinator();
+                client.Reply = "SILENT";
+                await pet.ReactToClickAsync();
+                await Until(() => client.InferenceCalls == 3 && session.CanReactToInteraction);
+                Require(store.ReadTurns(firstId).Count == 2 && !Descendants<TextBlock>(pet).Any(item => item.Text == "SILENT"),
+                    "silent_model_does_not_display_or_store_an_event");
+
+                phase = "conversation_switch_before_dispatch";
+                ResetCoordinator();
+                client.Reply = "不该出现在新对话里的旧回复。";
+                var beforeSwitch = DateTimeOffset.UtcNow;
+                await pet.ReactToClickAsync(beforeSwitch);
+                await session.NewConversationAsync();
+                string secondId = session.CurrentConversationId!;
+                await Task.Delay(1300);
+                Require(firstId != secondId && client.InferenceCalls == 3 && store.ReadTurns(firstId).Count == 2 && store.ReadTurns(secondId).Count == 0,
+                    "switching_chat_discards_queued_mouse_event_before_model_dispatch");
+                string singleClickSummary = new PetInteractionEvent("clicked", default, 0, ClickCount: 1).DescribeForChat(false);
+                client.Reply = "新对话里的第一次招呼。";
+                await pet.ReactToClickAsync(beforeSwitch.AddMilliseconds(100));
+                await Until(() => store.ReadTurns(secondId).Count == 1);
+                var firstInNewChat = store.ReadTurns(secondId).Single();
+                Require(firstInNewChat.CompanionEventSummary == singleClickSummary && firstInNewChat.Assistant == client.Reply &&
+                    client.InferenceCalls == 4 && store.ReadTurns(firstId).Count == 2,
+                    "first_click_after_switch_excludes_clicks_from_previous_chat_even_within_one_burst");
+
+                phase = "disable_during_response";
+                ResetCoordinator();
+                client.Reply = "这句迟到的回复不应出现。";
+                var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                client.BlockResponse = release.Task;
+                await pet.ReactToClickAsync();
+                await Until(() => client.InferenceCalls == 5);
                 int metadataBeforeDisable = client.MetadataCalls;
-                phase = "disable_mode";
                 toggle.IsChecked = false;
+                release.SetResult(true);
+                await Until(() => client.CompletedReplies == 5);
                 await pet.ReactToClickAsync();
                 await Task.Delay(750);
-                Require(!pet.IsLlmBehaviorActive && !(await pet.GetSnapshotAsync(CancellationToken.None)).Enabled && client.InferenceCalls == 2 && client.MetadataCalls == metadataBeforeDisable && preferenceChanges == 2,
+                Require(!pet.IsLlmBehaviorActive && !(await pet.GetSnapshotAsync(CancellationToken.None)).Enabled && client.InferenceCalls == 5 && client.MetadataCalls == metadataBeforeDisable && preferenceChanges == 2,
                     "turning_mode_off_restores_default_authority_and_stops_background_requests");
+                Require(store.ReadTurns(firstId).Count == 2 && store.ReadTurns(secondId).Count == 1 &&
+                    !Descendants<TextBlock>(pet).Any(item => item.Text == client.Reply),
+                    "late_model_reply_and_offline_click_do_not_write_to_chat");
+
+                phase = "disconnected_interaction";
+                client.BlockResponse = null;
+                client.Connected = false;
+                toggle.IsChecked = true;
+                await session.CheckConnectionAsync();
+                Require(!session.BehaviorReactionReady, "fixture_model_disconnected");
+                ResetCoordinator();
+                var beforeReconnect = DateTimeOffset.UtcNow;
+                await pet.ReactToClickAsync(beforeReconnect);
+                client.Connected = true;
+                await session.CheckConnectionAsync();
+                await Task.Delay(1300);
+                Require(session.BehaviorReactionReady && client.InferenceCalls == 5 && store.ReadTurns(secondId).Count == 1,
+                    "reconnecting_does_not_replay_a_click_made_while_disconnected");
+                client.Reply = "连接回来后第一次打招呼。";
+                await pet.ReactToClickAsync(beforeReconnect.AddMilliseconds(100));
+                await Until(() => store.ReadTurns(secondId).Count == 2);
+                var afterReconnect = store.ReadTurns(secondId).Last();
+                Require(afterReconnect.CompanionEventSummary == singleClickSummary && afterReconnect.Assistant == client.Reply &&
+                    client.InferenceCalls == 6, "first_click_after_reconnect_excludes_offline_clicks_within_one_burst");
                 Finish(true);
             }
             catch (Exception ex) { Finish(false, ex.ToString()); }
@@ -173,18 +246,27 @@ internal static class PetBehaviorCoordinatorChecks
     private sealed class FixtureClient : IOllamaClient
     {
         internal const string Answer = "合成事件：我知道你点我啦。";
-        internal int MetadataCalls, InferenceCalls;
+        internal int MetadataCalls, InferenceCalls, CompletedReplies;
         internal bool SupportsTools = true;
+        internal bool Connected = true;
+        internal string Reply = Answer;
+        internal Task? BlockResponse;
         internal IReadOnlyList<OllamaMessage> LastMessages = Array.Empty<OllamaMessage>();
         public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct)
-        { ct.ThrowIfCancellationRequested(); MetadataCalls++; return Task.FromResult<IReadOnlyList<string>>(new[] { OllamaModels.FastModel }); }
+        {
+            ct.ThrowIfCancellationRequested(); MetadataCalls++;
+            if (!Connected) throw new OllamaException("Fixture connection unavailable.");
+            return Task.FromResult<IReadOnlyList<string>>(new[] { OllamaModels.FastModel });
+        }
         public Task<OllamaModelCapabilities> GetModelInfoAsync(string model, CancellationToken ct)
         { ct.ThrowIfCancellationRequested(); MetadataCalls++; return Task.FromResult(new OllamaModelCapabilities(true, true, false, SupportsTools)); }
         public async IAsyncEnumerable<OllamaChatDelta> ChatAsync(string model, IReadOnlyList<OllamaMessage> messages, [EnumeratorCancellation] CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested(); InferenceCalls++; LastMessages = messages.ToArray();
-            await Task.Delay(15, ct);
-            yield return new OllamaChatDelta(Answer, true);
+            if (BlockResponse != null) await BlockResponse; // Deliberately simulate a transport ignoring cancellation.
+            else await Task.Delay(15, ct);
+            CompletedReplies++;
+            yield return new OllamaChatDelta(Reply, true);
         }
         public IAsyncEnumerable<OllamaChatDelta> ChatWithToolsAsync(string model, IReadOnlyList<OllamaMessage> messages, IReadOnlyList<OllamaToolDefinition> tools, CancellationToken ct)
             => throw new InvalidOperationException("Non-DeepSeek fixture must not advertise a performance or passive movement tool.");
